@@ -1,0 +1,67 @@
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Local models and data
+models/
+chroma_db/
+output/
+output_docling/
+converted_for_rag/
+
+# Knowledge base content (keep folder structure local-only)
+documents/*
+!documents/pdf_docs/
+!documents/markdown_docs/
+documents/pdf_docs/*
+documents/markdown_docs/*
+!documents/pdf_docs/.gitkeep
+!documents/markdown_docs/.gitkeep
+
+# DeepEval and run artifacts
+.deepeval/
+deepeval_artifacts/*
+!deepeval_artifacts/rag_eval_inputs.json
+!deepeval_artifacts/.gitkeep
+archive/
+
+# Legacy and experimental directories not needed in main repo
+rag_eval/
+ai_rag_tutor/
+src/parse_test/
+src/documents/
+src/ollama_test/
+src/app.py
+# src/pdf_processing_test.ipynb
+# src/test_sql.ipynb
+pdf_parsing/
+
+# Local notebooks (can be removed from ignore if you want to version notebooks)
+*.ipynb
