@@ -8,20 +8,16 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 
 from llm import get_chat_model
+from retriever import build_retriever
 from settings import Settings
 from utils import get_logger
-from vectorstore import load_vector_store
 
 logger = get_logger("rag_chain")
 
 
 def build_rag_chain(settings: Settings) -> Runnable:
     """LCEL two-step RAG: rewrite question with history, then retrieve+answer."""
-    store = load_vector_store(settings)
-    if store is None:
-        raise RuntimeError("Vector store not initialized. Run ingest.py first.")
-
-    retriever = store.as_retriever(search_kwargs={"k": settings.top_k})
+    retriever = build_retriever(settings)
     llm = get_chat_model(settings)
 
     # contextualize_q_system_prompt = (

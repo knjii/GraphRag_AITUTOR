@@ -10,7 +10,6 @@ from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindVal
 from rag_chain import build_rag_chain
 from settings import Settings
 from utils import chroma_has_data
-from vectorstore import load_vector_store
 
 def main():
     parser = argparse.ArgumentParser(description="Ask a question to the local RAG index.")
@@ -30,7 +29,6 @@ def main():
         raise SystemExit("Chroma индекс не найден. Сначала запустите `python ingest.py`.")
     
     chain = build_rag_chain(settings)
-    store = load_vector_store(settings)
 
     emb_path = str(settings.embedding_model_path)
 
@@ -39,7 +37,11 @@ def main():
         "embed.model_path": os.path.basename(emb_path),
         "llm.temperature": float(settings.temperature),
         "llm.n_ctx": int(settings.ollama_num_ctx),
+        "retrieval.mode": str(settings.retriever_mode),
         "retrieval.top_k": int(settings.top_k),
+        "retrieval.hybrid_sparse_k": int(settings.hybrid_sparse_k),
+        "retrieval.hybrid_dense_weight": float(settings.hybrid_dense_weight),
+        "retrieval.hybrid_sparse_weight": float(settings.hybrid_sparse_weight),
         "rag.question": args.question
     }
     with tracer.start_as_current_span("rag_query") as span:

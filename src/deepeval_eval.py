@@ -128,6 +128,11 @@ class DeepEvalEvaluationRunner:
                 span.set_attribute(SpanAttributes.INPUT_VALUE, question)
                 span.set_attribute("metadata.eval.row_id", row_id)
                 span.set_attribute("metadata.eval.ground_truth", ground_truth)
+                span.set_attribute("metadata.retrieval.mode", str(self.settings.retriever_mode))
+                span.set_attribute("metadata.retrieval.top_k", int(self.settings.top_k))
+                span.set_attribute(
+                    "metadata.retrieval.hybrid_sparse_k", int(self.settings.hybrid_sparse_k)
+                )
 
                 result = chain.invoke({"input": question, "chat_history": []})
                 answer = str(result.get("answer") or "").strip()
@@ -685,7 +690,6 @@ if __name__ == "__main__":
             file=sys.stderr,
         )
         sys.exit(1)
-
 
 
 
