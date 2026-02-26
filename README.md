@@ -2,6 +2,7 @@
 
 Local RAG project with:
 - LangChain + ChromaDB
+- Hybrid retrieval (dense embeddings + BM25 sparse fusion)
 - Ollama for generation/evaluation models
 - DeepEval metrics for RAG evaluation
 - Arize Phoenix tracing (OpenInference spans)
@@ -15,6 +16,7 @@ rag_textbook/
 |   |-- query.py
 |   |-- deepeval_eval.py
 |   |-- rag_chain.py
+|   |-- retriever.py
 |   |-- chunker.py
 |   |-- embeddings.py
 |   |-- llm.py
@@ -70,6 +72,18 @@ python src/ingest.py
 ```
 
 This reads files from `PDF_DIR` / `MARKDOWN_DIR` and writes Chroma index to `CHROMA_DIR`.
+
+## Retrieval Configuration
+
+Hybrid retrieval is enabled by default and does not change CLI commands.
+
+Set in `.env`:
+- `RETRIEVER_MODE=hybrid` (`dense` for dense-only mode)
+- `TOP_K=4` (final number of retrieved chunks)
+- `HYBRID_SPARSE_K=8` (BM25 candidate pool size)
+- `HYBRID_DENSE_WEIGHT=0.6`
+- `HYBRID_SPARSE_WEIGHT=0.4`
+- `HYBRID_RRF_K=60` (reciprocal-rank-fusion smoothing)
 
 ## Query the RAG System
 

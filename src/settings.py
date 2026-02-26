@@ -77,6 +77,11 @@ class Settings:
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "1000"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "400"))
     top_k: int = int(os.getenv("TOP_K", "4"))
+    retriever_mode: str = os.getenv("RETRIEVER_MODE", "hybrid")
+    hybrid_sparse_k: int = int(os.getenv("HYBRID_SPARSE_K", "8"))
+    hybrid_dense_weight: float = float(os.getenv("HYBRID_DENSE_WEIGHT", "0.6"))
+    hybrid_sparse_weight: float = float(os.getenv("HYBRID_SPARSE_WEIGHT", "0.4"))
+    hybrid_rrf_k: int = int(os.getenv("HYBRID_RRF_K", "60"))
     chunker_use_llm: bool = os.getenv("CHUNKER_USE_LLM", "1").lower() not in {"0", "false", "no"}
 
     contextualize_q_system_prompt: str = str(
