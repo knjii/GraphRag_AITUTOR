@@ -77,6 +77,14 @@ class Settings:
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "1000"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "400"))
     top_k: int = int(os.getenv("TOP_K", "4"))
+    conversational_rag_enabled: bool = os.getenv("CONVERSATIONAL_RAG_ENABLED", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    chat_history_dir: Path = Path(os.getenv("CHAT_HISTORY_DIR", "chat_history"))
+    chat_session_id: str = str(os.getenv("CHAT_SESSION_ID", "default"))
+    chat_history_max_turns: int = int(os.getenv("CHAT_HISTORY_MAX_TURNS", "6"))
     retriever_mode: str = os.getenv("RETRIEVER_MODE", "hybrid")
     hybrid_sparse_k: int = int(os.getenv("HYBRID_SPARSE_K", "8"))
     hybrid_dense_weight: float = float(os.getenv("HYBRID_DENSE_WEIGHT", "0.6"))

@@ -17,6 +17,7 @@ rag_textbook/
 |   |-- deepeval_eval.py
 |   |-- rag_chain.py
 |   |-- retriever.py
+|   |-- chat_history.py
 |   |-- chunker.py
 |   |-- embeddings.py
 |   |-- llm.py
@@ -78,6 +79,10 @@ This reads files from `PDF_DIR` / `MARKDOWN_DIR` and writes Chroma index to `CHR
 Hybrid retrieval is enabled by default and does not change CLI commands.
 
 Set in `.env`:
+- `CONVERSATIONAL_RAG_ENABLED=1` (set `0` for stateless mode by default)
+- `CHAT_HISTORY_DIR=chat_history` (JSONL storage for sessions)
+- `CHAT_SESSION_ID=default` (default conversation id)
+- `CHAT_HISTORY_MAX_TURNS=6` (how many latest turns are sent to LLM)
 - `RETRIEVER_MODE=hybrid` (`dense` for dense-only mode)
 - `TOP_K=4` (final number of retrieved chunks)
 - `HYBRID_SPARSE_K=8` (BM25 candidate pool size)
@@ -89,6 +94,15 @@ Set in `.env`:
 
 ```bash
 python src/query.py "Your question here"
+```
+
+Conversation controls (same command, optional flags):
+
+```bash
+python src/query.py "How does gradient descent work?" --session-id ml_course
+python src/query.py "How to implement it in Python?" --session-id ml_course
+python src/query.py "One-off question" --stateless
+python src/query.py "Reset session and ask again" --session-id ml_course --clear-history
 ```
 
 The query command runs the same RAG chain and emits tracing spans to Phoenix.

@@ -50,6 +50,7 @@ documents/markdown_docs/*
 deepeval_artifacts/*
 !deepeval_artifacts/rag_eval_inputs.json
 !deepeval_artifacts/.gitkeep
+chat_history/
 archive/
 
 # Legacy and experimental directories not needed in main repo
