@@ -32,6 +32,7 @@ Thumbs.db
 # Local models and data
 models/
 chroma_db/
+chroma_db_stress/
 output/
 output_docling/
 converted_for_rag/
@@ -60,6 +61,7 @@ src/parse_test/
 src/documents/
 src/ollama_test/
 src/app.py
+src/vectorization_stress_test.py
 # src/pdf_processing_test.ipynb
 # src/test_sql.ipynb
 pdf_parsing/

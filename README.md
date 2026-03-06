@@ -74,6 +74,41 @@ python src/ingest.py
 
 This reads files from `PDF_DIR` / `MARKDOWN_DIR` and writes Chroma index to `CHROMA_DIR`.
 
+Checkpoint mode (resume by source file after failures) is optional in `ingest.py`:
+
+```bash
+python src/ingest.py --checkpoint
+python src/ingest.py --checkpoint-file chroma_db/ingest_checkpoint.json
+python src/ingest.py --force --checkpoint
+```
+
+Default checkpoint path can be configured via `INGEST_CHECKPOINT_FILE` in `.env`.
+
+For large corpora / GPU stability during embedding, tune:
+- `EMBEDDINGS_BACKEND=ollama|sentence` (default: `ollama` for offline local embeddings)
+- `OLLAMA_EMBED_MODEL` (local Ollama embedding model, default `qwen3-embedding:0.6b`)
+- `EMBED_BATCH_SIZE` (batch size inside sentence-transformers encode)
+- `CHROMA_ADD_BATCH_SIZE` (how many chunks are sent per `add_documents` call)
+- `EMBED_DEVICE=auto|cpu|cuda` (embedding device policy)
+- `EMBED_MIN_FREE_VRAM_MB` (minimum free VRAM target before embedding)
+- `EMBED_MIN_FREE_VRAM_RATIO` (required free VRAM ratio, default `0.7`)
+- `EMBED_FORCE_CPU_ON_LOW_VRAM=1` (fallback to CPU when VRAM remains low)
+- `EMBED_PROBE_LLM_BEFORE_INDEX=1` (run LLM ping before VRAM check/unload)
+
+If CUDA errors appear on indexing, reduce both values first (e.g. `EMBED_BATCH_SIZE=16`, `CHROMA_ADD_BATCH_SIZE=64`).
+
+For fully offline embedding flow with Ollama, pull embedding model once:
+
+```bash
+ollama pull qwen3-embedding:0.6b
+```
+
+Stress test for vectorization path (tripled markdown + split 1200/300):
+
+```bash
+python src/vectorization_stress_test.py --force
+```
+
 ## Retrieval Configuration
 
 Hybrid retrieval is enabled by default and does not change CLI commands.

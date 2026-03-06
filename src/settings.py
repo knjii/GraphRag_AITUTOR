@@ -15,6 +15,9 @@ class Settings:
     pdf_dir: Path = Path(os.getenv("PDF_DIR", "textbook"))
     markdown_dir: Path = Path(os.getenv("MARKDOWN_DIR", "markdown_docs"))
     chroma_dir: Path = Path(os.getenv("CHROMA_DIR", "chroma_db"))
+    ingest_checkpoint_file: Path = Path(
+        os.getenv("INGEST_CHECKPOINT_FILE", "chroma_db/ingest_checkpoint.json")
+    )
     eval_pdf_dir: Path = Path(
         os.getenv("EVAL_PDF_DIR", r"C:\python\rag_textbook\documents\pdf_docs\test")
     )
@@ -32,8 +35,9 @@ class Settings:
     )
 
     # Embeddings backend metadata
-    embedding_backend: str = os.getenv("EMBEDDINGS_BACKEND", "sentence")
+    embedding_backend: str = os.getenv("EMBEDDINGS_BACKEND", "ollama")
     embedding_model_name: str = os.getenv("EMBED_MODEL_NAME", "Qwen/Qwen3-Embedding-0.6B")
+    ollama_embed_model: str = os.getenv("OLLAMA_EMBED_MODEL", "qwen3-embedding:0.6b")
     local_embedding_model_path: Path = Path(
         os.getenv("LOCAL_EMBED_PATH", r"C:\python\rag_textbook\models\Embeddings")
     )
@@ -46,6 +50,20 @@ class Settings:
     n_gpu_layers: int = int(os.getenv("N_GPU_LAYERS", "35"))
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
     embed_batch_size: int = int(os.getenv("EMBED_BATCH_SIZE", "64"))
+    chroma_add_batch_size: int = int(os.getenv("CHROMA_ADD_BATCH_SIZE", "256"))
+    embed_device: str = os.getenv("EMBED_DEVICE", "auto").strip().lower()
+    embed_min_free_vram_mb: int = int(os.getenv("EMBED_MIN_FREE_VRAM_MB", "2048"))
+    embed_min_free_vram_ratio: float = float(os.getenv("EMBED_MIN_FREE_VRAM_RATIO", "0.7"))
+    embed_force_cpu_on_low_vram: bool = os.getenv("EMBED_FORCE_CPU_ON_LOW_VRAM", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    embed_probe_llm_before_index: bool = os.getenv("EMBED_PROBE_LLM_BEFORE_INDEX", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
     # Ollama runtime params (for chat LLM)
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
