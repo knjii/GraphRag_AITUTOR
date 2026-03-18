@@ -73,11 +73,28 @@ class Settings:
     )
     ollama_top_k: int = int(os.getenv("OLLAMA_TOP_K", "4"))
     ollama_num_ctx: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
-    ollama_num_gpu: int = int(os.getenv("OLLAMA_NUM_GPU", "35"))
+    ollama_num_gpu: int = int(os.getenv("OLLAMA_NUM_GPU", "30"))
     ollama_num_batch: int = int(os.getenv("OLLAMA_NUM_BATCH", "1"))
     ollama_num_predict: int = int(os.getenv("OLLAMA_NUM_PREDICT", "256"))
+    ollama_request_timeout_seconds: int = int(os.getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "0"))
+    ollama_think: str = os.getenv("OLLAMA_THINK", "auto").strip().lower()
     ollama_eval_num_predict: int = int(os.getenv("OLLAMA_EVAL_NUM_PREDICT", "256"))
     ollama_eval_temperature: float = float(os.getenv("OLLAMA_EVAL_TEMPERATURE", "0.0"))
+    ollama_eval_think: str = os.getenv("OLLAMA_EVAL_THINK", "auto").strip().lower()
+    ollama_eval_json_retry_without_think: bool = os.getenv(
+        "OLLAMA_EVAL_JSON_RETRY_WITHOUT_THINK", "0"
+    ).lower() not in {"0", "false", "no"}
+    ollama_eval_json_retry_attempts: int = int(os.getenv("OLLAMA_EVAL_JSON_RETRY_ATTEMPTS", "2"))
+    ollama_eval_retry_num_predict_multiplier: float = float(
+        os.getenv("OLLAMA_EVAL_RETRY_NUM_PREDICT_MULTIPLIER", "2.0")
+    )
+    ollama_eval_max_num_predict: int = int(os.getenv("OLLAMA_EVAL_MAX_NUM_PREDICT", "512"))
+    ollama_eval_structured_recovery: bool = os.getenv(
+        "OLLAMA_EVAL_STRUCTURED_RECOVERY", "1"
+    ).lower() not in {"0", "false", "no"}
+    ollama_eval_structured_recovery_input_chars: int = int(
+        os.getenv("OLLAMA_EVAL_STRUCTURED_RECOVERY_INPUT_CHARS", "6000")
+    )
 
     # Eval runtime controls
     ragas_timeout: int = int(os.getenv("RAGAS_TIMEOUT", "600"))

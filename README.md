@@ -115,6 +115,8 @@ Hybrid retrieval is enabled by default and does not change CLI commands.
 
 Set in `.env`:
 - `CONVERSATIONAL_RAG_ENABLED=1` (set `0` for stateless mode by default)
+- `OLLAMA_THINK=auto|0|1` (`auto` disables think for `qwen3*` and `deepseek-r1*` on query generation to avoid empty outputs)
+- `OLLAMA_REQUEST_TIMEOUT_SECONDS=0|N` (`0` = model-aware auto timeout, uses 600s for `deepseek-r1*`, 180s otherwise)
 - `CHAT_HISTORY_DIR=chat_history` (JSONL storage for sessions)
 - `CHAT_SESSION_ID=default` (default conversation id)
 - `CHAT_HISTORY_MAX_TURNS=6` (how many latest turns are sent to LLM)
@@ -165,6 +167,15 @@ Used metrics:
 - `ContextualPrecisionMetric`
 
 Outputs are saved to `deepeval_artifacts/` using the selected prefix.
+
+If your eval model is `qwen3:*` or `deepseek-r1:*` and metrics fail with `Invalid JSON ... input_value=''`, use non-thinking eval mode for structured metrics:
+- `OLLAMA_EVAL_THINK=0` (or `auto`, which sets `think=0` for `qwen3:*` and `deepseek-r1:*`)
+- `OLLAMA_EVAL_JSON_RETRY_ATTEMPTS=1` (one extra structured retry in think mode)
+- `OLLAMA_EVAL_RETRY_NUM_PREDICT_MULTIPLIER=1.5` (increases `num_predict` on retry)
+- `OLLAMA_EVAL_MAX_NUM_PREDICT=512` (caps growth to avoid timeout spikes)
+- `OLLAMA_EVAL_STRUCTURED_RECOVERY=1` (runs one JSON-normalization pass from content)
+- `OLLAMA_EVAL_STRUCTURED_RECOVERY_INPUT_CHARS=6000` (limits recovery prompt size)
+- optional last resort: `OLLAMA_EVAL_JSON_RETRY_WITHOUT_THINK=1`
 
 ## Tracing (Arize Phoenix)
 

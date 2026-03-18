@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Optional
+import os
 import shutil
 import time
 
@@ -33,6 +34,33 @@ def _is_cuda_embedding_failure(exc: Exception) -> bool:
             "cuda out of memory",
         )
     )
+
+
+def _is_sqlite_disk_io_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "disk i/o error" in text or "(code: 2570)" in text
+
+
+def _cleanup_sqlite_recovery_files(chroma_path: Path) -> None:
+    """
+    Clean up SQLite sidecar files that may remain after interrupted runs.
+    This can unblock Chroma initialization without touching the main DB file.
+    """
+    for name in ("chroma.sqlite3-journal", "chroma.sqlite3-wal", "chroma.sqlite3-shm"):
+        p = chroma_path / name
+        if not p.exists():
+            continue
+        try:
+            os.remove(p)
+            logger.warning("Removed stale SQLite sidecar file: %s", p)
+        except Exception:
+            # In restrictive environments delete can fail; truncation is enough for journal recovery.
+            try:
+                with open(p, "wb"):
+                    pass
+                logger.warning("Truncated stale SQLite sidecar file: %s", p)
+            except Exception as cleanup_exc:
+                logger.warning("Failed to clean SQLite sidecar %s: %s", p, cleanup_exc)
 
 
 def _get_vram_info_mb() -> tuple[int, int] | None:
@@ -140,6 +168,30 @@ def _add_documents_adaptive(store: Chroma, docs: List[Document]) -> None:
         _add_documents_adaptive(store, docs[mid:])
 
 
+def _open_chroma_store(
+    chroma_path: Path,
+    embeddings,
+    *,
+    retry_on_disk_io: bool = True,
+) -> Chroma:
+    try:
+        return Chroma(
+            persist_directory=str(chroma_path),
+            embedding_function=embeddings,
+        )
+    except Exception as exc:
+        if not retry_on_disk_io or not _is_sqlite_disk_io_error(exc):
+            raise
+        logger.warning(
+            "Chroma open failed with SQLite disk I/O error. Attempting one-time recovery."
+        )
+        _cleanup_sqlite_recovery_files(chroma_path)
+        return Chroma(
+            persist_directory=str(chroma_path),
+            embedding_function=embeddings,
+        )
+
+
 def persist_documents(documents: List[Document], settings: Settings, force: bool = False) -> None:
     """Persist documents into Chroma. If force is True, deletes existing index first."""
     chroma_path = Path(settings.chroma_dir)
@@ -150,10 +202,7 @@ def persist_documents(documents: List[Document], settings: Settings, force: bool
     if force:
         _clear_chroma_dir(chroma_path)
 
-    store = Chroma(
-        persist_directory=str(chroma_path),
-        embedding_function=embeddings,
-    )
+    store = _open_chroma_store(chroma_path, embeddings, retry_on_disk_io=True)
     for start in range(0, len(documents), add_batch_size):
         end = min(start + add_batch_size, len(documents))
         batch = documents[start:end]
@@ -167,5 +216,6 @@ def load_vector_store(settings: Settings) -> Optional[Chroma]:
         logger.warning("No existing Chroma data at %s", settings.chroma_dir)
         return None
 
+    chroma_path = Path(settings.chroma_dir)
     embeddings = get_embeddings_model(settings)
-    return Chroma(persist_directory=str(settings.chroma_dir), embedding_function=embeddings)
+    return _open_chroma_store(chroma_path, embeddings, retry_on_disk_io=True)
