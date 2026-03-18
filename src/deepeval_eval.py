@@ -23,6 +23,7 @@ from deepeval.metrics import (
 )
 from deepeval.models import OllamaModel
 from deepeval.test_case import LLMTestCase
+from pydantic import BaseModel
 
 from rag_chain import build_rag_chain
 from settings import Settings
@@ -55,6 +56,464 @@ class RunnerConfig:
     eval_batch_size: int
     deepeval_timeout_seconds: int | None
     ignore_eval_errors: bool
+
+
+def _is_auto_no_think_model(model_name: str) -> bool:
+    name = str(model_name).strip().lower()
+    return name.startswith("qwen3") or name.startswith("deepseek-r1")
+
+
+class CompatibleOllamaModel(OllamaModel):
+    """Ollama wrapper for robust structured outputs in think mode."""
+
+    def __init__(
+        self,
+        *args,
+        json_retry_without_think: bool = False,
+        json_retry_attempts: int = 2,
+        retry_num_predict_multiplier: float = 2.0,
+        max_num_predict: int = 512,
+        structured_recovery: bool = True,
+        structured_recovery_input_chars: int = 6000,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.json_retry_without_think = bool(json_retry_without_think)
+        self.json_retry_attempts = max(0, int(json_retry_attempts))
+        self.retry_num_predict_multiplier = max(1.0, float(retry_num_predict_multiplier))
+        self.max_num_predict = max(1, int(max_num_predict))
+        self.structured_recovery = bool(structured_recovery)
+        self.structured_recovery_input_chars = max(500, int(structured_recovery_input_chars))
+
+    def _build_options(self, think_override=None, extra_options: Dict[str, Any] | None = None):
+        options = {
+            **{"temperature": self.temperature},
+            **self.generation_kwargs,
+        }
+        if extra_options:
+            options.update(extra_options)
+        think_value = options.pop("think", None)
+        if think_override is not None:
+            think_value = bool(think_override)
+        return options, think_value
+
+    def _call_chat(
+        self,
+        chat_model,
+        messages,
+        schema: BaseModel | None,
+        think_override=None,
+        extra_options: Dict[str, Any] | None = None,
+    ):
+        options, think_value = self._build_options(
+            think_override=think_override, extra_options=extra_options
+        )
+        return chat_model.chat(
+            model=self.name,
+            messages=messages,
+            think=think_value,
+            format=schema.model_json_schema() if schema else None,
+            options=options,
+        )
+
+    async def _a_call_chat(
+        self,
+        chat_model,
+        messages,
+        schema: BaseModel | None,
+        think_override=None,
+        extra_options: Dict[str, Any] | None = None,
+    ):
+        options, think_value = self._build_options(
+            think_override=think_override, extra_options=extra_options
+        )
+        return await chat_model.chat(
+            model=self.name,
+            messages=messages,
+            think=think_value,
+            format=schema.model_json_schema() if schema else None,
+            options=options,
+        )
+
+    @staticmethod
+    def _extract_parts(response) -> tuple[str, str]:
+        message = getattr(response, "message", None)
+        content = getattr(message, "content", None) if message is not None else None
+        thinking = getattr(message, "thinking", None) if message is not None else None
+        return str(content or ""), str(thinking or "")
+
+    @staticmethod
+    def _extract_json_candidate(text: str) -> str | None:
+        if not text:
+            return None
+        stripped = text.strip()
+        if stripped.startswith("```") and stripped.endswith("```"):
+            lines = stripped.splitlines()
+            if len(lines) >= 3:
+                fenced = "\n".join(lines[1:-1]).strip()
+                if fenced:
+                    return fenced
+        decoder = json.JSONDecoder()
+        for idx, ch in enumerate(text):
+            if ch not in "{[":
+                continue
+            try:
+                obj, _ = decoder.raw_decode(text[idx:])
+            except Exception:
+                continue
+            if isinstance(obj, (dict, list)):
+                return json.dumps(obj, ensure_ascii=False)
+        return None
+
+    @staticmethod
+    def _sanitize_invalid_json_escapes(text: str) -> str:
+        """Repair invalid escapes inside JSON string literals without corrupting valid ones."""
+        if not text:
+            return text
+        out: List[str] = []
+        i = 0
+        in_string = False
+        text_len = len(text)
+        hex_digits = set("0123456789abcdefABCDEF")
+
+        while i < text_len:
+            ch = text[i]
+
+            if not in_string:
+                out.append(ch)
+                if ch == '"':
+                    in_string = True
+                i += 1
+                continue
+
+            # in_string == True
+            if ch == '"':
+                in_string = False
+                out.append(ch)
+                i += 1
+                continue
+
+            if ch != "\\":
+                out.append(ch)
+                i += 1
+                continue
+
+            # Backslash handling inside JSON string:
+            # preserve valid escapes, normalize invalid ones to escaped backslash.
+            if i + 1 >= text_len:
+                out.append("\\\\")
+                i += 1
+                continue
+
+            nxt = text[i + 1]
+            if nxt in {'"', "\\", "/", "b", "f", "n", "r", "t"}:
+                out.append("\\")
+                out.append(nxt)
+                i += 2
+                continue
+
+            if nxt == "u" and i + 5 < text_len:
+                seq = text[i + 2 : i + 6]
+                if all(c in hex_digits for c in seq):
+                    out.append("\\")
+                    out.append("u")
+                    out.extend(seq)
+                    i += 6
+                    continue
+
+            out.append("\\\\")
+            i += 1
+
+        return "".join(out)
+
+    @classmethod
+    def _validate_schema_from_text(cls, schema: BaseModel, text: str):
+        if not text:
+            return None
+        candidates_with_source: List[tuple[str, str]] = [("raw", text)]
+        extracted = cls._extract_json_candidate(text)
+        if extracted and extracted != text:
+            candidates_with_source.append(("extracted", extracted))
+        for source, candidate in list(candidates_with_source):
+            sanitized = cls._sanitize_invalid_json_escapes(candidate)
+            if sanitized != candidate and all(
+                existing != sanitized for _, existing in candidates_with_source
+            ):
+                candidates_with_source.append((f"{source}:sanitized", sanitized))
+
+        first_error: Exception | None = None
+        for source, candidate in candidates_with_source:
+            try:
+                parsed = schema.model_validate_json(candidate)
+                if source.endswith(":sanitized"):
+                    logger.warning(
+                        "Schema validation recovered via JSON escape sanitizer: schema=%s source=%s",
+                        getattr(schema, "__name__", str(schema)),
+                        source,
+                    )
+                return parsed
+            except Exception as exc_json:
+                if first_error is None:
+                    first_error = exc_json
+                try:
+                    parsed = schema.model_validate(json.loads(candidate))
+                    if source.endswith(":sanitized"):
+                        logger.warning(
+                            "Schema validation recovered via JSON escape sanitizer+json.loads: schema=%s source=%s",
+                            getattr(schema, "__name__", str(schema)),
+                            source,
+                        )
+                    return parsed
+                except Exception as exc_obj:
+                    if first_error is None:
+                        first_error = exc_obj
+                    continue
+        if first_error is not None:
+            logger.warning(
+                "Schema validation detail: schema=%s err_type=%s err=%s",
+                getattr(schema, "__name__", str(schema)),
+                type(first_error).__name__,
+                str(first_error),
+            )
+        return None
+
+    def _predict_override_for_attempt(self, attempt_idx: int) -> Dict[str, Any] | None:
+        if attempt_idx <= 0:
+            return None
+        base_predict = int(self.generation_kwargs.get("num_predict") or 0)
+        if base_predict <= 0:
+            return None
+        grown = int(round(base_predict * (self.retry_num_predict_multiplier ** attempt_idx)))
+        if grown <= base_predict:
+            grown = base_predict * (attempt_idx + 1)
+        return {"num_predict": min(self.max_num_predict, max(base_predict, grown))}
+
+    @staticmethod
+    def _preview(text: str, limit: int = 800) -> str:
+        value = str(text or "").replace("\r", "\\r").replace("\n", "\\n")
+        if len(value) <= limit:
+            return value
+        return value[:limit] + "...<truncated>"
+
+    @staticmethod
+    def _build_recovery_prompt(schema: BaseModel, raw_text: str) -> str:
+        schema_json = json.dumps(schema.model_json_schema(), ensure_ascii=False)
+        return (
+            "You are a strict JSON formatter.\n"
+            "Return only valid JSON matching the provided schema.\n"
+            "No markdown, no explanation.\n\n"
+            f"SCHEMA:\n{schema_json}\n\n"
+            f"TEXT:\n{raw_text}"
+        )
+
+    def _recover_structured_sync(
+        self,
+        chat_model,
+        schema: BaseModel,
+        raw_text: str,
+        *,
+        source_kind: str = "content",
+    ):
+        prompt = self._build_recovery_prompt(schema, raw_text[: self.structured_recovery_input_chars])
+        messages = [{"role": "user", "content": prompt}]
+        recovery_num_predict = min(
+            self.max_num_predict,
+            max(128, int(self.generation_kwargs.get("num_predict") or 256)),
+        )
+        response = self._call_chat(
+            chat_model,
+            messages,
+            schema=schema,
+            think_override=False,
+            extra_options={"num_predict": recovery_num_predict},
+        )
+        content, thinking = self._extract_parts(response)
+        logger.warning(
+            "Structured recovery (sync): schema=%s source=%s content_len=%s thinking_len=%s content_preview=%s",
+            getattr(schema, "__name__", str(schema)),
+            source_kind,
+            len(content),
+            len(thinking),
+            self._preview(content),
+        )
+        parsed = self._validate_schema_from_text(schema, content)
+        if parsed is None and thinking:
+            parsed = self._validate_schema_from_text(schema, thinking)
+            if parsed is not None:
+                logger.warning(
+                    "Structured recovery (sync): schema=%s parsed from thinking fallback.",
+                    getattr(schema, "__name__", str(schema)),
+                )
+        return parsed
+
+    async def _recover_structured_async(
+        self,
+        chat_model,
+        schema: BaseModel,
+        raw_text: str,
+        *,
+        source_kind: str = "content",
+    ):
+        prompt = self._build_recovery_prompt(schema, raw_text[: self.structured_recovery_input_chars])
+        messages = [{"role": "user", "content": prompt}]
+        recovery_num_predict = min(
+            self.max_num_predict,
+            max(128, int(self.generation_kwargs.get("num_predict") or 256)),
+        )
+        response = await self._a_call_chat(
+            chat_model,
+            messages,
+            schema=schema,
+            think_override=False,
+            extra_options={"num_predict": recovery_num_predict},
+        )
+        content, thinking = self._extract_parts(response)
+        logger.warning(
+            "Structured recovery (async): schema=%s source=%s content_len=%s thinking_len=%s content_preview=%s",
+            getattr(schema, "__name__", str(schema)),
+            source_kind,
+            len(content),
+            len(thinking),
+            self._preview(content),
+        )
+        parsed = self._validate_schema_from_text(schema, content)
+        if parsed is None and thinking:
+            parsed = self._validate_schema_from_text(schema, thinking)
+            if parsed is not None:
+                logger.warning(
+                    "Structured recovery (async): schema=%s parsed from thinking fallback.",
+                    getattr(schema, "__name__", str(schema)),
+                )
+        return parsed
+
+    def generate(self, prompt: str, schema: BaseModel | None = None):
+        chat_model = self.load_model()
+        messages = [{"role": "user", "content": prompt}]
+        if not schema:
+            response = self._call_chat(chat_model, messages, schema=None)
+            content, _ = self._extract_parts(response)
+            return content, 0
+
+        attempts_total = self.json_retry_attempts + 1
+        last_error: Exception | None = None
+        last_content = ""
+        last_thinking = ""
+        for attempt_idx in range(attempts_total):
+            attempt_options = self._predict_override_for_attempt(attempt_idx)
+            response = self._call_chat(
+                chat_model,
+                messages,
+                schema=schema,
+                extra_options=attempt_options,
+            )
+            content, thinking = self._extract_parts(response)
+            last_content = content
+            last_thinking = thinking
+            parsed = self._validate_schema_from_text(schema, content)
+            if parsed is not None:
+                return parsed, 0
+            logger.warning(
+                "Structured parse failed (sync): schema=%s attempt=%s/%s think=%s options=%s content_len=%s thinking_len=%s content_preview=%s",
+                getattr(schema, "__name__", str(schema)),
+                attempt_idx + 1,
+                attempts_total,
+                bool(self.generation_kwargs.get("think")),
+                attempt_options or {},
+                len(content),
+                len(thinking),
+                self._preview(content),
+            )
+            last_error = ValueError(
+                "Structured output parse failed (content did not contain valid schema JSON)."
+            )
+
+        if self.structured_recovery and (last_content or last_thinking):
+            source_kind = "content" if last_content else "thinking"
+            raw_text = last_content if last_content else last_thinking
+            recovered = self._recover_structured_sync(
+                chat_model,
+                schema=schema,
+                raw_text=raw_text,
+                source_kind=source_kind,
+            )
+            if recovered is not None:
+                return recovered, 0
+
+        if self.json_retry_without_think and bool(self.generation_kwargs.get("think")):
+            response = self._call_chat(chat_model, messages, schema=schema, think_override=False)
+            content, _ = self._extract_parts(response)
+            parsed = self._validate_schema_from_text(schema, content)
+            if parsed is not None:
+                return parsed, 0
+
+        raise last_error or ValueError("Structured output parse failed.")
+
+    async def a_generate(self, prompt: str, schema: BaseModel | None = None):
+        chat_model = self.load_model(async_mode=True)
+        messages = [{"role": "user", "content": prompt}]
+        if not schema:
+            response = await self._a_call_chat(chat_model, messages, schema=None)
+            content, _ = self._extract_parts(response)
+            return content, 0
+
+        attempts_total = self.json_retry_attempts + 1
+        last_error: Exception | None = None
+        last_content = ""
+        last_thinking = ""
+        for attempt_idx in range(attempts_total):
+            attempt_options = self._predict_override_for_attempt(attempt_idx)
+            response = await self._a_call_chat(
+                chat_model,
+                messages,
+                schema=schema,
+                extra_options=attempt_options,
+            )
+            content, thinking = self._extract_parts(response)
+            last_content = content
+            last_thinking = thinking
+            parsed = self._validate_schema_from_text(schema, content)
+            if parsed is not None:
+                return parsed, 0
+            logger.warning(
+                "Structured parse failed (async): schema=%s attempt=%s/%s think=%s options=%s content_len=%s thinking_len=%s content_preview=%s",
+                getattr(schema, "__name__", str(schema)),
+                attempt_idx + 1,
+                attempts_total,
+                bool(self.generation_kwargs.get("think")),
+                attempt_options or {},
+                len(content),
+                len(thinking),
+                self._preview(content),
+            )
+            last_error = ValueError(
+                "Structured output parse failed (content did not contain valid schema JSON)."
+            )
+
+        if self.structured_recovery and (last_content or last_thinking):
+            source_kind = "content" if last_content else "thinking"
+            raw_text = last_content if last_content else last_thinking
+            recovered = await self._recover_structured_async(
+                chat_model,
+                schema=schema,
+                raw_text=raw_text,
+                source_kind=source_kind,
+            )
+            if recovered is not None:
+                return recovered, 0
+
+        if self.json_retry_without_think and bool(self.generation_kwargs.get("think")):
+            response = await self._a_call_chat(
+                chat_model,
+                messages,
+                schema=schema,
+                think_override=False,
+            )
+            content, _ = self._extract_parts(response)
+            parsed = self._validate_schema_from_text(schema, content)
+            if parsed is not None:
+                return parsed, 0
+
+        raise last_error or ValueError("Structured output parse failed.")
 
 
 class DeepEvalEvaluationRunner:
@@ -192,15 +651,31 @@ class DeepEvalEvaluationRunner:
         return test_cases
 
     def evaluate_test_cases(self, test_cases: Sequence[LLMTestCase]):
-        eval_model = OllamaModel(
+        generation_kwargs = {
+            "num_predict": int(self.settings.ollama_eval_num_predict),
+            "num_ctx": int(self.settings.ollama_num_ctx),
+            "top_k": int(self.settings.ollama_top_k),
+        }
+        eval_think = str(self.settings.ollama_eval_think or "auto").strip().lower()
+        if eval_think in {"0", "false", "no", "off"}:
+            generation_kwargs["think"] = False
+        elif eval_think in {"1", "true", "yes", "on"}:
+            generation_kwargs["think"] = True
+        elif _is_auto_no_think_model(self.settings.ollama_eval_model):
+            # qwen3*/deepseek-r1* are usually more stable in structured eval with think disabled.
+            generation_kwargs["think"] = False
+
+        eval_model = CompatibleOllamaModel(
             model=self.settings.ollama_eval_model,
             base_url=self.settings.ollama_base_url,
             temperature=self.settings.ollama_eval_temperature,
-            generation_kwargs={
-                "num_predict": int(self.settings.ollama_eval_num_predict),
-                "num_ctx": int(self.settings.ollama_num_ctx),
-                "top_k": int(self.settings.ollama_top_k),
-            },
+            generation_kwargs=generation_kwargs,
+            json_retry_without_think=self.settings.ollama_eval_json_retry_without_think,
+            json_retry_attempts=self.settings.ollama_eval_json_retry_attempts,
+            retry_num_predict_multiplier=self.settings.ollama_eval_retry_num_predict_multiplier,
+            max_num_predict=self.settings.ollama_eval_max_num_predict,
+            structured_recovery=self.settings.ollama_eval_structured_recovery,
+            structured_recovery_input_chars=self.settings.ollama_eval_structured_recovery_input_chars,
         )
 
         metrics = self._build_metrics(eval_model)
@@ -214,11 +689,16 @@ class DeepEvalEvaluationRunner:
             ", ".join(metric.__class__.__name__ for metric in metrics),
         )
         logger.info(
-            "DeepEval config: model=%s base_url=%s batch_size=%s ignore_errors=%s",
+            "DeepEval config: model=%s base_url=%s batch_size=%s ignore_errors=%s eval_think=%s json_retry_without_think=%s json_retry_attempts=%s max_num_predict=%s structured_recovery=%s",
             self.settings.ollama_eval_model,
             self.settings.ollama_base_url,
             batch_size,
             self.config.ignore_eval_errors,
+            generation_kwargs.get("think", "default"),
+            bool(self.settings.ollama_eval_json_retry_without_think),
+            int(self.settings.ollama_eval_json_retry_attempts),
+            int(self.settings.ollama_eval_max_num_predict),
+            bool(self.settings.ollama_eval_structured_recovery),
         )
 
         for batch_start in range(0, total_cases, batch_size):
@@ -300,19 +780,19 @@ class DeepEvalEvaluationRunner:
         return [
             AnswerRelevancyMetric(
                 model=eval_model,
-                threshold=0.5,
+                threshold=0.01,
                 include_reason=True,
                 async_mode=False,
             ),
             FaithfulnessMetric(
                 model=eval_model,
-                threshold=0.5,
+                threshold=0.01,
                 include_reason=True,
                 async_mode=False,
             ),
             ContextualPrecisionMetric(
                 model=eval_model,
-                threshold=0.5,
+                threshold=0.01,
                 include_reason=True,
                 async_mode=False,
             ),
@@ -330,7 +810,7 @@ class DeepEvalEvaluationRunner:
                 SimpleNamespace(
                     name=metric_name,
                     score=None,
-                    threshold=0.5,
+                    threshold=0.01,
                     success=False,
                     reason=f"evaluation failed: {error_message}",
                 )

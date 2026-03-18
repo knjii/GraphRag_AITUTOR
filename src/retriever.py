@@ -87,7 +87,8 @@ def build_retriever(settings: Settings) -> BaseRetriever:
     if store is None:
         raise RuntimeError("Vector store not initialized. Run ingest.py first.")
 
-    dense_retriever = store.as_retriever(search_kwargs={"k": max(1, int(settings.top_k))})
+    # dense_retriever = store.as_retriever(search_kwargs={"k": max(1, int(settings.top_k))})
+    dense_retriever = store.as_retriever(search_type='mmr', search_kwargs={"k": max(1, int(settings.top_k))})
     mode = str(settings.retriever_mode).strip().lower()
     if mode != "hybrid":
         logger.info("Retriever mode: dense (top_k=%s)", settings.top_k)
