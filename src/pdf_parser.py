@@ -1,6 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-import copy
 import json
 import os
 import time
@@ -9,13 +8,12 @@ from typing import List, Optional
 
 from loguru import logger
 
-from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env, read_fn
+from mineru.cli.common import convert_pdf_bytes_to_bytes, prepare_env, read_fn
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.enum_class import MakeMode
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
-from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
 
 
 class PdfParser:
@@ -118,40 +116,30 @@ class PdfParser:
         start_page_id=0,
         end_page_id=None,
     ) -> List[dict]:
-        """Uses 'pipeline' as backend by default, because OS windows doesn't support vllm"""
+        """Uses MinerU pipeline backend with streaming callback API."""
         for idx, pdf_bytes in enumerate(pdf_bytes_list):
-            new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+            new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
             pdf_bytes_list[idx] = new_pdf_bytes
-
-        infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(
-            pdf_bytes_list,
-            p_lang_list,
-            parse_method=parse_method,
-            formula_enable=self.formula_enable,
-            table_enable=self.table_enable,
-        )
-
-        content_list_out: List[dict] = []
-
-        for idx, model_list in enumerate(infer_results):
-            model_json = copy.deepcopy(model_list)
+        image_writer_list = []
+        md_writer_list = []
+        local_output_info = []
+        for idx, _ in enumerate(pdf_bytes_list):
             pdf_file_name = pdf_file_names[idx]
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+            image_writer = FileBasedDataWriter(local_image_dir)
+            md_writer = FileBasedDataWriter(local_md_dir)
+            image_writer_list.append(image_writer)
+            md_writer_list.append(md_writer)
+            local_output_info.append((pdf_file_name, local_image_dir, local_md_dir))
 
-            images_list = all_image_lists[idx]
-            pdf_doc = all_pdf_docs[idx]
-            _lang = lang_list[idx]
-            _ocr_enable = ocr_enabled_list[idx]
-            middle_json = pipeline_result_to_middle_json(
-                model_list, images_list, pdf_doc, image_writer, _lang, _ocr_enable, self.formula_enable
-            )
+        per_doc_content: list = [None] * len(pdf_bytes_list)
 
-            pdf_info = middle_json["pdf_info"]
-            pdf_bytes = pdf_bytes_list[idx]
-
+        def on_doc_ready(doc_index, model_list, middle_json, _ocr_enable):
+            pdf_file_name, local_image_dir, local_md_dir = local_output_info[doc_index]
+            md_writer = md_writer_list[doc_index]
+            pdf_bytes = pdf_bytes_list[doc_index]
             content_list = self._process_output(
-                pdf_info,
+                middle_json["pdf_info"],
                 pdf_bytes,
                 pdf_file_name,
                 local_md_dir,
@@ -166,11 +154,25 @@ class PdfParser:
                 self.dump_model_output,
                 self.make_md_mode,
                 middle_json,
-                model_json,
+                model_list,
             )
-            content_list_out = content_list
+            per_doc_content[doc_index] = content_list
 
-        return content_list_out
+        pipeline_doc_analyze_streaming(
+            pdf_bytes_list,
+            image_writer_list,
+            p_lang_list,
+            on_doc_ready,
+            parse_method=parse_method,
+            formula_enable=self.formula_enable,
+            table_enable=self.table_enable,
+        )
+
+        merged: List[dict] = []
+        for item in per_doc_content:
+            if isinstance(item, list):
+                merged.extend(item)
+        return merged
 
     def _process_output(
         self,

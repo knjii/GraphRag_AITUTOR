@@ -128,6 +128,10 @@ class Settings:
     hybrid_sparse_weight: float = float(os.getenv("HYBRID_SPARSE_WEIGHT", "0.4"))
     hybrid_rrf_k: int = int(os.getenv("HYBRID_RRF_K", "60"))
     chunker_use_llm: bool = os.getenv("CHUNKER_USE_LLM", "1").lower() not in {"0", "false", "no"}
+    mineru_model_source: str = os.getenv("MINERU_MODEL_SOURCE", "huggingface").strip().lower()
+    mineru_tools_config_json: str = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
+    mineru_local_pipeline_models_dir: str = os.getenv("MINERU_LOCAL_PIPELINE_MODELS_DIR", "").strip()
+    mineru_local_vlm_models_dir: str = os.getenv("MINERU_LOCAL_VLM_MODELS_DIR", "").strip()
     mineru_parse_in_subprocess: bool = os.getenv("MINERU_PARSE_IN_SUBPROCESS", "1").lower() not in {
         "0",
         "false",
@@ -136,6 +140,13 @@ class Settings:
     mineru_parse_subprocess_timeout_seconds: int = int(
         os.getenv("MINERU_PARSE_SUBPROCESS_TIMEOUT_SECONDS", "0")
     )
+    mineru_parse_stall_timeout_seconds: int = int(
+        os.getenv("MINERU_PARSE_STALL_TIMEOUT_SECONDS", "300")
+    )
+    mineru_parse_heartbeat_interval_seconds: int = int(
+        os.getenv("MINERU_PARSE_HEARTBEAT_INTERVAL_SECONDS", "5")
+    )
+    mineru_parse_wait_poll_seconds: int = int(os.getenv("MINERU_PARSE_WAIT_POLL_SECONDS", "5"))
     mineru_gpu_release_wait_seconds: int = int(os.getenv("MINERU_GPU_RELEASE_WAIT_SECONDS", "60"))
     mineru_gpu_release_poll_seconds: int = int(os.getenv("MINERU_GPU_RELEASE_POLL_SECONDS", "5"))
     mineru_gpu_release_target_free_vram_mb: int = int(
@@ -160,8 +171,20 @@ class Settings:
         "false",
         "no",
     }
+    graph_entity_min_token_len: int = int(os.getenv("GRAPH_ENTITY_MIN_TOKEN_LEN", "3"))
+    graph_entity_use_bigrams: bool = os.getenv("GRAPH_ENTITY_USE_BIGRAMS", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    graph_entity_max_bigrams_per_passage: int = int(
+        os.getenv("GRAPH_ENTITY_MAX_BIGRAMS_PER_PASSAGE", "12")
+    )
     graph_entity_max_per_passage: int = int(os.getenv("GRAPH_ENTITY_MAX_PER_PASSAGE", "20"))
     graph_cooccurs_max_per_passage: int = int(os.getenv("GRAPH_COOCCURS_MAX_PER_PASSAGE", "200"))
+    graph_cooccurs_provenance_limit: int = int(
+        os.getenv("GRAPH_COOCCURS_PROVENANCE_LIMIT", "20")
+    )
     graph_retriever_enabled: bool = os.getenv("GRAPH_RETRIEVER_ENABLED", "0").lower() not in {
         "0",
         "false",

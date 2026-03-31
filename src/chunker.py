@@ -47,7 +47,7 @@ class LayoutAwareChunker:
         self.chunk_overlap = min(chunk_overlap, max(chunk_size - 1, 0))
         self.context_window = context_window
         self.separator = separator
-        self.special_types = special_types or {"image", "table", "equation"}
+        self.special_types = special_types or {"image", "chart", "table", "equation"}
         self.use_llm = use_llm
         self.llm_fn = llm_fn
         self.add_type_prefix = add_type_prefix
@@ -61,6 +61,10 @@ class LayoutAwareChunker:
         self.prompt_templates = prompt_templates or {
             "image": (
                 "Опиши изображение максимально кратко (до 50 слов). Перечисли только факты.\n"
+                "{context_block}\nПодпись: {caption}\n"
+            ),
+            "chart": (
+                "Опиши график/диаграмму максимально кратко (до 50 слов). Перечисли только факты.\n"
                 "{context_block}\nПодпись: {caption}\n"
             ),
             "table": (
@@ -536,6 +540,10 @@ class LayoutAwareChunker:
         caption = ""
         if btype == "image":
             caption = self._join_list(block.get("image_caption"))
+        elif btype == "chart":
+            caption = self._join_list(block.get("chart_caption"))
+            if not caption:
+                caption = self._join_list(block.get("chart_footnote"))
         elif btype == "table":
             caption = self._join_list(block.get("table_caption"))
             if not caption: caption = self._join_list(block.get("table_footnote"))
@@ -550,6 +558,8 @@ class LayoutAwareChunker:
         if btype == "equation": return block.get("text", "")
         if btype == "image":
             return self._apply_prefix(self._join_list([block.get("image_caption"), block.get("image_footnote")]), btype)
+        if btype == "chart":
+            return self._apply_prefix(self._join_list([block.get("chart_caption"), block.get("chart_footnote")]), btype)
         if btype == "table":
             return self._apply_prefix(self._join_list([block.get("table_caption"), block.get("table_footnote"), self._strip_html(block.get("table_body", ""))]), btype)
         

@@ -78,17 +78,44 @@ def _norm_token(token: str) -> str:
     return normalized
 
 
-def _extract_entities(text: str, max_per_passage: int) -> Dict[str, int]:
-    counts: Counter[str] = Counter()
+def _is_valid_entity_token(token: str, min_len: int) -> bool:
+    if len(token) < max(1, int(min_len)):
+        return False
+    if token in _STOPWORDS:
+        return False
+    if token.isdigit():
+        return False
+    if not any(ch.isalpha() for ch in token):
+        return False
+    return True
+
+
+def _extract_entities(
+    text: str,
+    max_per_passage: int,
+    *,
+    min_token_len: int,
+    use_bigrams: bool,
+    max_bigrams_per_passage: int,
+) -> Dict[str, int]:
+    tokens: List[str] = []
     for raw in _TOKEN_RE.findall(text or ""):
         token = _norm_token(raw)
-        if len(token) < 3:
-            continue
-        if token in _STOPWORDS:
-            continue
-        if token.isdigit():
-            continue
-        counts[token] += 1
+        if _is_valid_entity_token(token, min_token_len):
+            tokens.append(token)
+
+    counts: Counter[str] = Counter(tokens)
+
+    if use_bigrams and max_bigrams_per_passage > 0 and len(tokens) > 1:
+        bigram_counts: Counter[str] = Counter()
+        for left, right in zip(tokens, tokens[1:]):
+            if left == right:
+                continue
+            bigram_counts[f"{left} {right}"] += 1
+
+        for phrase, freq in bigram_counts.most_common(max(1, int(max_bigrams_per_passage))):
+            counts[phrase] += int(freq)
+
     if not counts:
         return {}
     top = counts.most_common(max(1, int(max_per_passage)))
@@ -126,12 +153,22 @@ def _relation_rows(
     *,
     max_entities_per_passage: int,
     max_cooccurs_per_passage: int,
+    max_cooccurs_provenance_per_edge: int,
+    entity_min_token_len: int,
+    entity_use_bigrams: bool,
+    entity_max_bigrams_per_passage: int,
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     mention_rows: List[Dict[str, Any]] = []
-    cooc_counter: Counter[tuple[str, str, str]] = Counter()
+    cooc_map: Dict[tuple[str, str, str], Dict[str, Any]] = {}
 
     for row in passage_rows:
-        entities = _extract_entities(row.get("text", ""), max_entities_per_passage)
+        entities = _extract_entities(
+            row.get("text", ""),
+            max_entities_per_passage,
+            min_token_len=entity_min_token_len,
+            use_bigrams=entity_use_bigrams,
+            max_bigrams_per_passage=entity_max_bigrams_per_passage,
+        )
         if not entities:
             continue
 
@@ -154,20 +191,31 @@ def _relation_rows(
 
         pair_count = 0
         for a, b in combinations(sorted(set(entity_ids)), 2):
-            cooc_counter[(row["source_id"], a, b)] += 1
+            key = (row["source_id"], a, b)
+            bucket = cooc_map.setdefault(
+                key,
+                {"weight": 0, "passage_ids": set(), "chunk_ids": set()},
+            )
+            bucket["weight"] += 1
+            if len(bucket["passage_ids"]) < max_cooccurs_provenance_per_edge:
+                bucket["passage_ids"].add(row["id"])
+            if len(bucket["chunk_ids"]) < max_cooccurs_provenance_per_edge:
+                bucket["chunk_ids"].add(row["chunk_id"])
             pair_count += 1
             if pair_count >= max_cooccurs_per_passage:
                 break
 
     cooccurs_rows: List[Dict[str, Any]] = []
     ts = _now_utc_iso()
-    for (source_id, entity1_id, entity2_id), weight in cooc_counter.items():
+    for (source_id, entity1_id, entity2_id), payload in cooc_map.items():
         cooccurs_rows.append(
             {
                 "source_id": source_id,
                 "entity1_id": entity1_id,
                 "entity2_id": entity2_id,
-                "weight": int(weight),
+                "weight": int(payload["weight"]),
+                "passage_ids": sorted(payload["passage_ids"]),
+                "chunk_ids": sorted(payload["chunk_ids"]),
                 "updated_at": ts,
             }
         )
@@ -226,10 +274,22 @@ class Neo4jGraphClient:
         if self.settings.graph_relations_enabled:
             max_entities_per_passage = max(1, int(self.settings.graph_entity_max_per_passage))
             max_cooccurs_per_passage = max(1, int(self.settings.graph_cooccurs_max_per_passage))
+            max_cooccurs_provenance_per_edge = max(
+                1, int(self.settings.graph_cooccurs_provenance_limit)
+            )
+            entity_min_token_len = max(1, int(self.settings.graph_entity_min_token_len))
+            entity_use_bigrams = bool(self.settings.graph_entity_use_bigrams)
+            entity_max_bigrams_per_passage = max(
+                0, int(self.settings.graph_entity_max_bigrams_per_passage)
+            )
             mention_rows, cooccurs_rows = _relation_rows(
                 rows,
                 max_entities_per_passage=max_entities_per_passage,
                 max_cooccurs_per_passage=max_cooccurs_per_passage,
+                max_cooccurs_provenance_per_edge=max_cooccurs_provenance_per_edge,
+                entity_min_token_len=entity_min_token_len,
+                entity_use_bigrams=entity_use_bigrams,
+                entity_max_bigrams_per_passage=entity_max_bigrams_per_passage,
             )
 
         passage_query = """
@@ -266,6 +326,8 @@ class Neo4jGraphClient:
         MATCH (e2:Entity {id: row.entity2_id})
         MERGE (e1)-[r:CO_OCCURS {source_id: row.source_id}]->(e2)
         SET r.weight = row.weight,
+            r.passage_ids = row.passage_ids,
+            r.chunk_ids = row.chunk_ids,
             r.updated_at = row.updated_at
         """
         with self._driver.session(database=self.settings.neo4j_database) as session:
