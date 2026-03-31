@@ -54,6 +54,8 @@ class Settings:
     embed_device: str = os.getenv("EMBED_DEVICE", "auto").strip().lower()
     embed_min_free_vram_mb: int = int(os.getenv("EMBED_MIN_FREE_VRAM_MB", "2048"))
     embed_min_free_vram_ratio: float = float(os.getenv("EMBED_MIN_FREE_VRAM_RATIO", "0.7"))
+    embed_post_unload_wait_seconds: int = int(os.getenv("EMBED_POST_UNLOAD_WAIT_SECONDS", "180"))
+    embed_post_unload_poll_seconds: int = int(os.getenv("EMBED_POST_UNLOAD_POLL_SECONDS", "5"))
     embed_force_cpu_on_low_vram: bool = os.getenv("EMBED_FORCE_CPU_ON_LOW_VRAM", "1").lower() not in {
         "0",
         "false",
@@ -126,6 +128,50 @@ class Settings:
     hybrid_sparse_weight: float = float(os.getenv("HYBRID_SPARSE_WEIGHT", "0.4"))
     hybrid_rrf_k: int = int(os.getenv("HYBRID_RRF_K", "60"))
     chunker_use_llm: bool = os.getenv("CHUNKER_USE_LLM", "1").lower() not in {"0", "false", "no"}
+    mineru_parse_in_subprocess: bool = os.getenv("MINERU_PARSE_IN_SUBPROCESS", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    mineru_parse_subprocess_timeout_seconds: int = int(
+        os.getenv("MINERU_PARSE_SUBPROCESS_TIMEOUT_SECONDS", "0")
+    )
+    mineru_gpu_release_wait_seconds: int = int(os.getenv("MINERU_GPU_RELEASE_WAIT_SECONDS", "60"))
+    mineru_gpu_release_poll_seconds: int = int(os.getenv("MINERU_GPU_RELEASE_POLL_SECONDS", "5"))
+    mineru_gpu_release_target_free_vram_mb: int = int(
+        os.getenv("MINERU_GPU_RELEASE_TARGET_FREE_VRAM_MB", "3000")
+    )
+    mineru_post_release_wait_seconds: int = int(os.getenv("MINERU_POST_RELEASE_WAIT_SECONDS", "120"))
+    mineru_post_release_poll_seconds: int = int(os.getenv("MINERU_POST_RELEASE_POLL_SECONDS", "5"))
+    mineru_release_check_enabled: bool = os.getenv("MINERU_RELEASE_CHECK_ENABLED", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    neo4j_enabled: bool = os.getenv("NEO4J_ENABLED", "0").lower() not in {"0", "false", "no"}
+    neo4j_uri: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
+    neo4j_password: str = os.getenv("NEO4J_PASSWORD", "")
+    neo4j_database: str = os.getenv("NEO4J_DATABASE", "neo4j")
+    graph_rag_enabled: bool = os.getenv("GRAPH_RAG_ENABLED", "0").lower() not in {"0", "false", "no"}
+    graph_write_enabled: bool = os.getenv("GRAPH_WRITE_ENABLED", "0").lower() not in {"0", "false", "no"}
+    graph_relations_enabled: bool = os.getenv("GRAPH_RELATIONS_ENABLED", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    graph_entity_max_per_passage: int = int(os.getenv("GRAPH_ENTITY_MAX_PER_PASSAGE", "20"))
+    graph_cooccurs_max_per_passage: int = int(os.getenv("GRAPH_COOCCURS_MAX_PER_PASSAGE", "200"))
+    graph_retriever_enabled: bool = os.getenv("GRAPH_RETRIEVER_ENABLED", "0").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    graph_fail_on_error: bool = os.getenv("GRAPH_FAIL_ON_ERROR", "0").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
     contextualize_q_system_prompt: str = str(
         os.getenv(

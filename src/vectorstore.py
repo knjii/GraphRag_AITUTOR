@@ -70,6 +70,53 @@ def _get_vram_info_mb() -> tuple[int, int] | None:
     return int(free_bytes // (1024 * 1024)), int(total_bytes // (1024 * 1024))
 
 
+def _wait_for_vram_recovery(
+    settings: Settings,
+    *,
+    min_free_mb: int,
+    initial_free_mb: int,
+) -> tuple[int, bool]:
+    """
+    Wait for delayed VRAM release after LLM unload.
+    Returns (latest_free_mb, reached_threshold).
+    """
+    max_wait = max(0, int(settings.embed_post_unload_wait_seconds))
+    poll = max(1, int(settings.embed_post_unload_poll_seconds))
+    if max_wait <= 0:
+        return initial_free_mb, initial_free_mb >= min_free_mb
+
+    logger.info(
+        "Waiting up to %ss for VRAM recovery after LLM unload (poll=%ss, threshold=%s MB).",
+        max_wait,
+        poll,
+        min_free_mb,
+    )
+    latest_free = initial_free_mb
+    waited = 0
+    while waited < max_wait:
+        sleep_s = min(poll, max_wait - waited)
+        time.sleep(sleep_s)
+        waited += sleep_s
+        vram_now = _get_vram_info_mb()
+        if vram_now is None:
+            return latest_free, False
+        latest_free, _ = vram_now
+        logger.info(
+            "VRAM recheck after unload: %s MB free (%ss/%ss).",
+            latest_free,
+            waited,
+            max_wait,
+        )
+        if latest_free >= min_free_mb:
+            logger.info(
+                "VRAM recovery reached threshold: %s MB >= %s MB.",
+                latest_free,
+                min_free_mb,
+            )
+            return latest_free, True
+    return latest_free, latest_free >= min_free_mb
+
+
 def _ensure_embedding_memory(settings: Settings) -> bool:
     """
     Ensure enough free VRAM for embeddings.
@@ -127,13 +174,20 @@ def _ensure_embedding_memory(settings: Settings) -> bool:
         except Exception:
             pass
 
-    time.sleep(1.0)
     vram_after = _get_vram_info_mb()
     if vram_after is None:
         return False
     free_after, _ = vram_after
 
-    logger.info("Free VRAM after LLM unload: %s MB", free_after)
+    logger.info("Free VRAM right after LLM unload: %s MB", free_after)
+    free_after, recovered = _wait_for_vram_recovery(
+        settings,
+        min_free_mb=min_free,
+        initial_free_mb=free_after,
+    )
+    if recovered:
+        return False
+
     if free_after >= min_free:
         return False
 

@@ -1,0 +1,36 @@
+2026-03-30 23:09:30,071 - INFO - Preflight started
+2026-03-30 23:09:30,150 - INFO - [OK] source_directories (77ms) {'pdf_dir': 'C:\\python\\rag_textbook\\documents\\pdf_docs\\test', 'markdown_dir': 'documents\\markdown_docs', 'pdf_exists': True, 'markdown_exists': True, 'pdf_count': 3, 'markdown_count': 0}
+2026-03-30 23:09:30,151 - INFO - [OK] disk_space (0ms) {'target': 'C:\\python\\rag_textbook\\chroma_db', 'free_gb': 60.95, 'total_gb': 475.94}
+2026-03-30 23:09:30,154 - INFO - [OK] filesystem_write_access (0ms) {'chroma_dir': 'C:\\python\\rag_textbook\\chroma_db', 'checkpoint_file': 'chroma_db\\ingest_checkpoint.json', 'write_test': 'passed'}
+2026-03-30 23:09:30,168 - INFO - [OK] ollama_connectivity_and_models (16ms) {'base_url': 'http://127.0.0.1:11434', 'required_models': ['qwen3-embedding:0.6b', 'qwen3.5:4b'], 'found': ['qwen3.5:9b', 'ministral-3:8b', 'deepseek-r1:7b', 'deepseek-r1:1.5b', 'deepseek-r1:8b', 'qwen3.5:4b', 'qwen3-embedding:0.6b', 'qwen2.5vl:3b', 'qwen3-4b-instruct:latest']}
+2026-03-30 23:09:30,169 - INFO - [FAIL] neo4j_connectivity (0ms) {'neo4j_enabled': True, 'graph_write_enabled': True, 'uri': 'bolt://localhost:7687', 'database': 'neo4j', 'error': 'neo4j python driver is not installed.'}
+2026-03-30 23:09:36,049 - INFO - [OK] embedding_smoke_test (5891ms) {'backend': 'ollama', 'model': 'qwen3-embedding:0.6b', 'embedding_dim': 1024}
+2026-03-30 23:09:36,050 - INFO - Preflight report saved: logs\preflight_before_ingest.json
+2026-03-30 23:09:36,051 - INFO - Preflight log saved: logs\preflight_before_ingest.log
+2026-03-30 23:12:22,810 - INFO - Preflight started
+2026-03-30 23:12:22,887 - INFO - [OK] source_directories (78ms) {'pdf_dir': 'C:\\python\\rag_textbook\\documents\\pdf_docs\\test', 'markdown_dir': 'documents\\markdown_docs', 'pdf_exists': True, 'markdown_exists': True, 'pdf_count': 3, 'markdown_count': 0}
+2026-03-30 23:12:22,888 - INFO - [OK] disk_space (0ms) {'target': 'C:\\python\\rag_textbook\\chroma_db', 'free_gb': 60.94, 'total_gb': 475.94}
+2026-03-30 23:12:22,891 - INFO - [OK] filesystem_write_access (14ms) {'chroma_dir': 'C:\\python\\rag_textbook\\chroma_db', 'checkpoint_file': 'chroma_db\\ingest_checkpoint.json', 'write_test': 'passed'}
+2026-03-30 23:12:22,902 - INFO - [OK] ollama_connectivity_and_models (0ms) {'base_url': 'http://127.0.0.1:11434', 'required_models': ['qwen3-embedding:0.6b', 'qwen3.5:4b'], 'found': ['qwen3.5:9b', 'ministral-3:8b', 'deepseek-r1:7b', 'deepseek-r1:1.5b', 'deepseek-r1:8b', 'qwen3.5:4b', 'qwen3-embedding:0.6b', 'qwen2.5vl:3b', 'qwen3-4b-instruct:latest']}
+2026-03-30 23:12:25,197 - INFO - [OK] neo4j_connectivity (2297ms) {'neo4j_enabled': True, 'graph_write_enabled': True, 'uri': 'bolt://localhost:7687', 'database': 'neo4j', 'connectivity': 'passed'}
+2026-03-30 23:12:25,397 - INFO - [OK] embedding_smoke_test (202ms) {'backend': 'ollama', 'model': 'qwen3-embedding:0.6b', 'embedding_dim': 1024}
+2026-03-30 23:12:25,399 - INFO - Preflight report saved: logs\preflight_before_ingest.json
+2026-03-30 23:12:25,399 - INFO - Preflight log saved: logs\preflight_before_ingest.log
+2026-03-30 23:22:23,676 - INFO - Preflight started
+2026-03-30 23:22:23,721 - INFO - [OK] source_directories (47ms) {'pdf_dir': 'C:\\python\\rag_textbook\\documents\\pdf_docs\\test', 'markdown_dir': 'documents\\markdown_docs', 'pdf_exists': True, 'markdown_exists': True, 'pdf_count': 1, 'markdown_count': 0}
+2026-03-30 23:22:23,722 - INFO - [OK] disk_space (0ms) {'target': 'C:\\python\\rag_textbook\\chroma_db', 'free_gb': 60.9, 'total_gb': 475.94}
+2026-03-30 23:22:23,724 - INFO - [OK] filesystem_write_access (0ms) {'chroma_dir': 'C:\\python\\rag_textbook\\chroma_db', 'checkpoint_file': 'chroma_db\\ingest_checkpoint.json', 'write_test': 'passed'}
+2026-03-30 23:22:23,735 - INFO - [OK] ollama_connectivity_and_models (15ms) {'base_url': 'http://127.0.0.1:11434', 'required_models': ['qwen3-embedding:0.6b', 'qwen3.5:4b'], 'found': ['qwen3.5:9b', 'ministral-3:8b', 'deepseek-r1:7b', 'deepseek-r1:1.5b', 'deepseek-r1:8b', 'qwen3.5:4b', 'qwen3-embedding:0.6b', 'qwen2.5vl:3b', 'qwen3-4b-instruct:latest']}
+2026-03-30 23:22:25,798 - INFO - [OK] neo4j_connectivity (2062ms) {'neo4j_enabled': True, 'graph_write_enabled': True, 'uri': 'bolt://localhost:7687', 'database': 'neo4j', 'connectivity': 'passed'}
+2026-03-30 23:22:28,517 - INFO - [OK] embedding_smoke_test (2717ms) {'backend': 'ollama', 'model': 'qwen3-embedding:0.6b', 'embedding_dim': 1024}
+2026-03-30 23:22:28,518 - INFO - Preflight report saved: logs\preflight_before_ingest.json
+2026-03-30 23:22:28,519 - INFO - Preflight log saved: logs\preflight_before_ingest.log
+2026-03-30 23:26:18,942 - INFO - Preflight started
+2026-03-30 23:26:18,988 - INFO - [OK] source_directories (47ms) {'pdf_dir': 'C:\\python\\rag_textbook\\documents\\pdf_docs\\test', 'markdown_dir': 'documents\\markdown_docs', 'pdf_exists': True, 'markdown_exists': True, 'pdf_count': 1, 'markdown_count': 0}
+2026-03-30 23:26:18,990 - INFO - [OK] disk_space (0ms) {'target': 'C:\\python\\rag_textbook\\chroma_db', 'free_gb': 60.91, 'total_gb': 475.94}
+2026-03-30 23:26:18,992 - INFO - [OK] filesystem_write_access (0ms) {'chroma_dir': 'C:\\python\\rag_textbook\\chroma_db', 'checkpoint_file': 'chroma_db\\ingest_checkpoint.json', 'write_test': 'passed'}
+2026-03-30 23:26:19,004 - INFO - [OK] ollama_connectivity_and_models (16ms) {'base_url': 'http://127.0.0.1:11434', 'required_models': ['qwen3-embedding:0.6b', 'qwen3.5:4b'], 'found': ['qwen3.5:9b', 'ministral-3:8b', 'deepseek-r1:7b', 'deepseek-r1:1.5b', 'deepseek-r1:8b', 'qwen3.5:4b', 'qwen3-embedding:0.6b', 'qwen2.5vl:3b', 'qwen3-4b-instruct:latest']}
+2026-03-30 23:26:21,081 - INFO - [OK] neo4j_connectivity (2077ms) {'neo4j_enabled': True, 'graph_write_enabled': True, 'uri': 'bolt://localhost:7687', 'database': 'neo4j', 'connectivity': 'passed'}
+2026-03-30 23:26:21,280 - INFO - [OK] embedding_smoke_test (186ms) {'backend': 'ollama', 'model': 'qwen3-embedding:0.6b', 'embedding_dim': 1024}
+2026-03-30 23:26:21,281 - INFO - Preflight report saved: logs\preflight_before_ingest.json
+2026-03-30 23:26:21,281 - INFO - Preflight log saved: logs\preflight_before_ingest.log

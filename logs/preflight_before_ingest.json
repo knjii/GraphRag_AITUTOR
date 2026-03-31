@@ -1,0 +1,104 @@
+{
+  "ts_utc": "2026-03-30T20:26:21.280233+00:00",
+  "status": "ok",
+  "summary": {
+    "ok": 6,
+    "warn": 0,
+    "fail": 0
+  },
+  "settings_snapshot": {
+    "pdf_dir": "C:\\python\\rag_textbook\\documents\\pdf_docs\\test",
+    "markdown_dir": "documents\\markdown_docs",
+    "chroma_dir": "C:\\python\\rag_textbook\\chroma_db",
+    "ingest_checkpoint_file": "chroma_db\\ingest_checkpoint.json",
+    "ollama_base_url": "http://127.0.0.1:11434",
+    "ollama_model": "qwen3.5:4b",
+    "ollama_eval_model": "qwen3.5:4b",
+    "ollama_embed_model": "qwen3-embedding:0.6b",
+    "neo4j_enabled": true,
+    "graph_write_enabled": true,
+    "neo4j_uri": "bolt://localhost:7687",
+    "neo4j_database": "neo4j"
+  },
+  "checks": [
+    {
+      "name": "source_directories",
+      "status": "ok",
+      "duration_ms": 47,
+      "details": {
+        "pdf_dir": "C:\\python\\rag_textbook\\documents\\pdf_docs\\test",
+        "markdown_dir": "documents\\markdown_docs",
+        "pdf_exists": true,
+        "markdown_exists": true,
+        "pdf_count": 1,
+        "markdown_count": 0
+      }
+    },
+    {
+      "name": "disk_space",
+      "status": "ok",
+      "duration_ms": 0,
+      "details": {
+        "target": "C:\\python\\rag_textbook\\chroma_db",
+        "free_gb": 60.91,
+        "total_gb": 475.94
+      }
+    },
+    {
+      "name": "filesystem_write_access",
+      "status": "ok",
+      "duration_ms": 0,
+      "details": {
+        "chroma_dir": "C:\\python\\rag_textbook\\chroma_db",
+        "checkpoint_file": "chroma_db\\ingest_checkpoint.json",
+        "write_test": "passed"
+      }
+    },
+    {
+      "name": "ollama_connectivity_and_models",
+      "status": "ok",
+      "duration_ms": 16,
+      "details": {
+        "base_url": "http://127.0.0.1:11434",
+        "required_models": [
+          "qwen3-embedding:0.6b",
+          "qwen3.5:4b"
+        ],
+        "found": [
+          "qwen3.5:9b",
+          "ministral-3:8b",
+          "deepseek-r1:7b",
+          "deepseek-r1:1.5b",
+          "deepseek-r1:8b",
+          "qwen3.5:4b",
+          "qwen3-embedding:0.6b",
+          "qwen2.5vl:3b",
+          "qwen3-4b-instruct:latest"
+        ]
+      }
+    },
+    {
+      "name": "neo4j_connectivity",
+      "status": "ok",
+      "duration_ms": 2077,
+      "details": {
+        "neo4j_enabled": true,
+        "graph_write_enabled": true,
+        "uri": "bolt://localhost:7687",
+        "database": "neo4j",
+        "connectivity": "passed"
+      }
+    },
+    {
+      "name": "embedding_smoke_test",
+      "status": "ok",
+      "duration_ms": 186,
+      "details": {
+        "backend": "ollama",
+        "model": "qwen3-embedding:0.6b",
+        "embedding_dim": 1024
+      }
+    }
+  ],
+  "next_command_example": "python src/ingest.py --checkpoint 2>&1 | Tee-Object -FilePath logs/ingest_run.log"
+}

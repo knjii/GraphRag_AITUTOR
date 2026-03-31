@@ -1,0 +1,9 @@
+2026-03-30 21:27:54,655 - INFO - Preflight started
+2026-03-30 21:27:54,700 - INFO - [OK] source_directories (47ms) {'pdf_dir': 'C:\\python\\rag_textbook\\documents\\pdf_docs\\test', 'markdown_dir': 'documents\\markdown_docs', 'pdf_exists': True, 'markdown_exists': True, 'pdf_count': 3, 'markdown_count': 0}
+2026-03-30 21:27:54,701 - INFO - [OK] disk_space (0ms) {'target': 'C:\\python\\rag_textbook\\chroma_db', 'free_gb': 61.58, 'total_gb': 475.94}
+2026-03-30 21:27:54,703 - INFO - [OK] filesystem_write_access (0ms) {'chroma_dir': 'C:\\python\\rag_textbook\\chroma_db', 'checkpoint_file': 'chroma_db\\ingest_checkpoint.json', 'write_test': 'passed'}
+2026-03-30 21:27:56,735 - INFO - [FAIL] ollama_connectivity_and_models (2031ms) {'error': "HTTPConnectionPool(host='127.0.0.1', port=11434): Max retries exceeded with url: /api/tags (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001E309F22870>: Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение'))"}
+2026-03-30 21:27:56,736 - INFO - [FAIL] neo4j_connectivity (0ms) {'neo4j_enabled': True, 'graph_write_enabled': False, 'uri': 'bolt://localhost:7687', 'database': 'neo4j', 'error': 'neo4j python driver is not installed.'}
+2026-03-30 21:27:58,772 - INFO - [FAIL] embedding_smoke_test (2030ms) {'error': "Error raised by inference endpoint: HTTPConnectionPool(host='127.0.0.1', port=11434): Max retries exceeded with url: /api/embeddings (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001E30BB7C3B0>: Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение'))"}
+2026-03-30 21:27:58,775 - INFO - Preflight report saved: logs\preflight_20260330_212754.json
+2026-03-30 21:27:58,775 - INFO - Preflight log saved: logs\preflight_20260330_212754.log

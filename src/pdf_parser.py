@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -35,6 +36,10 @@ class PdfParser:
         dump_orig_pdf: bool = False,
         dump_content_list: bool = False,
         make_md_mode=MakeMode.CONTENT_LIST,
+        release_models_after_parse: bool = True,
+        post_release_wait_seconds: int = 120,
+        post_release_poll_seconds: int = 5,
+        release_check_enabled: bool = True,
     ) -> None:
         self.output_dir = output_dir
         self.lang = lang
@@ -51,6 +56,10 @@ class PdfParser:
         self.dump_orig_pdf = dump_orig_pdf
         self.dump_content_list = dump_content_list
         self.make_md_mode = make_md_mode
+        self.release_models_after_parse = release_models_after_parse
+        self.post_release_wait_seconds = max(0, int(post_release_wait_seconds))
+        self.post_release_poll_seconds = max(1, int(post_release_poll_seconds))
+        self.release_check_enabled = bool(release_check_enabled)
 
     def parse_doc(self, path_list: List[Path]) -> List[dict]:
         """
@@ -84,15 +93,20 @@ class PdfParser:
             pdf_bytes_list.append(pdf_bytes)
             lang_list.append(self.lang)
 
-        return self._do_parse(
-            output_dir=self.output_dir,
-            pdf_file_names=file_name_list,
-            pdf_bytes_list=pdf_bytes_list,
-            p_lang_list=lang_list,
-            parse_method=self.method,
-            start_page_id=self.start_page_id,
-            end_page_id=self.end_page_id,
-        )
+        try:
+            return self._do_parse(
+                output_dir=self.output_dir,
+                pdf_file_names=file_name_list,
+                pdf_bytes_list=pdf_bytes_list,
+                p_lang_list=lang_list,
+                parse_method=self.method,
+                start_page_id=self.start_page_id,
+                end_page_id=self.end_page_id,
+            )
+        finally:
+            if self.release_models_after_parse:
+                self._release_pipeline_models()
+                self._wait_for_release_barrier()
 
     def _do_parse(
         self,
@@ -224,3 +238,124 @@ class PdfParser:
         logger.info(f"local output dir is {local_md_dir}")
 
         return content_list
+
+    @staticmethod
+    def _release_pipeline_models() -> None:
+        """
+        Best-effort cleanup for MinerU singleton caches to free GPU memory
+        before the embedding phase starts.
+        """
+        released = False
+        try:
+            from mineru.backend.pipeline.pipeline_analyze import ModelSingleton as PipelineModelSingleton
+
+            PipelineModelSingleton._models.clear()
+            released = True
+        except Exception:
+            pass
+
+        try:
+            from mineru.backend.pipeline.model_init import AtomModelSingleton
+
+            AtomModelSingleton._models.clear()
+            released = True
+        except Exception:
+            pass
+
+        try:
+            import gc
+
+            gc.collect()
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                try:
+                    torch.cuda.ipc_collect()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        if released:
+            logger.info("Released MinerU pipeline model cache after parse.")
+
+    @staticmethod
+    def _mineru_loaded_model_count() -> int:
+        """
+        Returns number of models currently visible in MinerU singleton caches.
+        """
+        total = 0
+        try:
+            from mineru.backend.pipeline.pipeline_analyze import ModelSingleton as PipelineModelSingleton
+
+            total += len(getattr(PipelineModelSingleton, "_models", {}) or {})
+        except Exception:
+            pass
+        try:
+            from mineru.backend.pipeline.model_init import AtomModelSingleton
+
+            total += len(getattr(AtomModelSingleton, "_models", {}) or {})
+        except Exception:
+            pass
+        return int(total)
+
+    @staticmethod
+    def _cuda_mem_info_mb() -> tuple[int, int] | None:
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                return None
+            free_bytes, total_bytes = torch.cuda.mem_get_info()
+            return int(free_bytes // (1024 * 1024)), int(total_bytes // (1024 * 1024))
+        except Exception:
+            return None
+
+    def _wait_for_release_barrier(self) -> None:
+        """
+        Barrier between MinerU parse and next stage:
+        wait and verify MinerU singleton caches are empty.
+        """
+        if not self.release_check_enabled:
+            return
+
+        max_wait = int(self.post_release_wait_seconds)
+        poll = int(self.post_release_poll_seconds)
+        logger.info(
+            f"MinerU release barrier: waiting up to {max_wait}s (poll={poll}s) before next stage."
+        )
+
+        waited = 0
+        while True:
+            loaded = self._mineru_loaded_model_count()
+            vram_info = self._cuda_mem_info_mb()
+            if vram_info is None:
+                logger.info(
+                    f"MinerU unload check: loaded_models={loaded}, CUDA unavailable."
+                )
+            else:
+                free_mb, total_mb = vram_info
+                logger.info(
+                    f"MinerU unload check: loaded_models={loaded}, free_vram={free_mb}/{total_mb} MB."
+                )
+
+            if loaded == 0 and waited >= max_wait:
+                logger.info(
+                    f"MinerU release barrier passed after {waited}s (models unloaded)."
+                )
+                return
+            if waited >= max_wait:
+                if loaded == 0:
+                    logger.info(
+                        f"MinerU release barrier passed after {waited}s (models unloaded)."
+                    )
+                else:
+                    logger.warning(
+                        f"MinerU release barrier timeout ({max_wait}s): loaded_models={loaded}. Continuing to next stage."
+                    )
+                return
+
+            sleep_s = min(poll, max_wait - waited)
+            time.sleep(sleep_s)
+            waited += sleep_s

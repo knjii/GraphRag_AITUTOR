@@ -84,6 +84,19 @@ python src/ingest.py --force --checkpoint
 
 Default checkpoint path can be configured via `INGEST_CHECKPOINT_FILE` in `.env`.
 
+Optional graph write during indexing (safe off by default):
+- `NEO4J_ENABLED=1`
+- `GRAPH_WRITE_ENABLED=1`
+- `GRAPH_RELATIONS_ENABLED=1` (write `MENTIONS`/`CO_OCCURS`, set `0` to write only passages)
+- `GRAPH_ENTITY_MAX_PER_PASSAGE=20` (caps extracted entity terms per chunk)
+- `GRAPH_COOCCURS_MAX_PER_PASSAGE=200` (caps co-occurrence pairs per chunk)
+- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`
+- `GRAPH_FAIL_ON_ERROR=0` (keep ingest running even if graph write fails)
+
+When enabled, `ingest.py` upserts `(:Passage)` nodes to Neo4j alongside Chroma indexing.
+It links `(:Source)-[:HAS_PASSAGE]->(:Passage)` and sequential `(:Passage)-[:NEXT]->(:Passage)` per source.
+If `GRAPH_RELATIONS_ENABLED=1`, it also creates `(:Passage)-[:MENTIONS]->(:Entity)` and `(:Entity)-[:CO_OCCURS {source_id, weight}]->(:Entity)`.
+
 For large corpora / GPU stability during embedding, tune:
 - `EMBEDDINGS_BACKEND=ollama|sentence` (default: `ollama` for offline local embeddings)
 - `OLLAMA_EMBED_MODEL` (local Ollama embedding model, default `qwen3-embedding:0.6b`)
@@ -92,8 +105,18 @@ For large corpora / GPU stability during embedding, tune:
 - `EMBED_DEVICE=auto|cpu|cuda` (embedding device policy)
 - `EMBED_MIN_FREE_VRAM_MB` (minimum free VRAM target before embedding)
 - `EMBED_MIN_FREE_VRAM_RATIO` (required free VRAM ratio, default `0.7`)
+- `EMBED_POST_UNLOAD_WAIT_SECONDS=180` (wait window for delayed VRAM release after unloading LLM)
+- `EMBED_POST_UNLOAD_POLL_SECONDS=5` (VRAM recheck interval during wait window)
 - `EMBED_FORCE_CPU_ON_LOW_VRAM=1` (fallback to CPU when VRAM remains low)
 - `EMBED_PROBE_LLM_BEFORE_INDEX=1` (run LLM ping before VRAM check/unload)
+- `MINERU_PARSE_IN_SUBPROCESS=1` (force MinerU PDF parse to run in a child process; process exit force-releases CUDA context)
+- `MINERU_PARSE_SUBPROCESS_TIMEOUT_SECONDS=0` (optional hard timeout for child parse, `0` disables timeout)
+- `MINERU_GPU_RELEASE_WAIT_SECONDS=60` (max wait after child exit to verify GPU release)
+- `MINERU_GPU_RELEASE_POLL_SECONDS=5` (poll interval for post-exit GPU checks)
+- `MINERU_GPU_RELEASE_TARGET_FREE_VRAM_MB=3000` (target free VRAM threshold during post-exit checks)
+- `MINERU_POST_RELEASE_WAIT_SECONDS=120` (mandatory pause between MinerU parse and next stage)
+- `MINERU_POST_RELEASE_POLL_SECONDS=5` (poll interval for MinerU unload checks)
+- `MINERU_RELEASE_CHECK_ENABLED=1` (verify MinerU singleton caches are unloaded during barrier)
 
 If CUDA errors appear on indexing, reduce both values first (e.g. `EMBED_BATCH_SIZE=16`, `CHROMA_ADD_BATCH_SIZE=64`).
 
@@ -126,6 +149,7 @@ Set in `.env`:
 - `HYBRID_DENSE_WEIGHT=0.6`
 - `HYBRID_SPARSE_WEIGHT=0.4`
 - `HYBRID_RRF_K=60` (reciprocal-rank-fusion smoothing)
+- `GRAPH_RAG_ENABLED=0` / `GRAPH_RETRIEVER_ENABLED=0` (reserved feature flags, no behavior change while disabled)
 
 ## Query the RAG System
 

@@ -58,6 +58,7 @@ archive/
 rag_eval/
 ai_rag_tutor/
 src/parse_test/
+src/preflight.py
 src/documents/
 src/ollama_test/
 src/app.py
@@ -68,3 +69,4 @@ pdf_parsing/
 
 # Local notebooks (can be removed from ignore if you want to version notebooks)
 *.ipynb
+sprints.md

@@ -88,49 +88,54 @@ class LayoutAwareChunker:
         logger.info("Спец-объектов для обработки: %s", total)
         processed = 0
 
-        for idx, block in enumerate(blocks):
-            btype = block.get("type")
-            if btype not in self.special_types:
-                continue
-            
-            # Если описание уже есть, не тратим токены
-            if block.get("llm_description"):
-                continue
+        try:
+            for idx, block in enumerate(blocks):
+                btype = block.get("type")
+                if btype not in self.special_types:
+                    continue
+                
+                # Если описание уже есть, не тратим токены
+                if block.get("llm_description"):
+                    continue
 
-            processed += 1
-            if processed % 5 == 0:
-                logger.info(f"Обработано {processed}/{total} спец. объектов...")
+                processed += 1
+                if processed % 5 == 0:
+                    logger.info(f"Обработано {processed}/{total} спец. объектов...")
 
-            left_ctx, right_ctx = self._collect_context(blocks, idx)
-            context_block = self._format_context_block(left_ctx, right_ctx)
-            caption = self._get_caption(block)
-            equation_text = self._normalize_text(block.get("text", "")) if btype == "equation" else ""
+                left_ctx, right_ctx = self._collect_context(blocks, idx)
+                context_block = self._format_context_block(left_ctx, right_ctx)
+                caption = self._get_caption(block)
+                equation_text = self._normalize_text(block.get("text", "")) if btype == "equation" else ""
 
-            prompt = self.prompt_templates.get(btype, "{context_block}").format(
-                context_block=context_block,
-                caption=caption,
-                equation_text=equation_text,
-            ).strip()
+                prompt = self.prompt_templates.get(btype, "{context_block}").format(
+                    context_block=context_block,
+                    caption=caption,
+                    equation_text=equation_text,
+                ).strip()
 
-            img_path = block.get("img_path")
-            full_img_path = None
-            if img_path and self.images_root:
-                full_img_path = self.images_root / img_path
-                if not full_img_path.is_file():
-                    full_img_path = None
+                img_path = block.get("img_path")
+                full_img_path = None
+                if img_path and self.images_root:
+                    full_img_path = self.images_root / img_path
+                    if not full_img_path.is_file():
+                        full_img_path = None
 
+                try:
+                    if full_img_path:
+                        description = self.llm_fn(message=prompt, img_path=str(full_img_path))
+                    else:
+                        description = self.llm_fn(message=prompt)
+                except Exception as exc:
+                    logger.error(f"Ошибка LLM на блоке {idx} ({btype}): {exc}")
+                    description = ""
+
+                block["llm_description"] = self._normalize_text(description)
+        finally:
             try:
-                if full_img_path:
-                    description = self.llm_fn(message=prompt, img_path=str(full_img_path))
-                else:
-                    description = self.llm_fn(message=prompt)
+                self.llm_fn(turn_off=True)
+                logger.info("Вызван keep_alive=0 для LLM/VLM после обработки спец-объектов.")
             except Exception as exc:
-                logger.error(f"Ошибка LLM на блоке {idx} ({btype}): {exc}")
-                description = ""
-
-            block["llm_description"] = self._normalize_text(description)
-            
-        self.llm_fn(turn_off=True)
+                logger.warning(f"Не удалось выгрузить LLM/VLM после обработки спец-объектов: {exc}")
 
         return blocks
 

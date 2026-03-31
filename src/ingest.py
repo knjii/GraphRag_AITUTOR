@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing as mp
+import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -12,6 +15,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from chunker import LayoutAwareChunker
+from neo4j_client import write_passages_to_graph
 from pdf_parser import PdfParser
 from settings import Settings
 from utils import ensure_directories, get_logger
@@ -82,18 +86,139 @@ def _load_pdf_chunks_for_file(
     pdf_path: Path,
 ) -> List[Document]:
     logger.info("Parsing PDF: %s", pdf_path)
-    blocks = parser.parse_doc([pdf_path])
+    if settings.mineru_parse_in_subprocess:
+        blocks = _parse_pdf_in_subprocess(settings, pdf_path)
+    else:
+        blocks = parser.parse_doc([pdf_path])
     chunker.images_root = Path(settings.markdown_dir) / pdf_path.stem / "auto"
     chunks = chunker.chunk(blocks, doc_name=pdf_path.name, doc_format="pdf")
 
     docs: List[Document] = []
-    for ch in chunks:
+    for idx, ch in enumerate(chunks):
         meta = _sanitize_metadata(dict(ch))
         meta.setdefault("source", str(pdf_path))
+        chunk_id = str(meta.get("chunk_id", "") or "").strip()
+        if not chunk_id:
+            meta["chunk_id"] = f"{pdf_path.stem}:{idx}"
         docs.append(Document(page_content=ch["text"], metadata=meta))
 
     logger.info("Chunks from PDF %s: %s", pdf_path.name, len(docs))
     return docs
+
+
+def _worker_parse_pdf(pdf_path_str: str, parser_kwargs: dict, queue) -> None:
+    try:
+        parser = PdfParser(**parser_kwargs)
+        blocks = parser.parse_doc([Path(pdf_path_str)])
+        queue.put({"ok": True, "blocks": blocks})
+    except Exception as exc:  # pragma: no cover - subprocess path
+        queue.put(
+            {
+                "ok": False,
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+        )
+
+
+def _get_vram_info_mb() -> tuple[int, int] | None:
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        free_bytes, total_bytes = torch.cuda.mem_get_info()
+        return int(free_bytes // (1024 * 1024)), int(total_bytes // (1024 * 1024))
+    except Exception:
+        return None
+
+
+def _wait_for_vram_release_after_subprocess(settings: Settings) -> None:
+    max_wait = max(0, int(settings.mineru_gpu_release_wait_seconds))
+    poll = max(1, int(settings.mineru_gpu_release_poll_seconds))
+    target_free = max(0, int(settings.mineru_gpu_release_target_free_vram_mb))
+    if max_wait <= 0:
+        return
+
+    logger.info(
+        "MinerU subprocess exited. Waiting up to %ss for GPU release (poll=%ss, target_free=%s MB).",
+        max_wait,
+        poll,
+        target_free,
+    )
+    waited = 0
+    while waited <= max_wait:
+        vram = _get_vram_info_mb()
+        if vram is None:
+            logger.info("GPU release check: CUDA unavailable, skipping.")
+            return
+        free_mb, total_mb = vram
+        logger.info(
+            "GPU release check: free_vram=%s/%s MB (%ss/%ss).",
+            free_mb,
+            total_mb,
+            waited,
+            max_wait,
+        )
+        if target_free > 0 and free_mb >= target_free:
+            logger.info("GPU release target reached: %s MB >= %s MB.", free_mb, target_free)
+            return
+        if waited >= max_wait:
+            logger.warning(
+                "GPU release wait timeout reached (%ss). Continuing pipeline.",
+                max_wait,
+            )
+            return
+        sleep_s = min(poll, max_wait - waited)
+        time.sleep(sleep_s)
+        waited += sleep_s
+
+
+def _parse_pdf_in_subprocess(settings: Settings, pdf_path: Path) -> List[dict]:
+    parser_kwargs = {
+        "output_dir": settings.markdown_dir,
+        "post_release_wait_seconds": 0,
+        "post_release_poll_seconds": 1,
+        "release_check_enabled": False,
+    }
+    ctx = mp.get_context("spawn")
+    queue = ctx.Queue(maxsize=1)
+    proc = ctx.Process(
+        target=_worker_parse_pdf,
+        args=(str(pdf_path), parser_kwargs, queue),
+    )
+    start_ts = time.time()
+    proc.start()
+
+    timeout_s = max(0, int(settings.mineru_parse_subprocess_timeout_seconds))
+    proc.join(timeout=timeout_s if timeout_s > 0 else None)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(10)
+        raise TimeoutError(
+            f"MinerU parse subprocess timeout for {pdf_path.name} after {timeout_s}s"
+        )
+
+    elapsed = time.time() - start_ts
+    logger.info(
+        "MinerU parse subprocess finished for %s (exit_code=%s, elapsed=%.1fs).",
+        pdf_path.name,
+        proc.exitcode,
+        elapsed,
+    )
+
+    if queue.empty():
+        raise RuntimeError(
+            f"MinerU parse subprocess returned no data for {pdf_path.name} (exit_code={proc.exitcode})."
+        )
+    result = queue.get()
+    if not result.get("ok"):
+        err = str(result.get("error", "unknown error"))
+        tb = str(result.get("traceback", ""))
+        raise RuntimeError(f"MinerU parse subprocess failed: {err}\n{tb}")
+
+    _wait_for_vram_release_after_subprocess(settings)
+    return list(result.get("blocks") or [])
 
 
 def _load_markdown_chunks_for_file(
@@ -103,6 +228,10 @@ def _load_markdown_chunks_for_file(
     loader = TextLoader(str(txt_path), encoding="utf-8")
     raw_docs = loader.load()
     chunks = splitter.split_documents(raw_docs)
+    for idx, doc in enumerate(chunks):
+        chunk_id = str(doc.metadata.get("chunk_id", "") or "").strip()
+        if not chunk_id:
+            doc.metadata["chunk_id"] = f"{txt_path.stem}:{idx}"
     logger.info("Chunks from markdown/text %s: %s", txt_path.name, len(chunks))
     return chunks
 
@@ -134,10 +263,16 @@ def prepare_index(
         checkpoint = {"version": 1, "updated_at": _now_utc_iso(), "sources": {}}
         _save_checkpoint(checkpoint_path, checkpoint)
 
-    parser = PdfParser(output_dir=settings.markdown_dir)
+    parser = PdfParser(
+        output_dir=settings.markdown_dir,
+        post_release_wait_seconds=settings.mineru_post_release_wait_seconds,
+        post_release_poll_seconds=settings.mineru_post_release_poll_seconds,
+        release_check_enabled=settings.mineru_release_check_enabled,
+    )
     chunker = LayoutAwareChunker(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
+        use_llm=bool(settings.chunker_use_llm),
     )
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
@@ -172,6 +307,12 @@ def prepare_index(
             if docs:
                 persist_documents(docs, settings, force=(force and first_persist))
                 first_persist = False
+                try:
+                    write_passages_to_graph(docs, settings)
+                except Exception as exc:
+                    if settings.graph_fail_on_error:
+                        raise
+                    logger.warning("Neo4j graph write failed (non-fatal): %s", exc)
             _mark_checkpoint(checkpoint, source_type, source_path, "done", len(docs))
             processed += 1
         except Exception as exc:

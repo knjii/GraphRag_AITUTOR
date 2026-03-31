@@ -1,0 +1,87 @@
+{
+  "ts_utc": "2026-03-30T18:27:58.772972+00:00",
+  "status": "fail",
+  "summary": {
+    "ok": 3,
+    "warn": 0,
+    "fail": 3
+  },
+  "settings_snapshot": {
+    "pdf_dir": "C:\\python\\rag_textbook\\documents\\pdf_docs\\test",
+    "markdown_dir": "documents\\markdown_docs",
+    "chroma_dir": "C:\\python\\rag_textbook\\chroma_db",
+    "ingest_checkpoint_file": "chroma_db\\ingest_checkpoint.json",
+    "ollama_base_url": "http://127.0.0.1:11434",
+    "ollama_model": "qwen3.5:9b",
+    "ollama_eval_model": "qwen3.5:4b",
+    "ollama_embed_model": "qwen3-embedding:0.6b",
+    "neo4j_enabled": true,
+    "graph_write_enabled": false,
+    "neo4j_uri": "bolt://localhost:7687",
+    "neo4j_database": "neo4j"
+  },
+  "checks": [
+    {
+      "name": "source_directories",
+      "status": "ok",
+      "duration_ms": 47,
+      "details": {
+        "pdf_dir": "C:\\python\\rag_textbook\\documents\\pdf_docs\\test",
+        "markdown_dir": "documents\\markdown_docs",
+        "pdf_exists": true,
+        "markdown_exists": true,
+        "pdf_count": 3,
+        "markdown_count": 0
+      }
+    },
+    {
+      "name": "disk_space",
+      "status": "ok",
+      "duration_ms": 0,
+      "details": {
+        "target": "C:\\python\\rag_textbook\\chroma_db",
+        "free_gb": 61.58,
+        "total_gb": 475.94
+      }
+    },
+    {
+      "name": "filesystem_write_access",
+      "status": "ok",
+      "duration_ms": 0,
+      "details": {
+        "chroma_dir": "C:\\python\\rag_textbook\\chroma_db",
+        "checkpoint_file": "chroma_db\\ingest_checkpoint.json",
+        "write_test": "passed"
+      }
+    },
+    {
+      "name": "ollama_connectivity_and_models",
+      "status": "fail",
+      "duration_ms": 2031,
+      "details": {
+        "error": "HTTPConnectionPool(host='127.0.0.1', port=11434): Max retries exceeded with url: /api/tags (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001E309F22870>: Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение'))"
+      }
+    },
+    {
+      "name": "neo4j_connectivity",
+      "status": "fail",
+      "duration_ms": 0,
+      "details": {
+        "neo4j_enabled": true,
+        "graph_write_enabled": false,
+        "uri": "bolt://localhost:7687",
+        "database": "neo4j",
+        "error": "neo4j python driver is not installed."
+      }
+    },
+    {
+      "name": "embedding_smoke_test",
+      "status": "fail",
+      "duration_ms": 2030,
+      "details": {
+        "error": "Error raised by inference endpoint: HTTPConnectionPool(host='127.0.0.1', port=11434): Max retries exceeded with url: /api/embeddings (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001E30BB7C3B0>: Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение'))"
+      }
+    }
+  ],
+  "next_command_example": "python src/ingest.py --checkpoint 2>&1 | Tee-Object -FilePath logs/ingest_run.log"
+}
