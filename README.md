@@ -88,6 +88,13 @@ Optional graph write during indexing (safe off by default):
 - `NEO4J_ENABLED=1`
 - `GRAPH_WRITE_ENABLED=1`
 - `GRAPH_RELATIONS_ENABLED=1` (write `MENTIONS`/`CO_OCCURS`, set `0` to write only passages)
+- `GRAPH_ENTITY_EXTRACTOR=rule|llm` (`rule` by default; set `llm` to extract entities/relations with Ollama)
+- `GRAPH_LLM_MODEL` (optional override for graph extraction model; empty = `OLLAMA_MODEL`)
+- `GRAPH_LLM_TEMPERATURE=0.0`
+- `GRAPH_LLM_NUM_PREDICT=384`
+- `GRAPH_LLM_INPUT_MAX_CHARS=4000` (per-chunk prompt truncate for extraction)
+- `GRAPH_LLM_MAX_RELATIONS_PER_PASSAGE=20`
+- `GRAPH_LLM_FALLBACK_TO_RULE=1` (fallback to rule extractor if LLM extraction fails)
 - `GRAPH_ENTITY_MIN_TOKEN_LEN=3` (minimum token length for rule-based entity extraction)
 - `GRAPH_ENTITY_USE_BIGRAMS=1` (enable adjacent bigram keyphrase candidates)
 - `GRAPH_ENTITY_MAX_BIGRAMS_PER_PASSAGE=12` (caps how many bigram candidates are added per chunk)
@@ -99,7 +106,7 @@ Optional graph write during indexing (safe off by default):
 
 When enabled, `ingest.py` upserts `(:Passage)` nodes to Neo4j alongside Chroma indexing.
 It links `(:Source)-[:HAS_PASSAGE]->(:Passage)` and sequential `(:Passage)-[:NEXT]->(:Passage)` per source.
-If `GRAPH_RELATIONS_ENABLED=1`, it also creates `(:Passage)-[:MENTIONS]->(:Entity)` and `(:Entity)-[:CO_OCCURS {source_id, weight, passage_ids, chunk_ids}]->(:Entity)`.
+If `GRAPH_RELATIONS_ENABLED=1`, it also creates `(:Passage)-[:MENTIONS]->(:Entity)` and `(:Entity)-[:CO_OCCURS {source_id, weight, passage_ids, chunk_ids, relation_labels}]->(:Entity)`.
 
 For large corpora / GPU stability during embedding, tune:
 - `EMBEDDINGS_BACKEND=ollama|sentence` (default: `ollama` for offline local embeddings)

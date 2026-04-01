@@ -171,6 +171,19 @@ class Settings:
         "false",
         "no",
     }
+    graph_entity_extractor: str = os.getenv("GRAPH_ENTITY_EXTRACTOR", "rule").strip().lower()
+    graph_llm_model: str = os.getenv("GRAPH_LLM_MODEL", "").strip()
+    graph_llm_temperature: float = float(os.getenv("GRAPH_LLM_TEMPERATURE", "0.0"))
+    graph_llm_num_predict: int = int(os.getenv("GRAPH_LLM_NUM_PREDICT", "384"))
+    graph_llm_input_max_chars: int = int(os.getenv("GRAPH_LLM_INPUT_MAX_CHARS", "4000"))
+    graph_llm_max_relations_per_passage: int = int(
+        os.getenv("GRAPH_LLM_MAX_RELATIONS_PER_PASSAGE", "20")
+    )
+    graph_llm_fallback_to_rule: bool = os.getenv("GRAPH_LLM_FALLBACK_TO_RULE", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
     graph_entity_min_token_len: int = int(os.getenv("GRAPH_ENTITY_MIN_TOKEN_LEN", "3"))
     graph_entity_use_bigrams: bool = os.getenv("GRAPH_ENTITY_USE_BIGRAMS", "1").lower() not in {
         "0",
