@@ -45,21 +45,19 @@ class ChatOllamaCompat(_CommunityChatOllama):
     """ChatOllama wrapper that supports top-level `think` in Ollama /api/chat."""
 
     think: Optional[bool] = None
+    num_batch: Optional[int] = None
+    fallback_model: Optional[str] = None
 
     def _build_ollama_options(self, stop=None, **kwargs: Any) -> dict:
         options = {
-            "mirostat": self.mirostat,
-            "mirostat_eta": self.mirostat_eta,
-            "mirostat_tau": self.mirostat_tau,
             "num_ctx": self.num_ctx,
             "num_gpu": self.num_gpu,
+            "num_batch": self.num_batch,
             "num_thread": self.num_thread,
             "num_predict": self.num_predict,
-            "repeat_last_n": self.repeat_last_n,
             "repeat_penalty": self.repeat_penalty,
             "temperature": self.temperature,
             "stop": self.stop if self.stop is not None else stop,
-            "tfs_z": self.tfs_z,
             "top_k": self.top_k,
             "top_p": self.top_p,
         }
@@ -105,9 +103,10 @@ class ChatOllamaCompat(_CommunityChatOllama):
         ollama_messages: list[dict],
         think_value: Optional[bool],
         options: dict,
+        model_override: Optional[str] = None,
     ) -> dict:
         payload: dict[str, Any] = {
-            "model": self.model,
+            "model": model_override or self.model,
             "messages": ollama_messages,
             "stream": False,
             "options": options,
@@ -129,6 +128,11 @@ class ChatOllamaCompat(_CommunityChatOllama):
                 f"Ollama call failed with status code: {resp.status_code}. Details: {resp.text}"
             )
         return resp.json()
+
+    @staticmethod
+    def _is_ggml_assert_failure(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return "status code: 500" in text and "ggml_assert" in text
 
     async def _achat_once(
         self,
@@ -188,6 +192,21 @@ class ChatOllamaCompat(_CommunityChatOllama):
                     # one safe retry for slow local models
                     time.sleep(0.8)
                     continue
+                if (
+                    attempt == 0
+                    and self._is_ggml_assert_failure(exc)
+                    and self.fallback_model
+                    and self.fallback_model != self.model
+                ):
+                    # qwen2.5vl can fail on some text-only prompts/local VRAM regimes.
+                    # Retry once with explicit fallback text model to keep query path alive.
+                    response = self._chat_once(
+                        ollama_messages=ollama_messages,
+                        think_value=False,
+                        options=options,
+                        model_override=self.fallback_model,
+                    )
+                    break
                 raise
         if response is None:  # pragma: no cover
             raise RuntimeError("Ollama response is unexpectedly None")
@@ -279,7 +298,9 @@ def get_chat_model(settings: Settings) -> ChatOllamaCompat:
         num_ctx=settings.ollama_num_ctx,
         top_k=settings.ollama_top_k,
         num_gpu=settings.ollama_num_gpu,
+        num_batch=settings.ollama_num_batch,
         num_predict=settings.ollama_num_predict,
         timeout=_resolve_request_timeout_seconds(settings),
         think=think_value,
+        fallback_model=(settings.ollama_fallback_model or None),
     )

@@ -251,6 +251,15 @@ def persist_documents(documents: List[Document], settings: Settings, force: bool
     chroma_path = Path(settings.chroma_dir)
     use_cpu_embeddings = _ensure_embedding_memory(settings)
     embeddings = get_embeddings_model(settings, force_cpu=use_cpu_embeddings)
+    logger.info(
+        "Embeddings init: backend=%s class=%s model=%s num_gpu=%s num_ctx=%s force_cpu=%s",
+        str(settings.embedding_backend).lower(),
+        embeddings.__class__.__name__,
+        getattr(embeddings, "model", settings.embedding_model_name),
+        getattr(embeddings, "num_gpu", None),
+        getattr(embeddings, "num_ctx", None),
+        use_cpu_embeddings,
+    )
     add_batch_size = max(1, int(settings.chroma_add_batch_size))
 
     if force:

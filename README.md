@@ -84,6 +84,11 @@ python src/ingest.py --force --checkpoint
 
 Default checkpoint path can be configured via `INGEST_CHECKPOINT_FILE` in `.env`.
 
+Graph indexing metrics are automatically saved after each `ingest.py` run:
+- directory: `graph_indexing/metrics/`
+- file pattern: `<GRAPH_ENTITY_EXTRACTOR>_graph_indexing_metrics_<timestamp>.json`
+- includes run config, indexing counters, graph write counters (`passages`, `mentions`, `co_occurs`, `relates`, LLM extraction stats), and failures.
+
 Optional graph write during indexing (safe off by default):
 - `NEO4J_ENABLED=1`
 - `GRAPH_WRITE_ENABLED=1`
@@ -94,6 +99,7 @@ Optional graph write during indexing (safe off by default):
 - `GRAPH_LLM_NUM_PREDICT=384`
 - `GRAPH_LLM_INPUT_MAX_CHARS=4000` (per-chunk prompt truncate for extraction)
 - `GRAPH_LLM_MAX_RELATIONS_PER_PASSAGE=20`
+- `GRAPH_LLM_PROGRESS_EVERY=25` (progress log interval for LLM extraction by passage count)
 - `GRAPH_LLM_FALLBACK_TO_RULE=1` (fallback to rule extractor if LLM extraction fails)
 - `GRAPH_ENTITY_MIN_TOKEN_LEN=3` (minimum token length for rule-based entity extraction)
 - `GRAPH_ENTITY_USE_BIGRAMS=1` (enable adjacent bigram keyphrase candidates)
@@ -107,6 +113,7 @@ Optional graph write during indexing (safe off by default):
 When enabled, `ingest.py` upserts `(:Passage)` nodes to Neo4j alongside Chroma indexing.
 It links `(:Source)-[:HAS_PASSAGE]->(:Passage)` and sequential `(:Passage)-[:NEXT]->(:Passage)` per source.
 If `GRAPH_RELATIONS_ENABLED=1`, it also creates `(:Passage)-[:MENTIONS]->(:Entity)` and `(:Entity)-[:CO_OCCURS {source_id, weight, passage_ids, chunk_ids, relation_labels}]->(:Entity)`.
+In LLM extraction mode it additionally creates directed `(:Entity)-[:RELATES {source_id, passage_id, chunk_id, relation, count}]->(:Entity)`.
 
 For large corpora / GPU stability during embedding, tune:
 - `EMBEDDINGS_BACKEND=ollama|sentence` (default: `ollama` for offline local embeddings)
@@ -161,6 +168,9 @@ Hybrid retrieval is enabled by default and does not change CLI commands.
 
 Set in `.env`:
 - `CONVERSATIONAL_RAG_ENABLED=1` (set `0` for stateless mode by default)
+- Use `OLLAMA_NUM_CTX`, `OLLAMA_NUM_GPU`, `OLLAMA_NUM_BATCH`, `OLLAMA_NUM_PREDICT` as canonical runtime keys.
+- Legacy aliases `N_CTX`, `N_GPU_LAYERS`, `N_BATCH` are still accepted as fallback for backward compatibility.
+- `OLLAMA_FALLBACK_MODEL=<model>` (optional fallback for query path when primary model crashes, e.g. `GGML_ASSERT` with some VLMs)
 - `OLLAMA_THINK=auto|0|1` (`auto` disables think for `qwen3*` and `deepseek-r1*` on query generation to avoid empty outputs)
 - `OLLAMA_REQUEST_TIMEOUT_SECONDS=0|N` (`0` = model-aware auto timeout, uses 600s for `deepseek-r1*`, 180s otherwise)
 - `CHAT_HISTORY_DIR=chat_history` (JSONL storage for sessions)
@@ -172,7 +182,12 @@ Set in `.env`:
 - `HYBRID_DENSE_WEIGHT=0.6`
 - `HYBRID_SPARSE_WEIGHT=0.4`
 - `HYBRID_RRF_K=60` (reciprocal-rank-fusion smoothing)
-- `GRAPH_RAG_ENABLED=0` / `GRAPH_RETRIEVER_ENABLED=0` (reserved feature flags, no behavior change while disabled)
+- `GRAPH_RETRIEVER_ENABLED=0|1` (enables Neo4j graph candidate retrieval + fusion with base retriever)
+- `GRAPH_RAG_ENABLED=0|1` (legacy alias; also enables graph retrieval path)
+- `GRAPH_RETRIEVER_HOPS=1` (entity graph expansion depth)
+- `GRAPH_RETRIEVER_ENTITY_LIMIT=30` (max graph entities considered per query)
+- `GRAPH_RETRIEVER_PASSAGE_LIMIT=30` (max graph passages before fusion)
+- `GRAPH_RETRIEVER_WEIGHT=0.35` (graph contribution in fusion, base weight is `1 - GRAPH_RETRIEVER_WEIGHT`)
 
 ## Query the RAG System
 

@@ -53,6 +53,8 @@ deepeval_artifacts/*
 !deepeval_artifacts/.gitkeep
 chat_history/
 archive/
+graph_indexing/metrics/*
+!graph_indexing/metrics/.gitkeep
 
 # Legacy and experimental directories not needed in main repo
 rag_eval/
@@ -63,10 +65,14 @@ src/documents/
 src/ollama_test/
 src/app.py
 src/vectorization_stress_test.py
+src/backfill_graph_from_chroma.py
 # src/pdf_processing_test.ipynb
 # src/test_sql.ipynb
 pdf_parsing/
 
+graph_indexing/metrics/*
+
 # Local notebooks (can be removed from ignore if you want to version notebooks)
 *.ipynb
+last_prompt.txt
 sprints.md

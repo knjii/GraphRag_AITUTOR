@@ -5,6 +5,7 @@ import json
 import multiprocessing as mp
 import os
 import pickle
+import re
 import shutil
 import tempfile
 import threading
@@ -12,7 +13,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader
@@ -20,7 +21,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from chunker import LayoutAwareChunker
-from neo4j_client import write_passages_to_graph
+from neo4j_client import write_passages_to_graph_stats
 from pdf_parser import PdfParser
 from settings import Settings
 from utils import ensure_directories, get_logger
@@ -35,6 +36,59 @@ def _now_utc_iso() -> str:
 
 def _source_key(source_type: str, path: Path) -> str:
     return f"{source_type}:{path.resolve().as_posix()}"
+
+
+def _safe_slug(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(value or "").strip())
+    return slug.strip("._-") or "unknown"
+
+
+def _build_graph_metrics_base(settings: Settings) -> Dict[str, Any]:
+    return {
+        "run_started_at": _now_utc_iso(),
+        "config": {
+            "graph_entity_extractor": str(settings.graph_entity_extractor or "rule"),
+            "graph_llm_model": str(settings.graph_llm_model or settings.ollama_model),
+            "graph_write_enabled": bool(settings.graph_write_enabled),
+            "neo4j_enabled": bool(settings.neo4j_enabled),
+            "graph_relations_enabled": bool(settings.graph_relations_enabled),
+            "graph_llm_fallback_to_rule": bool(settings.graph_llm_fallback_to_rule),
+            "graph_entity_max_per_passage": int(settings.graph_entity_max_per_passage),
+            "graph_cooccurs_max_per_passage": int(settings.graph_cooccurs_max_per_passage),
+            "graph_cooccurs_provenance_limit": int(settings.graph_cooccurs_provenance_limit),
+        },
+        "indexing": {
+            "sources_total": 0,
+            "processed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "documents_indexed": 0,
+            "pdf_documents": 0,
+            "markdown_documents": 0,
+        },
+        "graph_write": {
+            "enabled": bool(settings.neo4j_enabled and settings.graph_write_enabled),
+            "passages": 0,
+            "mentions": 0,
+            "co_occurs": 0,
+            "relates": 0,
+            "llm_passages_success": 0,
+            "llm_passages_failed": 0,
+            "errors": 0,
+        },
+        "failures": [],
+    }
+
+
+def _save_graph_indexing_metrics(settings: Settings, payload: Dict[str, Any]) -> Path:
+    extractor = _safe_slug(str(settings.graph_entity_extractor or "unknown").lower())
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    project_root = Path(__file__).resolve().parents[1]
+    metrics_dir = project_root / "graph_indexing" / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    out_file = metrics_dir / f"{extractor}_graph_indexing_metrics_{ts}.json"
+    out_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out_file
 
 
 def _default_checkpoint_path(settings: Settings) -> Path:
@@ -537,6 +591,7 @@ def prepare_index(
     """Build and persist Chroma index with optional source-level checkpointing."""
     ensure_directories(settings)
     _ensure_mineru_local_models_config(settings)
+    metrics = _build_graph_metrics_base(settings)
 
     checkpoint_path = Path(checkpoint_file) if checkpoint_file else _default_checkpoint_path(settings)
     checkpoint = _load_checkpoint(checkpoint_path) if checkpoint_enabled else {"sources": {}}
@@ -562,8 +617,12 @@ def prepare_index(
     )
 
     sources = _iter_sources(settings)
+    metrics["indexing"]["sources_total"] = int(len(sources))
     if not sources:
         logger.warning("No documents found in %s or %s", settings.pdf_dir, settings.markdown_dir)
+        metrics["run_finished_at"] = _now_utc_iso()
+        metrics_path = _save_graph_indexing_metrics(settings, metrics)
+        logger.info("Graph indexing metrics saved: %s", metrics_path)
         return
 
     first_persist = True
@@ -586,14 +645,32 @@ def prepare_index(
             else:
                 docs = _load_markdown_chunks_for_file(splitter, source_path)
 
+            docs_count = int(len(docs))
+            metrics["indexing"]["documents_indexed"] += docs_count
+            if source_type == "pdf":
+                metrics["indexing"]["pdf_documents"] += docs_count
+            else:
+                metrics["indexing"]["markdown_documents"] += docs_count
+
             if docs:
                 persist_documents(docs, settings, force=(force and first_persist))
                 first_persist = False
                 try:
-                    write_passages_to_graph(docs, settings)
+                    graph_stats = write_passages_to_graph_stats(docs, settings)
+                    metrics["graph_write"]["passages"] += int(graph_stats.get("passages", 0))
+                    metrics["graph_write"]["mentions"] += int(graph_stats.get("mentions", 0))
+                    metrics["graph_write"]["co_occurs"] += int(graph_stats.get("co_occurs", 0))
+                    metrics["graph_write"]["relates"] += int(graph_stats.get("relates", 0))
+                    metrics["graph_write"]["llm_passages_success"] += int(
+                        graph_stats.get("llm_passages_success", 0)
+                    )
+                    metrics["graph_write"]["llm_passages_failed"] += int(
+                        graph_stats.get("llm_passages_failed", 0)
+                    )
                 except Exception as exc:
                     if settings.graph_fail_on_error:
                         raise
+                    metrics["graph_write"]["errors"] += 1
                     logger.warning("Neo4j graph write failed (non-fatal): %s", exc)
             _mark_checkpoint(checkpoint, source_type, source_path, "done", len(docs))
             processed += 1
@@ -602,6 +679,7 @@ def prepare_index(
             logger.exception("Failed source: %s (%s)", source_path, error_text)
             _mark_checkpoint(checkpoint, source_type, source_path, "failed", 0, error=error_text)
             failures.append(f"{source_path}: {error_text}")
+            metrics["failures"].append({"source": str(source_path), "error": error_text})
         finally:
             if checkpoint_enabled:
                 _save_checkpoint(checkpoint_path, checkpoint)
@@ -613,6 +691,12 @@ def prepare_index(
         len(failures),
         checkpoint_path if checkpoint_enabled else "disabled",
     )
+    metrics["indexing"]["processed"] = int(processed)
+    metrics["indexing"]["skipped"] = int(skipped)
+    metrics["indexing"]["failed"] = int(len(failures))
+    metrics["run_finished_at"] = _now_utc_iso()
+    metrics_path = _save_graph_indexing_metrics(settings, metrics)
+    logger.info("Graph indexing metrics saved: %s", metrics_path)
 
     if failures:
         raise RuntimeError(

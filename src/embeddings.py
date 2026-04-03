@@ -15,10 +15,21 @@ def get_embeddings_model(settings: Settings, force_cpu: bool = False):
     backend = str(settings.embedding_backend or "ollama").strip().lower()
 
     if backend == "ollama":
-        return OllamaEmbeddings(
-            model=settings.ollama_embed_model,
-            base_url=settings.ollama_base_url,
-        )
+        # Prefer explicit Ollama runtime params to avoid silent CPU fallback.
+        base_kwargs = {
+            "model": settings.ollama_embed_model,
+            "base_url": settings.ollama_base_url,
+        }
+        tuned_kwargs = {
+            "num_ctx": int(settings.ollama_num_ctx),
+            "num_gpu": int(settings.ollama_num_gpu),
+            "num_thread": int(settings.n_threads),
+        }
+        try:
+            return OllamaEmbeddings(**base_kwargs, **tuned_kwargs)
+        except Exception:
+            # Keep backward compatibility for wrappers that don't accept tuned kwargs.
+            return OllamaEmbeddings(**base_kwargs)
 
     model_kwargs = {}
     if force_cpu:
