@@ -56,6 +56,11 @@ def _build_graph_metrics_base(settings: Settings) -> Dict[str, Any]:
             "graph_entity_max_per_passage": int(settings.graph_entity_max_per_passage),
             "graph_cooccurs_max_per_passage": int(settings.graph_cooccurs_max_per_passage),
             "graph_cooccurs_provenance_limit": int(settings.graph_cooccurs_provenance_limit),
+            "ket_rag_enabled": bool(settings.ket_rag_enabled),
+            "ket_beta": float(settings.ket_beta),
+            "ket_k": int(settings.ket_k),
+            "graph_retrieval_theta": float(settings.graph_retrieval_theta),
+            "graph_keyword_channel_enabled": bool(settings.graph_keyword_channel_enabled),
         },
         "indexing": {
             "sources_total": 0,
@@ -72,8 +77,20 @@ def _build_graph_metrics_base(settings: Settings) -> Dict[str, Any]:
             "mentions": 0,
             "co_occurs": 0,
             "relates": 0,
+            "keywords": 0,
+            "has_keyword": 0,
+            "keyword_near": 0,
+            "embedded_keywords": 0,
             "llm_passages_success": 0,
             "llm_passages_failed": 0,
+            "llm_applied_passages": 0,
+            "rule_applied_passages": 0,
+            "ket_enabled": False,
+            "ket_core_passages": 0,
+            "ket_periphery_passages": 0,
+            "ket_selected_ratio_avg": 0.0,
+            "ket_semantic_available_runs": 0,
+            "ket_runs": 0,
             "errors": 0,
         },
         "failures": [],
@@ -661,12 +678,38 @@ def prepare_index(
                     metrics["graph_write"]["mentions"] += int(graph_stats.get("mentions", 0))
                     metrics["graph_write"]["co_occurs"] += int(graph_stats.get("co_occurs", 0))
                     metrics["graph_write"]["relates"] += int(graph_stats.get("relates", 0))
+                    metrics["graph_write"]["keywords"] += int(graph_stats.get("keywords", 0))
+                    metrics["graph_write"]["has_keyword"] += int(graph_stats.get("has_keyword", 0))
+                    metrics["graph_write"]["keyword_near"] += int(graph_stats.get("keyword_near", 0))
+                    metrics["graph_write"]["embedded_keywords"] += int(
+                        graph_stats.get("embedded_keywords", 0)
+                    )
                     metrics["graph_write"]["llm_passages_success"] += int(
                         graph_stats.get("llm_passages_success", 0)
                     )
                     metrics["graph_write"]["llm_passages_failed"] += int(
                         graph_stats.get("llm_passages_failed", 0)
                     )
+                    metrics["graph_write"]["llm_applied_passages"] += int(
+                        graph_stats.get("llm_applied_passages", 0)
+                    )
+                    metrics["graph_write"]["rule_applied_passages"] += int(
+                        graph_stats.get("rule_applied_passages", 0)
+                    )
+                    metrics["graph_write"]["ket_core_passages"] += int(
+                        graph_stats.get("ket_core_passages", 0)
+                    )
+                    metrics["graph_write"]["ket_periphery_passages"] += int(
+                        graph_stats.get("ket_periphery_passages", 0)
+                    )
+                    if bool(graph_stats.get("ket_enabled", False)):
+                        metrics["graph_write"]["ket_enabled"] = True
+                        metrics["graph_write"]["ket_runs"] += 1
+                        metrics["graph_write"]["ket_selected_ratio_avg"] += float(
+                            graph_stats.get("ket_selected_ratio", 0.0)
+                        )
+                        if bool(graph_stats.get("ket_semantic_available", False)):
+                            metrics["graph_write"]["ket_semantic_available_runs"] += 1
                 except Exception as exc:
                     if settings.graph_fail_on_error:
                         raise
@@ -694,6 +737,11 @@ def prepare_index(
     metrics["indexing"]["processed"] = int(processed)
     metrics["indexing"]["skipped"] = int(skipped)
     metrics["indexing"]["failed"] = int(len(failures))
+    ket_runs = int(metrics["graph_write"].get("ket_runs", 0))
+    if ket_runs > 0:
+        metrics["graph_write"]["ket_selected_ratio_avg"] = (
+            float(metrics["graph_write"]["ket_selected_ratio_avg"]) / float(ket_runs)
+        )
     metrics["run_finished_at"] = _now_utc_iso()
     metrics_path = _save_graph_indexing_metrics(settings, metrics)
     logger.info("Graph indexing metrics saved: %s", metrics_path)

@@ -75,4 +75,5 @@ graph_indexing/metrics/*
 # Local notebooks (can be removed from ignore if you want to version notebooks)
 *.ipynb
 last_prompt.txt
+successful_indexing.txt
 sprints.md

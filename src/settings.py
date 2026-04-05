@@ -38,6 +38,31 @@ def _env_choice(name: str, default: str, allowed: set[str]) -> str:
     return default
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or str(raw).strip() == "":
+        return float(default)
+    try:
+        return float(str(raw).strip().strip("'\""))
+    except Exception:
+        return float(default)
+
+
+def _env_optional_int(name: str, default: int | None = None) -> int | None:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = str(raw).strip().strip("'\"")
+    if value == "":
+        return default
+    if value.lower() in {"none", "null", "inf", "infinite", "unlimited", "off"}:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
 @dataclass
 class Settings:
     """Central configuration for the RAG pipeline."""
@@ -216,6 +241,29 @@ class Settings:
     graph_retriever_entity_limit: int = int(os.getenv("GRAPH_RETRIEVER_ENTITY_LIMIT", "30"))
     graph_retriever_passage_limit: int = int(os.getenv("GRAPH_RETRIEVER_PASSAGE_LIMIT", "30"))
     graph_retriever_weight: float = float(os.getenv("GRAPH_RETRIEVER_WEIGHT", "0.35"))
+    graph_retrieval_theta: float = _env_float("GRAPH_RETRIEVAL_THETA", 0.65)
+    graph_keyword_channel_enabled: bool = _env_bool("GRAPH_KEYWORD_CHANNEL_ENABLED", "1")
+    graph_keyword_min_count: int = _env_int("GRAPH_KEYWORD_MIN_COUNT", 1)
+    graph_keyword_max_keywords: int = _env_int("GRAPH_KEYWORD_MAX_KEYWORDS", 2000)
+    graph_keyword_max_sentences_per_keyword: int = _env_int(
+        "GRAPH_KEYWORD_MAX_SENTENCES_PER_KEYWORD", 32
+    )
+    graph_keyword_embedding_dims: int = _env_int("GRAPH_KEYWORD_EMBEDDING_DIMS", 256)
+    graph_keyword_embed_batch_size: int = _env_int("GRAPH_KEYWORD_EMBED_BATCH_SIZE", 64)
+    graph_keyword_query_limit: int = _env_int("GRAPH_KEYWORD_QUERY_LIMIT", 40)
+    graph_keyword_neighbors_per_passage: int = _env_int("GRAPH_KEYWORD_NEIGHBORS_PER_PASSAGE", 8)
+    ket_rag_enabled: bool = _env_bool("KET_RAG_ENABLED", "0")
+    ket_k: int = _env_int("KET_K", 12)
+    ket_beta: float = _env_float("KET_BETA", 0.2)
+    ket_lexical_ratio: float = _env_float("KET_LEXICAL_RATIO", 0.5)
+    ket_semantic_ratio: float = _env_float("KET_SEMANTIC_RATIO", 0.5)
+    ket_min_core_per_source: int = _env_int("KET_MIN_CORE_PER_SOURCE", 1)
+    ket_max_core_per_source: int | None = _env_optional_int("KET_MAX_CORE_PER_SOURCE", 100000)
+    ket_embedding_batch_size: int = _env_int("KET_EMBED_BATCH_SIZE", 48)
+    ket_max_terms_per_passage: int = _env_int("KET_MAX_TERMS_PER_PASSAGE", 64)
+    ket_keyword_min_token_len: int = _env_int("KET_KEYWORD_MIN_TOKEN_LEN", 3)
+    ket_use_bigrams: bool = _env_bool("KET_USE_BIGRAMS", "1")
+    ket_semantic_fallback_to_lexical: bool = _env_bool("KET_SEMANTIC_FALLBACK_TO_LEXICAL", "1")
     graph_fail_on_error: bool = _env_bool("GRAPH_FAIL_ON_ERROR", "0")
 
     contextualize_q_system_prompt: str = str(

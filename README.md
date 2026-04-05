@@ -87,7 +87,7 @@ Default checkpoint path can be configured via `INGEST_CHECKPOINT_FILE` in `.env`
 Graph indexing metrics are automatically saved after each `ingest.py` run:
 - directory: `graph_indexing/metrics/`
 - file pattern: `<GRAPH_ENTITY_EXTRACTOR>_graph_indexing_metrics_<timestamp>.json`
-- includes run config, indexing counters, graph write counters (`passages`, `mentions`, `co_occurs`, `relates`, LLM extraction stats), and failures.
+- includes run config, indexing counters, graph write counters (`passages`, `mentions`, `co_occurs`, `relates`, `keywords`, `keyword_near`, KET core/periphery stats, LLM extraction stats), and failures.
 
 Optional graph write during indexing (safe off by default):
 - `NEO4J_ENABLED=1`
@@ -107,6 +107,18 @@ Optional graph write during indexing (safe off by default):
 - `GRAPH_ENTITY_MAX_PER_PASSAGE=20` (caps extracted entity terms per chunk)
 - `GRAPH_COOCCURS_MAX_PER_PASSAGE=200` (caps co-occurrence pairs per chunk)
 - `GRAPH_COOCCURS_PROVENANCE_LIMIT=20` (caps `passage_ids/chunk_ids` evidence list size per `CO_OCCURS` edge)
+- `GRAPH_KEYWORD_CHANNEL_ENABLED=1` (writes keyword graph channel for KET retrieval)
+- `GRAPH_KEYWORD_MIN_COUNT=1` (minimum mention count to keep keyword)
+- `GRAPH_KEYWORD_MAX_KEYWORDS=2000` (cap keyword nodes per source in one run)
+- `GRAPH_KEYWORD_MAX_SENTENCES_PER_KEYWORD=32` (sentence evidence cap per keyword embedding)
+- `GRAPH_KEYWORD_EMBEDDING_DIMS=256` (stored embedding dimensions per keyword, `0` = full)
+- `GRAPH_KEYWORD_EMBED_BATCH_SIZE=64` (sentence embedding batch size for keyword channel)
+- `GRAPH_KEYWORD_NEIGHBORS_PER_PASSAGE=8` (cap keyword co-neighbor edges per passage)
+- `KET_RAG_ENABLED=0|1` (enable KET core/periphery selection for graph extraction)
+- `KET_K=12` (hybrid KNN width for KET)
+- `KET_BETA=0.3` (core ratio target)
+- `KET_LEXICAL_RATIO=0.5`, `KET_SEMANTIC_RATIO=0.5` (K/2 lexical + K/2 semantic by default)
+- `KET_MIN_CORE_PER_SOURCE`, `KET_MAX_CORE_PER_SOURCE` (hard bounds for selected core passages; set `KET_MAX_CORE_PER_SOURCE=None` to disable upper cap and rely only on `beta`)
 - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`
 - `GRAPH_FAIL_ON_ERROR=0` (keep ingest running even if graph write fails)
 
@@ -114,6 +126,8 @@ When enabled, `ingest.py` upserts `(:Passage)` nodes to Neo4j alongside Chroma i
 It links `(:Source)-[:HAS_PASSAGE]->(:Passage)` and sequential `(:Passage)-[:NEXT]->(:Passage)` per source.
 If `GRAPH_RELATIONS_ENABLED=1`, it also creates `(:Passage)-[:MENTIONS]->(:Entity)` and `(:Entity)-[:CO_OCCURS {source_id, weight, passage_ids, chunk_ids, relation_labels}]->(:Entity)`.
 In LLM extraction mode it additionally creates directed `(:Entity)-[:RELATES {source_id, passage_id, chunk_id, relation, count}]->(:Entity)`.
+When keyword channel is enabled it also creates `(:Keyword)` nodes with `(:Passage)-[:HAS_KEYWORD]->(:Keyword)` and `(:Keyword)-[:KEYWORD_NEAR]->(:Keyword)` edges.
+With `KET_RAG_ENABLED=1` and `GRAPH_ENTITY_EXTRACTOR=llm`, LLM extraction is applied only to KET-selected core passages; periphery passages use rule extraction to reduce indexing time.
 
 For large corpora / GPU stability during embedding, tune:
 - `EMBEDDINGS_BACKEND=ollama|sentence` (default: `ollama` for offline local embeddings)
@@ -188,6 +202,9 @@ Set in `.env`:
 - `GRAPH_RETRIEVER_ENTITY_LIMIT=30` (max graph entities considered per query)
 - `GRAPH_RETRIEVER_PASSAGE_LIMIT=30` (max graph passages before fusion)
 - `GRAPH_RETRIEVER_WEIGHT=0.35` (graph contribution in fusion, base weight is `1 - GRAPH_RETRIEVER_WEIGHT`)
+- `GRAPH_KEYWORD_CHANNEL_ENABLED=1` (enables keyword retrieval channel `G_k`)
+- `GRAPH_KEYWORD_QUERY_LIMIT=40` (max keyword candidates for query)
+- `GRAPH_RETRIEVAL_THETA=0.65` (graph channel split between `G_s` entities and `G_k` keywords)
 
 ## Query the RAG System
 

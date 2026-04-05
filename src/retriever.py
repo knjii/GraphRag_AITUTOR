@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
+from ket_selector import embed_texts_resilient
 from settings import Settings
 from utils import get_logger
 from vectorstore import load_vector_store
@@ -219,6 +220,186 @@ class Neo4jEntityRetriever(BaseRetriever):
                     pass
 
 
+class Neo4jKeywordRetriever(BaseRetriever):
+    neo4j_uri: str
+    neo4j_user: str
+    neo4j_password: str
+    neo4j_database: str = "neo4j"
+    keyword_limit: int = 40
+    passage_limit: int = 30
+    query_candidate_limit: int = 24
+    embedding_enabled: bool = True
+    embedding_batch_size: int = 32
+    settings: Any = None
+
+    def _find_keywords(self, session, candidates: List[str]) -> List[Dict]:
+        if not candidates:
+            return []
+        rows = session.run(
+            """
+            MATCH (k:Keyword)
+            WHERE k.name IN $candidates OR any(c IN $candidates WHERE k.name CONTAINS c)
+            RETURN k.id AS id, k.name AS name, k.embedding AS embedding, k.count AS count
+            ORDER BY coalesce(k.count, 0) DESC
+            LIMIT $keyword_limit
+            """,
+            candidates=candidates,
+            keyword_limit=max(1, int(self.keyword_limit * 3)),
+        ).data()
+        return rows
+
+    @staticmethod
+    def _cosine(a: List[float], b: List[float]) -> float:
+        if not a or not b:
+            return 0.0
+        dim = min(len(a), len(b))
+        if dim <= 0:
+            return 0.0
+        dot = 0.0
+        na = 0.0
+        nb = 0.0
+        for i in range(dim):
+            av = float(a[i])
+            bv = float(b[i])
+            dot += av * bv
+            na += av * av
+            nb += bv * bv
+        if na <= 0 or nb <= 0:
+            return 0.0
+        return dot / ((na ** 0.5) * (nb ** 0.5))
+
+    def _rank_keywords(self, keywords: List[Dict], query: str) -> List[Dict]:
+        if not keywords:
+            return []
+        if not self.embedding_enabled or self.settings is None:
+            return keywords[: max(1, int(self.keyword_limit))]
+
+        query_vecs = embed_texts_resilient(
+            [query],
+            self.settings,
+            batch_size=max(1, int(self.embedding_batch_size)),
+            purpose="graph_keyword_query",
+        )
+        if not query_vecs or not query_vecs[0]:
+            return keywords[: max(1, int(self.keyword_limit))]
+        query_vec = query_vecs[0]
+
+        scored: List[Tuple[float, Dict]] = []
+        for row in keywords:
+            emb = row.get("embedding")
+            if not isinstance(emb, list):
+                scored.append((0.0, row))
+                continue
+            try:
+                kw_vec = [float(x) for x in emb]
+            except Exception:
+                kw_vec = []
+            score = self._cosine(query_vec, kw_vec)
+            scored.append((score, row))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [row for _, row in scored[: max(1, int(self.keyword_limit))]]
+
+    def _find_passages(self, session, keyword_ids: List[str]) -> List[Document]:
+        if not keyword_ids:
+            return []
+        rows = session.run(
+            """
+            UNWIND $keyword_ids AS keyword_id
+            MATCH (p:Passage)-[hk:HAS_KEYWORD]->(k:Keyword {id: keyword_id})
+            WITH p, sum(coalesce(hk.count, 1)) AS score, collect(DISTINCT k.name)[0..6] AS matched_keywords
+            OPTIONAL MATCH (p)-[:NEXT]->(pn:Passage)
+            WITH p, score, matched_keywords, collect(DISTINCT pn)[0..1] AS next_passages
+            RETURN
+              p.text AS text,
+              p.source AS source,
+              p.page AS page,
+              p.chunk_id AS chunk_id,
+              score,
+              matched_keywords,
+              [x IN next_passages WHERE x IS NOT NULL | x.text][0] AS next_text
+            ORDER BY score DESC, p.order_in_source ASC
+            LIMIT $passage_limit
+            """,
+            keyword_ids=keyword_ids,
+            passage_limit=max(1, int(self.passage_limit)),
+        ).data()
+        docs: List[Document] = []
+        for row in rows:
+            text = str(row.get("text") or "").strip()
+            if not text:
+                continue
+            docs.append(
+                Document(
+                    page_content=text,
+                    metadata={
+                        "source": str(row.get("source") or ""),
+                        "page": row.get("page"),
+                        "chunk_id": str(row.get("chunk_id") or ""),
+                        "graph_score": int(row.get("score") or 0),
+                        "graph_matched_keywords": list(row.get("matched_keywords") or []),
+                        "graph_next_text": str(row.get("next_text") or ""),
+                        "retrieval_source": "neo4j_keyword_graph",
+                    },
+                )
+            )
+        return docs
+
+    def _get_relevant_documents(self, query: str, *, run_manager=None) -> List[Document]:
+        if GraphDatabase is None or not self.neo4j_password:
+            return []
+        candidates = _query_candidates(query, self.query_candidate_limit)
+        if not candidates:
+            return []
+        driver = None
+        try:
+            driver = GraphDatabase.driver(
+                self.neo4j_uri,
+                auth=(self.neo4j_user, self.neo4j_password),
+            )
+            with driver.session(database=self.neo4j_database) as session:
+                keywords = self._find_keywords(session, candidates)
+                ranked = self._rank_keywords(keywords, query)
+                keyword_ids = [str(row.get("id") or "") for row in ranked if row.get("id")]
+                return self._find_passages(session, keyword_ids)
+        except Exception as exc:
+            logger.warning("Keyword graph retriever failed (fallback to base retriever): %s", exc)
+            return []
+        finally:
+            if driver is not None:
+                try:
+                    driver.close()
+                except Exception:
+                    pass
+
+
+class ThetaGraphRetriever(BaseRetriever):
+    entity_retriever: BaseRetriever
+    keyword_retriever: BaseRetriever
+    top_k: int = 30
+    theta: float = 0.65
+    rrf_k: int = 60
+
+    def _get_relevant_documents(self, query: str, *, run_manager=None) -> List[Document]:
+        gs_docs = _retrieve(self.entity_retriever, query)
+        gk_docs = _retrieve(self.keyword_retriever, query)
+        theta = max(0.0, min(1.0, float(self.theta)))
+        gk_weight = 1.0 - theta
+        scored: Dict[Tuple[str, str, str, str], float] = {}
+        by_key: Dict[Tuple[str, str, str, str], Document] = {}
+
+        for idx, doc in enumerate(gs_docs):
+            key = _doc_key(doc)
+            scored[key] = scored.get(key, 0.0) + theta / (self.rrf_k + idx + 1)
+            by_key[key] = doc
+        for idx, doc in enumerate(gk_docs):
+            key = _doc_key(doc)
+            scored[key] = scored.get(key, 0.0) + gk_weight / (self.rrf_k + idx + 1)
+            by_key[key] = doc
+
+        ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)
+        return [by_key[key] for key, _ in ranked[: max(1, int(self.top_k))]]
+
+
 class WeightedGraphFusionRetriever(BaseRetriever):
     base_retriever: BaseRetriever
     graph_retriever: BaseRetriever
@@ -319,7 +500,7 @@ def build_retriever(settings: Settings) -> BaseRetriever:
         logger.warning("Graph retriever requested, but NEO4J_PASSWORD is empty. Using base retriever.")
         return base_retriever
 
-    graph_retriever = Neo4jEntityRetriever(
+    entity_retriever = Neo4jEntityRetriever(
         neo4j_uri=settings.neo4j_uri,
         neo4j_user=settings.neo4j_user,
         neo4j_password=settings.neo4j_password,
@@ -329,13 +510,37 @@ def build_retriever(settings: Settings) -> BaseRetriever:
         passage_limit=max(1, int(settings.graph_retriever_passage_limit)),
         query_candidate_limit=max(4, int(settings.graph_retriever_entity_limit)),
     )
+    graph_retriever: BaseRetriever = entity_retriever
+    if bool(settings.graph_keyword_channel_enabled):
+        keyword_retriever = Neo4jKeywordRetriever(
+            neo4j_uri=settings.neo4j_uri,
+            neo4j_user=settings.neo4j_user,
+            neo4j_password=settings.neo4j_password,
+            neo4j_database=settings.neo4j_database,
+            keyword_limit=max(1, int(settings.graph_keyword_query_limit)),
+            passage_limit=max(1, int(settings.graph_retriever_passage_limit)),
+            query_candidate_limit=max(4, int(settings.graph_retriever_entity_limit)),
+            embedding_enabled=True,
+            embedding_batch_size=max(1, int(settings.graph_keyword_embed_batch_size)),
+            settings=settings,
+        )
+        graph_retriever = ThetaGraphRetriever(
+            entity_retriever=entity_retriever,
+            keyword_retriever=keyword_retriever,
+            top_k=max(1, int(settings.graph_retriever_passage_limit)),
+            theta=max(0.0, min(1.0, float(settings.graph_retrieval_theta))),
+            rrf_k=max(1, int(settings.hybrid_rrf_k)),
+        )
+
     graph_weight = max(0.0, float(settings.graph_retriever_weight))
     base_weight = max(0.0, 1.0 - graph_weight)
     logger.info(
-        "Graph retriever enabled (hops=%s, entity_limit=%s, passage_limit=%s, weights=base:%.2f graph:%.2f)",
+        "Graph retriever enabled (hops=%s, entity_limit=%s, passage_limit=%s, keyword_channel=%s, theta=%.2f, weights=base:%.2f graph:%.2f)",
         max(1, int(settings.graph_retriever_hops)),
         max(1, int(settings.graph_retriever_entity_limit)),
         max(1, int(settings.graph_retriever_passage_limit)),
+        bool(settings.graph_keyword_channel_enabled),
+        max(0.0, min(1.0, float(settings.graph_retrieval_theta))),
         base_weight,
         graph_weight,
     )

@@ -11,6 +11,11 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from langchain_core.documents import Document
 
+from ket_selector import (
+    embed_texts_resilient,
+    select_ket_core_passage_ids,
+    split_sentences,
+)
 from settings import Settings
 from utils import chat_with_ollama, get_logger
 
@@ -324,6 +329,7 @@ def _relation_rows(
     entity_min_token_len: int,
     entity_use_bigrams: bool,
     entity_max_bigrams_per_passage: int,
+    llm_core_passage_ids: set[str] | None = None,
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
     mention_rows: List[Dict[str, Any]] = []
     cooc_map: Dict[tuple[str, str, str], Dict[str, Any]] = {}
@@ -333,6 +339,8 @@ def _relation_rows(
     llm_success = 0
     llm_entities_total = 0
     llm_relations_total = 0
+    llm_applied_passages = 0
+    rule_applied_passages = 0
     total_passages = len(passage_rows)
     progress_every = max(1, int(getattr(settings, "graph_llm_progress_every", 25)))
     started_at = time.monotonic()
@@ -341,7 +349,12 @@ def _relation_rows(
         entities: Dict[str, int] = {}
         llm_relations: List[Tuple[str, str, str]] = []
 
-        if use_llm_extractor:
+        apply_llm = bool(use_llm_extractor)
+        if apply_llm and llm_core_passage_ids is not None:
+            apply_llm = str(row.get("id", "")) in llm_core_passage_ids
+
+        if apply_llm:
+            llm_applied_passages += 1
             try:
                 entities, llm_relations = _extract_entities_and_relations_llm(
                     row.get("text", ""),
@@ -359,6 +372,7 @@ def _relation_rows(
                 if not settings.graph_llm_fallback_to_rule:
                     entities = {}
                 else:
+                    rule_applied_passages += 1
                     entities = _extract_entities(
                         row.get("text", ""),
                         max_entities_per_passage,
@@ -383,6 +397,7 @@ def _relation_rows(
                     elapsed,
                 )
         else:
+            rule_applied_passages += 1
             entities = _extract_entities(
                 row.get("text", ""),
                 max_entities_per_passage,
@@ -505,13 +520,224 @@ def _relation_rows(
             llm_success,
             llm_failures,
         )
+    ket_enabled = llm_core_passage_ids is not None
     relation_stats = {
         "extractor_mode": "llm" if use_llm_extractor else "rule",
         "llm_passages_success": int(llm_success),
         "llm_passages_failed": int(llm_failures),
+        "llm_applied_passages": int(llm_applied_passages),
+        "rule_applied_passages": int(rule_applied_passages),
+        "ket_core_passages": int(len(llm_core_passage_ids or set())) if ket_enabled else 0,
+        "ket_periphery_passages": int(max(0, total_passages - len(llm_core_passage_ids or set())))
+        if ket_enabled
+        else 0,
         "relates": int(len(relates_rows)),
     }
     return mention_rows, cooccurs_rows, relates_rows, relation_stats
+
+
+def _normalize_for_match(text: str) -> str:
+    return str(text or "").lower().replace("ё", "е")
+
+
+def _keyword_rows(
+    passage_rows: List[Dict[str, Any]],
+    mention_rows: List[Dict[str, Any]],
+    *,
+    settings: Settings,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
+    if not bool(settings.graph_keyword_channel_enabled):
+        return [], [], [], {"keywords": 0, "has_keyword": 0, "keyword_near": 0, "embedded_keywords": 0}
+    if not mention_rows:
+        return [], [], [], {"keywords": 0, "has_keyword": 0, "keyword_near": 0, "embedded_keywords": 0}
+
+    min_count = max(1, int(settings.graph_keyword_min_count))
+    max_keywords = max(1, int(settings.graph_keyword_max_keywords))
+    max_sentences_per_keyword = max(1, int(settings.graph_keyword_max_sentences_per_keyword))
+    embedding_dims = max(0, int(settings.graph_keyword_embedding_dims))
+    keyword_neighbor_cap = max(0, int(settings.graph_keyword_neighbors_per_passage))
+
+    by_keyword_mentions: Dict[str, List[Dict[str, Any]]] = {}
+    total_count: Counter[str] = Counter()
+    passage_count: Dict[str, set[str]] = {}
+    for row in mention_rows:
+        keyword = str(row.get("entity_name", "") or "").strip().lower()
+        if not keyword:
+            continue
+        by_keyword_mentions.setdefault(keyword, []).append(row)
+        total_count[keyword] += int(row.get("count", 1) or 1)
+        passage_count.setdefault(keyword, set()).add(str(row.get("passage_id", "")))
+
+    candidates = [
+        (name, int(total_count[name]), len(passage_count.get(name, set())))
+        for name in by_keyword_mentions.keys()
+        if int(total_count.get(name, 0)) >= min_count
+    ]
+    candidates.sort(key=lambda item: (item[1], item[2], item[0]), reverse=True)
+    selected = candidates[:max_keywords]
+    selected_names = {name for name, _, _ in selected}
+    if not selected_names:
+        return [], [], [], {"keywords": 0, "has_keyword": 0, "keyword_near": 0, "embedded_keywords": 0}
+
+    logger.info(
+        "Keyword channel start: selected_keywords=%s total_mentions=%s",
+        len(selected_names),
+        len(mention_rows),
+    )
+
+    passage_by_id = {str(row.get("id", "")): row for row in passage_rows}
+    keyword_sentences: Dict[str, List[str]] = {}
+    for keyword in selected_names:
+        normalized_kw = _normalize_for_match(keyword)
+        seen_sentences: set[str] = set()
+        bucket: List[str] = []
+        for mention in by_keyword_mentions.get(keyword, []):
+            passage_id = str(mention.get("passage_id", ""))
+            text = str((passage_by_id.get(passage_id) or {}).get("text", "") or "")
+            if not text:
+                continue
+            for sentence in split_sentences(text, max_sentences=256):
+                normalized_sentence = _normalize_for_match(sentence)
+                if normalized_kw not in normalized_sentence:
+                    continue
+                if sentence in seen_sentences:
+                    continue
+                seen_sentences.add(sentence)
+                bucket.append(sentence)
+                if len(bucket) >= max_sentences_per_keyword:
+                    break
+            if len(bucket) >= max_sentences_per_keyword:
+                break
+        keyword_sentences[keyword] = bucket
+
+    all_sentences: List[str] = []
+    for sents in keyword_sentences.values():
+        all_sentences.extend(sents)
+    unique_sentences = list(dict.fromkeys(all_sentences))
+    sentence_embeddings: Dict[str, List[float]] = {}
+    if unique_sentences:
+        logger.info(
+            "Keyword channel embedding sentences: %s (batch=%s)",
+            len(unique_sentences),
+            max(1, int(settings.graph_keyword_embed_batch_size)),
+        )
+        vectors = embed_texts_resilient(
+            unique_sentences,
+            settings,
+            batch_size=max(1, int(settings.graph_keyword_embed_batch_size)),
+            purpose="keyword_embeddings",
+        )
+        if vectors is not None and len(vectors) == len(unique_sentences):
+            for sentence, vec in zip(unique_sentences, vectors):
+                sentence_embeddings[sentence] = vec
+
+    ts = _now_utc_iso()
+    keyword_rows: List[Dict[str, Any]] = []
+    has_keyword_rows: List[Dict[str, Any]] = []
+    keyword_id_by_name: Dict[str, str] = {}
+    embedded_keywords = 0
+
+    for keyword_name, kw_total_count, kw_passage_count in selected:
+        keyword_id = hashlib.sha1(keyword_name.encode("utf-8", errors="ignore")).hexdigest()
+        keyword_id_by_name[keyword_name] = keyword_id
+        vecs: List[List[float]] = []
+        for sent in keyword_sentences.get(keyword_name, []):
+            vec = sentence_embeddings.get(sent)
+            if vec:
+                vecs.append(vec)
+        keyword_embedding: List[float] = []
+        if vecs:
+            dim = min(len(v) for v in vecs)
+            if dim > 0:
+                if embedding_dims > 0:
+                    dim = min(dim, embedding_dims)
+                accum = [0.0] * dim
+                for vec in vecs:
+                    for i in range(dim):
+                        accum[i] += float(vec[i])
+                scale = 1.0 / float(len(vecs))
+                keyword_embedding = [round(val * scale, 6) for val in accum]
+                embedded_keywords += 1
+        keyword_rows.append(
+            {
+                "id": keyword_id,
+                "name": keyword_name,
+                "count": int(kw_total_count),
+                "passage_count": int(kw_passage_count),
+                "embedding": keyword_embedding,
+                "created_at": ts,
+                "updated_at": ts,
+            }
+        )
+        for mention in by_keyword_mentions.get(keyword_name, []):
+            has_keyword_rows.append(
+                {
+                    "passage_id": str(mention.get("passage_id", "")),
+                    "source_id": str(mention.get("source_id", "")),
+                    "chunk_id": str(mention.get("chunk_id", "")),
+                    "keyword_id": keyword_id,
+                    "count": int(mention.get("count", 1) or 1),
+                    "updated_at": ts,
+                }
+            )
+
+    near_map: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    mentions_by_passage: Dict[str, List[Dict[str, Any]]] = {}
+    for row in has_keyword_rows:
+        mentions_by_passage.setdefault(str(row["passage_id"]), []).append(row)
+    for passage_id, rows in mentions_by_passage.items():
+        if len(rows) < 2:
+            continue
+        row0 = rows[0]
+        source_id = str(row0.get("source_id", ""))
+        chunk_id = str(row0.get("chunk_id", ""))
+        local_pairs = 0
+        for a, b in combinations(sorted({str(r.get("keyword_id", "")) for r in rows}), 2):
+            key = (source_id, a, b)
+            bucket = near_map.setdefault(
+                key,
+                {
+                    "weight": 0,
+                    "passage_ids": set(),
+                    "chunk_ids": set(),
+                },
+            )
+            bucket["weight"] += 1
+            bucket["passage_ids"].add(passage_id)
+            if chunk_id:
+                bucket["chunk_ids"].add(chunk_id)
+            local_pairs += 1
+            if keyword_neighbor_cap > 0 and local_pairs >= keyword_neighbor_cap:
+                break
+
+    keyword_near_rows: List[Dict[str, Any]] = []
+    for (source_id, k1, k2), payload in near_map.items():
+        keyword_near_rows.append(
+            {
+                "source_id": source_id,
+                "keyword1_id": k1,
+                "keyword2_id": k2,
+                "weight": int(payload["weight"]),
+                "passage_ids": sorted(payload["passage_ids"]),
+                "chunk_ids": sorted(payload["chunk_ids"]),
+                "updated_at": ts,
+            }
+        )
+
+    stats = {
+        "keywords": int(len(keyword_rows)),
+        "has_keyword": int(len(has_keyword_rows)),
+        "keyword_near": int(len(keyword_near_rows)),
+        "embedded_keywords": int(embedded_keywords),
+    }
+    logger.info(
+        "Keyword channel done: keywords=%s has_keyword=%s keyword_near=%s embedded_keywords=%s",
+        stats["keywords"],
+        stats["has_keyword"],
+        stats["keyword_near"],
+        stats["embedded_keywords"],
+    )
+    return keyword_rows, has_keyword_rows, keyword_near_rows, stats
 
 
 class Neo4jGraphClient:
@@ -549,8 +775,10 @@ class Neo4jGraphClient:
         queries = [
             "CREATE CONSTRAINT passage_id IF NOT EXISTS FOR (p:Passage) REQUIRE p.id IS UNIQUE",
             "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
+            "CREATE CONSTRAINT keyword_id IF NOT EXISTS FOR (k:Keyword) REQUIRE k.id IS UNIQUE",
             "CREATE CONSTRAINT source_id IF NOT EXISTS FOR (s:Source) REQUIRE s.id IS UNIQUE",
             "CREATE INDEX entity_name IF NOT EXISTS FOR (e:Entity) ON (e.name)",
+            "CREATE INDEX keyword_name IF NOT EXISTS FOR (k:Keyword) ON (k.name)",
             "CREATE INDEX passage_source IF NOT EXISTS FOR (p:Passage) ON (p.source)",
         ]
         with self._driver.session(database=self.settings.neo4j_database) as session:
@@ -564,21 +792,62 @@ class Neo4jGraphClient:
                 "mentions": 0,
                 "co_occurs": 0,
                 "relates": 0,
+                "keywords": 0,
+                "has_keyword": 0,
+                "keyword_near": 0,
+                "embedded_keywords": 0,
                 "extractor_mode": str(self.settings.graph_entity_extractor or "rule"),
                 "llm_passages_success": 0,
                 "llm_passages_failed": 0,
+                "llm_applied_passages": 0,
+                "rule_applied_passages": 0,
+                "ket_enabled": False,
+                "ket_core_passages": 0,
+                "ket_periphery_passages": 0,
             }
+        logger.info("Neo4j upsert stage start: docs=%s", len(docs))
         rows = _passage_rows(docs)
+        logger.info("Neo4j passage rows prepared: %s", len(rows))
         mention_rows: List[Dict[str, Any]] = []
         cooccurs_rows: List[Dict[str, Any]] = []
         relates_rows: List[Dict[str, Any]] = []
+        keyword_rows: List[Dict[str, Any]] = []
+        has_keyword_rows: List[Dict[str, Any]] = []
+        keyword_near_rows: List[Dict[str, Any]] = []
+        llm_core_passage_ids: set[str] | None = None
+        ket_report: Dict[str, Any] = {
+            "enabled": False,
+            "selected_core": 0,
+            "selected_ratio": 0.0,
+            "total_passages": int(len(rows)),
+        }
+        use_llm_extractor = str(self.settings.graph_entity_extractor).strip().lower() == "llm"
+        if self.settings.ket_rag_enabled and use_llm_extractor and self.settings.graph_relations_enabled:
+            llm_core_passage_ids, ket_report = select_ket_core_passage_ids(rows, self.settings)
+            logger.info(
+                "KET mode for graph extraction: core=%s/%s (semantic=%s, beta=%.3f)",
+                int(ket_report.get("selected_core", 0)),
+                int(ket_report.get("total_passages", len(rows))),
+                bool(ket_report.get("semantic_available", False)),
+                float(getattr(self.settings, "ket_beta", 0.2)),
+            )
+
         relation_stats: Dict[str, Any] = {
             "extractor_mode": str(self.settings.graph_entity_extractor or "rule"),
             "llm_passages_success": 0,
             "llm_passages_failed": 0,
+            "llm_applied_passages": 0,
+            "rule_applied_passages": 0,
+            "ket_core_passages": int(len(llm_core_passage_ids or set())),
+            "ket_periphery_passages": int(max(0, len(rows) - len(llm_core_passage_ids or set()))),
             "relates": 0,
         }
         if self.settings.graph_relations_enabled:
+            logger.info(
+                "Neo4j relation extraction start: extractor=%s ket_enabled=%s",
+                str(self.settings.graph_entity_extractor or "rule"),
+                bool(self.settings.ket_rag_enabled),
+            )
             max_entities_per_passage = max(1, int(self.settings.graph_entity_max_per_passage))
             max_cooccurs_per_passage = max(1, int(self.settings.graph_cooccurs_max_per_passage))
             max_cooccurs_provenance_per_edge = max(
@@ -598,7 +867,21 @@ class Neo4jGraphClient:
                 entity_min_token_len=entity_min_token_len,
                 entity_use_bigrams=entity_use_bigrams,
                 entity_max_bigrams_per_passage=entity_max_bigrams_per_passage,
+                llm_core_passage_ids=llm_core_passage_ids,
             )
+            logger.info(
+                "Neo4j relation extraction done: mentions=%s co_occurs=%s relates=%s",
+                len(mention_rows),
+                len(cooccurs_rows),
+                len(relates_rows),
+            )
+            keyword_rows, has_keyword_rows, keyword_near_rows, keyword_stats = _keyword_rows(
+                rows,
+                mention_rows,
+                settings=self.settings,
+            )
+        else:
+            keyword_stats = {"keywords": 0, "has_keyword": 0, "keyword_near": 0, "embedded_keywords": 0}
 
         passage_query = """
         UNWIND $rows AS row
@@ -653,8 +936,41 @@ class Neo4jGraphClient:
             r.count = row.count,
             r.updated_at = row.updated_at
         """
+        keyword_query = """
+        UNWIND $rows AS row
+        MERGE (k:Keyword {id: row.id})
+        ON CREATE SET k.created_at = row.created_at
+        SET k.name = row.name,
+            k.count = row.count,
+            k.passage_count = row.passage_count,
+            k.embedding = row.embedding,
+            k.updated_at = row.updated_at
+        """
+        has_keyword_query = """
+        UNWIND $rows AS row
+        MATCH (p:Passage {id: row.passage_id})
+        MATCH (k:Keyword {id: row.keyword_id})
+        MERGE (p)-[r:HAS_KEYWORD]->(k)
+        SET r.count = row.count,
+            r.source_id = row.source_id,
+            r.chunk_id = row.chunk_id,
+            r.updated_at = row.updated_at
+        """
+        keyword_near_query = """
+        UNWIND $rows AS row
+        MATCH (k1:Keyword {id: row.keyword1_id})
+        MATCH (k2:Keyword {id: row.keyword2_id})
+        MERGE (k1)-[r:KEYWORD_NEAR {source_id: row.source_id}]->(k2)
+        SET r.weight = row.weight,
+            r.passage_ids = row.passage_ids,
+            r.chunk_ids = row.chunk_ids,
+            r.updated_at = row.updated_at
+        """
         with self._driver.session(database=self.settings.neo4j_database) as session:
+            logger.info("Neo4j write query: passages (%s rows)", len(rows))
             session.run(passage_query, rows=rows).consume()
+            logger.info("Neo4j write query done: passages")
+            logger.info("Neo4j write query: NEXT edges")
             session.run(
                 """
                 UNWIND range(0, size($rows) - 2) AS i
@@ -666,26 +982,59 @@ class Neo4jGraphClient:
                 """,
                 rows=rows,
             ).consume()
+            logger.info("Neo4j write query done: NEXT edges")
             if mention_rows:
+                logger.info("Neo4j write query: MENTIONS (%s rows)", len(mention_rows))
                 session.run(mentions_query, rows=mention_rows).consume()
+                logger.info("Neo4j write query done: MENTIONS")
             if cooccurs_rows:
+                logger.info("Neo4j write query: CO_OCCURS (%s rows)", len(cooccurs_rows))
                 session.run(cooccurs_query, rows=cooccurs_rows).consume()
+                logger.info("Neo4j write query done: CO_OCCURS")
             if relates_rows:
+                logger.info("Neo4j write query: RELATES (%s rows)", len(relates_rows))
                 session.run(relates_query, rows=relates_rows).consume()
+                logger.info("Neo4j write query done: RELATES")
+            if keyword_rows:
+                logger.info("Neo4j write query: KEYWORD nodes (%s rows)", len(keyword_rows))
+                session.run(keyword_query, rows=keyword_rows).consume()
+                logger.info("Neo4j write query done: KEYWORD nodes")
+            if has_keyword_rows:
+                logger.info("Neo4j write query: HAS_KEYWORD (%s rows)", len(has_keyword_rows))
+                session.run(has_keyword_query, rows=has_keyword_rows).consume()
+                logger.info("Neo4j write query done: HAS_KEYWORD")
+            if keyword_near_rows:
+                logger.info("Neo4j write query: KEYWORD_NEAR (%s rows)", len(keyword_near_rows))
+                session.run(keyword_near_query, rows=keyword_near_rows).consume()
+                logger.info("Neo4j write query done: KEYWORD_NEAR")
         logger.info(
-            "Neo4j relations upsert: mentions=%s co_occurs=%s relates=%s",
+            "Neo4j relations upsert: mentions=%s co_occurs=%s relates=%s keywords=%s has_keyword=%s keyword_near=%s",
             len(mention_rows),
             len(cooccurs_rows),
             len(relates_rows),
+            len(keyword_rows),
+            len(has_keyword_rows),
+            len(keyword_near_rows),
         )
         return {
             "passages": int(len(rows)),
             "mentions": int(len(mention_rows)),
             "co_occurs": int(len(cooccurs_rows)),
             "relates": int(len(relates_rows)),
+            "keywords": int(keyword_stats.get("keywords", 0)),
+            "has_keyword": int(keyword_stats.get("has_keyword", 0)),
+            "keyword_near": int(keyword_stats.get("keyword_near", 0)),
+            "embedded_keywords": int(keyword_stats.get("embedded_keywords", 0)),
             "extractor_mode": str(relation_stats.get("extractor_mode") or "rule"),
             "llm_passages_success": int(relation_stats.get("llm_passages_success", 0)),
             "llm_passages_failed": int(relation_stats.get("llm_passages_failed", 0)),
+            "llm_applied_passages": int(relation_stats.get("llm_applied_passages", 0)),
+            "rule_applied_passages": int(relation_stats.get("rule_applied_passages", 0)),
+            "ket_enabled": bool(ket_report.get("enabled", False)),
+            "ket_core_passages": int(relation_stats.get("ket_core_passages", 0)),
+            "ket_periphery_passages": int(relation_stats.get("ket_periphery_passages", 0)),
+            "ket_selected_ratio": float(ket_report.get("selected_ratio", 0.0)),
+            "ket_semantic_available": bool(ket_report.get("semantic_available", False)),
         }
 
     def upsert_passages(self, docs: List[Document]) -> int:
@@ -701,9 +1050,20 @@ def write_passages_to_graph_stats(docs: List[Document], settings: Settings) -> D
             "mentions": 0,
             "co_occurs": 0,
             "relates": 0,
+            "keywords": 0,
+            "has_keyword": 0,
+            "keyword_near": 0,
+            "embedded_keywords": 0,
             "extractor_mode": str(settings.graph_entity_extractor or "rule"),
             "llm_passages_success": 0,
             "llm_passages_failed": 0,
+            "llm_applied_passages": 0,
+            "rule_applied_passages": 0,
+            "ket_enabled": False,
+            "ket_core_passages": 0,
+            "ket_periphery_passages": 0,
+            "ket_selected_ratio": 0.0,
+            "ket_semantic_available": False,
         }
 
     client = Neo4jGraphClient(settings)
@@ -714,9 +1074,20 @@ def write_passages_to_graph_stats(docs: List[Document], settings: Settings) -> D
             "mentions": 0,
             "co_occurs": 0,
             "relates": 0,
+            "keywords": 0,
+            "has_keyword": 0,
+            "keyword_near": 0,
+            "embedded_keywords": 0,
             "extractor_mode": str(settings.graph_entity_extractor or "rule"),
             "llm_passages_success": 0,
             "llm_passages_failed": 0,
+            "llm_applied_passages": 0,
+            "rule_applied_passages": 0,
+            "ket_enabled": False,
+            "ket_core_passages": 0,
+            "ket_periphery_passages": 0,
+            "ket_selected_ratio": 0.0,
+            "ket_semantic_available": False,
         }
     try:
         client.connect()
