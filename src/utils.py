@@ -27,7 +27,10 @@ def chat_with_ollama(
     options: dict | None = None,
     base_url: str | None = None,
     settings: Settings | None = None,
-) -> str | None:
+    response_format: dict | str | None = None,
+    think: bool | None = None,
+    return_raw: bool = False,
+) -> str | dict | None:
     """
     Минимальный клиент к Ollama, совместимый с chunker.py.
     Возвращает текст ответа или None при turn_off=True.
@@ -57,20 +60,32 @@ def chat_with_ollama(
                 "восстановить себе материал этой картинки. Важно не включать избыточные детали. "
                 "Не употребляй фразы по типу \"на картинке представлено\""
             )
-        response = client.chat(
-            model=model,
-            messages=[{"role": "user", "content": message, "images": [img_path]}],
-            options=options,
-        )
+        chat_kwargs = {
+            "model": model,
+            "messages": [{"role": "user", "content": message, "images": [img_path]}],
+            "options": options,
+        }
+        if response_format is not None:
+            chat_kwargs["format"] = response_format
+        if think is not None:
+            chat_kwargs["think"] = think
+        response = client.chat(**chat_kwargs)
     else:
         if message == "default":
             raise ValueError("Промпт для работы с текстом не задан")
-        response = client.chat(
-            model=model,
-            messages=[{"role": "user", "content": message}],
-            options=options,
-        )
+        chat_kwargs = {
+            "model": model,
+            "messages": [{"role": "user", "content": message}],
+            "options": options,
+        }
+        if response_format is not None:
+            chat_kwargs["format"] = response_format
+        if think is not None:
+            chat_kwargs["think"] = think
+        response = client.chat(**chat_kwargs)
 
+    if return_raw:
+        return response
     return response["message"]["content"]
 
 

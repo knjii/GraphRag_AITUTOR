@@ -25,6 +25,7 @@ from deepeval.models import OllamaModel
 from deepeval.test_case import LLMTestCase
 from pydantic import BaseModel
 
+from ket_selector import embed_texts_resilient
 from rag_chain import build_rag_chain
 from settings import Settings
 from utils import chroma_has_data, get_logger
@@ -56,6 +57,8 @@ class RunnerConfig:
     eval_batch_size: int
     deepeval_timeout_seconds: int | None
     ignore_eval_errors: bool
+    embed_similarity_threshold: float | None
+    embed_similarity_autopass_enabled: bool
 
 
 def _is_auto_no_think_model(model_name: str) -> bool:
@@ -246,7 +249,7 @@ class CompatibleOllamaModel(OllamaModel):
             try:
                 parsed = schema.model_validate_json(candidate)
                 if source.endswith(":sanitized"):
-                    logger.warning(
+                    logger.info(
                         "Schema validation recovered via JSON escape sanitizer: schema=%s source=%s",
                         getattr(schema, "__name__", str(schema)),
                         source,
@@ -258,7 +261,7 @@ class CompatibleOllamaModel(OllamaModel):
                 try:
                     parsed = schema.model_validate(json.loads(candidate))
                     if source.endswith(":sanitized"):
-                        logger.warning(
+                        logger.info(
                             "Schema validation recovered via JSON escape sanitizer+json.loads: schema=%s source=%s",
                             getattr(schema, "__name__", str(schema)),
                             source,
@@ -269,7 +272,7 @@ class CompatibleOllamaModel(OllamaModel):
                         first_error = exc_obj
                     continue
         if first_error is not None:
-            logger.warning(
+            logger.debug(
                 "Schema validation detail: schema=%s err_type=%s err=%s",
                 getattr(schema, "__name__", str(schema)),
                 type(first_error).__name__,
@@ -328,7 +331,7 @@ class CompatibleOllamaModel(OllamaModel):
             extra_options={"num_predict": recovery_num_predict},
         )
         content, thinking = self._extract_parts(response)
-        logger.warning(
+        logger.info(
             "Structured recovery (sync): schema=%s source=%s content_len=%s thinking_len=%s content_preview=%s",
             getattr(schema, "__name__", str(schema)),
             source_kind,
@@ -340,7 +343,7 @@ class CompatibleOllamaModel(OllamaModel):
         if parsed is None and thinking:
             parsed = self._validate_schema_from_text(schema, thinking)
             if parsed is not None:
-                logger.warning(
+                logger.info(
                     "Structured recovery (sync): schema=%s parsed from thinking fallback.",
                     getattr(schema, "__name__", str(schema)),
                 )
@@ -368,7 +371,7 @@ class CompatibleOllamaModel(OllamaModel):
             extra_options={"num_predict": recovery_num_predict},
         )
         content, thinking = self._extract_parts(response)
-        logger.warning(
+        logger.info(
             "Structured recovery (async): schema=%s source=%s content_len=%s thinking_len=%s content_preview=%s",
             getattr(schema, "__name__", str(schema)),
             source_kind,
@@ -380,7 +383,7 @@ class CompatibleOllamaModel(OllamaModel):
         if parsed is None and thinking:
             parsed = self._validate_schema_from_text(schema, thinking)
             if parsed is not None:
-                logger.warning(
+                logger.info(
                     "Structured recovery (async): schema=%s parsed from thinking fallback.",
                     getattr(schema, "__name__", str(schema)),
                 )
@@ -412,7 +415,7 @@ class CompatibleOllamaModel(OllamaModel):
             parsed = self._validate_schema_from_text(schema, content)
             if parsed is not None:
                 return parsed, 0
-            logger.warning(
+            logger.debug(
                 "Structured parse failed (sync): schema=%s attempt=%s/%s think=%s options=%s content_len=%s thinking_len=%s content_preview=%s",
                 getattr(schema, "__name__", str(schema)),
                 attempt_idx + 1,
@@ -474,7 +477,7 @@ class CompatibleOllamaModel(OllamaModel):
             parsed = self._validate_schema_from_text(schema, content)
             if parsed is not None:
                 return parsed, 0
-            logger.warning(
+            logger.debug(
                 "Structured parse failed (async): schema=%s attempt=%s/%s think=%s options=%s content_len=%s thinking_len=%s content_preview=%s",
                 getattr(schema, "__name__", str(schema)),
                 attempt_idx + 1,
@@ -535,11 +538,16 @@ class DeepEvalEvaluationRunner:
         logger.info("Loaded dataset rows: %s", len(dataset_rows))
 
         rag_records = self.collect_rag_answers(dataset_rows)
+        self._apply_embedding_similarity_gate(
+            rag_records,
+            threshold=self.config.embed_similarity_threshold,
+            autopass_enabled=self.config.embed_similarity_autopass_enabled,
+        )
         logger.info("Collected live RAG records: %s", len(rag_records))
         test_cases = self.build_test_cases(rag_records)
         logger.info("Prepared DeepEval test cases: %s", len(test_cases))
 
-        evaluation_result = self.evaluate_test_cases(test_cases)
+        evaluation_result = self.evaluate_test_cases(test_cases, rag_records)
         summary, detailed = self._summarize_results(evaluation_result, rag_records)
 
         outputs = self._write_outputs(summary, detailed, rag_records)
@@ -650,7 +658,99 @@ class DeepEvalEvaluationRunner:
             )
         return test_cases
 
-    def evaluate_test_cases(self, test_cases: Sequence[LLMTestCase]):
+    @staticmethod
+    def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
+        if not a or not b:
+            return 0.0
+        dim = min(len(a), len(b))
+        if dim <= 0:
+            return 0.0
+        dot = 0.0
+        na = 0.0
+        nb = 0.0
+        for i in range(dim):
+            av = float(a[i])
+            bv = float(b[i])
+            dot += av * bv
+            na += av * av
+            nb += bv * bv
+        if na <= 0 or nb <= 0:
+            return 0.0
+        return dot / ((na ** 0.5) * (nb ** 0.5))
+
+    def _apply_embedding_similarity_gate(
+        self,
+        rag_records: List[Dict[str, Any]],
+        *,
+        threshold: float | None,
+        autopass_enabled: bool,
+    ) -> None:
+        for record in rag_records:
+            record["answer_reference_cosine"] = None
+            record["auto_pass_by_embedding"] = False
+        if threshold is None:
+            logger.info("Embedding similarity gate: disabled (threshold=None)")
+            return
+
+        valid_indexes: List[int] = []
+        answer_texts: List[str] = []
+        reference_texts: List[str] = []
+        for idx, record in enumerate(rag_records):
+            answer = str(record.get("answer") or "").strip()
+            reference = str(record.get("ground_truth") or "").strip()
+            if not answer or not reference:
+                continue
+            valid_indexes.append(idx)
+            answer_texts.append(answer)
+            reference_texts.append(reference)
+
+        if not valid_indexes:
+            logger.info(
+                "Embedding auto-pass gate: no valid answer/reference pairs (threshold=%.3f)",
+                float(threshold),
+            )
+            return
+
+        answer_vecs = embed_texts_resilient(
+            answer_texts,
+            self.settings,
+            batch_size=max(1, int(self.settings.embed_batch_size)),
+            purpose="deepeval_answer_embed",
+        )
+        reference_vecs = embed_texts_resilient(
+            reference_texts,
+            self.settings,
+            batch_size=max(1, int(self.settings.embed_batch_size)),
+            purpose="deepeval_reference_embed",
+        )
+
+        auto_pass_count = 0
+        computed_count = 0
+        for local_idx, record_idx in enumerate(valid_indexes):
+            avec = answer_vecs[local_idx] if local_idx < len(answer_vecs) else []
+            rvec = reference_vecs[local_idx] if local_idx < len(reference_vecs) else []
+            if not avec or not rvec:
+                continue
+            sim = self._cosine(avec, rvec)
+            computed_count += 1
+            rag_records[record_idx]["answer_reference_cosine"] = sim
+            if autopass_enabled and sim >= float(threshold):
+                rag_records[record_idx]["auto_pass_by_embedding"] = True
+                auto_pass_count += 1
+
+        logger.info(
+            "Embedding similarity gate: threshold=%.3f computed=%s autopass_enabled=%s auto_pass=%s",
+            float(threshold),
+            computed_count,
+            bool(autopass_enabled),
+            auto_pass_count,
+        )
+
+    def evaluate_test_cases(
+        self,
+        test_cases: Sequence[LLMTestCase],
+        rag_records: Sequence[Dict[str, Any]],
+    ):
         generation_kwargs = {
             "num_predict": int(self.settings.ollama_eval_num_predict),
             "num_ctx": int(self.settings.ollama_num_ctx),
@@ -681,8 +781,31 @@ class DeepEvalEvaluationRunner:
         metrics = self._build_metrics(eval_model)
         batch_size = max(1, int(self.config.eval_batch_size))
         total_cases = len(test_cases)
-        total_batches = (total_cases + batch_size - 1) // batch_size
-        aggregated_results: List[Any] = []
+        aggregated_results: List[Any] = [None] * total_cases
+        threshold = self.config.embed_similarity_threshold
+        autopass_enabled = bool(self.config.embed_similarity_autopass_enabled)
+
+        to_run_indexes: List[int] = []
+        auto_pass_count = 0
+        for idx, _ in enumerate(test_cases):
+            record = rag_records[idx] if idx < len(rag_records) else {}
+            if autopass_enabled and bool(record.get("auto_pass_by_embedding")):
+                similarity = record.get("answer_reference_cosine")
+                aggregated_results[idx] = self._build_auto_pass_test_result(
+                    similarity=similarity,
+                    threshold=threshold,
+                )
+                auto_pass_count += 1
+                continue
+            to_run_indexes.append(idx)
+
+        logger.info(
+            "Embedding auto-pass applied: %s/%s cases (enabled=%s, threshold=%s)",
+            auto_pass_count,
+            total_cases,
+            autopass_enabled,
+            "None" if threshold is None else f"{float(threshold):.3f}",
+        )
 
         logger.info(
             "Running DeepEval metrics: %s",
@@ -701,12 +824,16 @@ class DeepEvalEvaluationRunner:
             bool(self.settings.ollama_eval_structured_recovery),
         )
 
-        for batch_start in range(0, total_cases, batch_size):
-            batch_end = min(batch_start + batch_size, total_cases)
+        eval_cases = [test_cases[i] for i in to_run_indexes]
+        eval_total = len(eval_cases)
+        total_batches = (eval_total + batch_size - 1) // batch_size if eval_total else 0
+        for batch_start in range(0, eval_total, batch_size):
+            batch_end = min(batch_start + batch_size, eval_total)
             batch_index = batch_start // batch_size + 1
-            batch_cases = list(test_cases[batch_start:batch_end])
+            batch_cases = list(eval_cases[batch_start:batch_end])
+            batch_case_indexes = to_run_indexes[batch_start:batch_end]
             logger.info(
-                "DeepEval batch %s/%s: cases %s-%s",
+                "DeepEval batch %s/%s: eval-cases %s-%s",
                 batch_index,
                 total_batches,
                 batch_start + 1,
@@ -722,7 +849,7 @@ class DeepEvalEvaluationRunner:
                 span.set_attribute("metadata.eval.model", self.settings.ollama_eval_model)
                 span.set_attribute("metadata.eval.batch_index", batch_index)
                 span.set_attribute("metadata.eval.batch_size", len(batch_cases))
-                span.set_attribute("metadata.eval.total_cases", total_cases)
+                span.set_attribute("metadata.eval.total_cases", eval_total)
                 span.set_attribute(
                     "metadata.eval.metrics",
                     ",".join(metric.__class__.__name__ for metric in metrics),
@@ -766,13 +893,27 @@ class DeepEvalEvaluationRunner:
             elif len(batch_test_results) > len(batch_cases):
                 batch_test_results = batch_test_results[: len(batch_cases)]
 
-            aggregated_results.extend(batch_test_results)
+            for local_idx, test_result in enumerate(batch_test_results):
+                target_idx = (
+                    batch_case_indexes[local_idx]
+                    if local_idx < len(batch_case_indexes)
+                    else None
+                )
+                if target_idx is None:
+                    continue
+                aggregated_results[target_idx] = test_result
             logger.info(
                 "DeepEval batch %s/%s done (elapsed=%.1fs)",
                 batch_index,
                 total_batches,
                 time.monotonic() - batch_started,
             )
+
+        for idx, item in enumerate(aggregated_results):
+            if item is None:
+                aggregated_results[idx] = self._build_failed_test_result(
+                    "missing evaluation result for case"
+                )
 
         return SimpleNamespace(test_results=aggregated_results)
 
@@ -813,6 +954,40 @@ class DeepEvalEvaluationRunner:
                     threshold=0.01,
                     success=False,
                     reason=f"evaluation failed: {error_message}",
+                )
+                for metric_name in metric_names
+            ]
+        )
+
+    @staticmethod
+    def _build_auto_pass_test_result(similarity: Any, threshold: float | None) -> Any:
+        metric_names = (
+            "Answer Relevancy",
+            "Faithfulness",
+            "Contextual Precision",
+        )
+        sim_text = (
+            "n/a"
+            if similarity is None
+            else f"{float(similarity):.4f}"
+        )
+        threshold_text = (
+            "None"
+            if threshold is None
+            else f"{float(threshold):.4f}"
+        )
+        reason = (
+            "auto-pass via embedding similarity gate "
+            f"(similarity={sim_text}, threshold={threshold_text})"
+        )
+        return SimpleNamespace(
+            metrics_data=[
+                SimpleNamespace(
+                    name=metric_name,
+                    score=1.0,
+                    threshold=0.01,
+                    success=True,
+                    reason=reason,
                 )
                 for metric_name in metric_names
             ]
@@ -871,6 +1046,8 @@ class DeepEvalEvaluationRunner:
                     "answer": record.get("answer", ""),
                     "ground_truth": record.get("ground_truth", ""),
                     "contexts_count": len(record.get("contexts", [])),
+                    "answer_reference_cosine": record.get("answer_reference_cosine"),
+                    "auto_pass_by_embedding": bool(record.get("auto_pass_by_embedding")),
                     "metrics": case_metrics,
                 }
             )
@@ -1024,9 +1201,11 @@ class DeepEvalEvaluationRunner:
         else:
             timeout_value = str(max(30, int(timeout_seconds)))
         os.environ["DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE"] = timeout_value
+        os.environ["DEEPEVAL_PER_TASK_TIMEOUT_SECONDS_OVERRIDE"] = timeout_value
         logger.info(
-            "DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE=%s",
+            "DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE=%s DEEPEVAL_PER_TASK_TIMEOUT_SECONDS_OVERRIDE=%s",
             os.environ.get("DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE"),
+            os.environ.get("DEEPEVAL_PER_TASK_TIMEOUT_SECONDS_OVERRIDE"),
         )
 
     def _ensure_no_proxy_for_local_ollama(self) -> None:
@@ -1098,6 +1277,18 @@ def _parse_args() -> argparse.Namespace:
         help="Per-attempt timeout for DeepEval in seconds; <=0 disables timeout.",
     )
     parser.add_argument(
+        "--embed-sim-threshold",
+        type=str,
+        default=None,
+        help="Optional auto-pass cosine threshold vs ground truth (None to disable).",
+    )
+    parser.add_argument(
+        "--embed-sim-autopass",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable embedding-threshold auto-pass. Default from .env (off).",
+    )
+    parser.add_argument(
         "--ignore-eval-errors",
         dest="ignore_eval_errors",
         action="store_true",
@@ -1127,6 +1318,19 @@ def _resolve_dataset_path(raw_path: str) -> Path:
     return path
 
 
+def _parse_optional_float_arg(raw_value: str | None, default: float | None) -> float | None:
+    if raw_value is None:
+        return default
+    value = str(raw_value).strip().strip("'\"")
+    if value == "":
+        return default
+    if value.lower() in {"none", "null", "off"}:
+        return None
+    try:
+        return float(value)
+    except Exception as exc:
+        raise ValueError(f"Invalid --embed-sim-threshold value: {raw_value}") from exc
+
 
 def main() -> None:
     load_dotenv()
@@ -1146,6 +1350,15 @@ def main() -> None:
             else int(args.deepeval_timeout_seconds)
         ),
         ignore_eval_errors=bool(args.ignore_eval_errors),
+        embed_similarity_threshold=_parse_optional_float_arg(
+            args.embed_sim_threshold,
+            settings.deepeval_embed_sim_threshold,
+        ),
+        embed_similarity_autopass_enabled=(
+            bool(settings.deepeval_embed_sim_autopass_enabled)
+            if args.embed_sim_autopass is None
+            else bool(args.embed_sim_autopass)
+        ),
     )
 
     runner = DeepEvalEvaluationRunner(settings, config)

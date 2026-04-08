@@ -74,11 +74,19 @@ python src/ingest.py
 
 This reads files from `PDF_DIR` / `MARKDOWN_DIR` and writes Chroma index to `CHROMA_DIR`.
 
-Checkpoint mode (resume by source file after failures) is optional in `ingest.py`:
+Main `ingest.py` launch modes:
 
 ```bash
+# regular run
+python src/ingest.py
+
+# resume by source file after failures
 python src/ingest.py --checkpoint
+
+# custom checkpoint location
 python src/ingest.py --checkpoint-file chroma_db/ingest_checkpoint.json
+
+# rebuild index from scratch (first persisted source) + checkpointing
 python src/ingest.py --force --checkpoint
 ```
 
@@ -196,32 +204,54 @@ Set in `.env`:
 - `HYBRID_DENSE_WEIGHT=0.6`
 - `HYBRID_SPARSE_WEIGHT=0.4`
 - `HYBRID_RRF_K=60` (reciprocal-rank-fusion smoothing)
+- `HYBRID_FUSION_MODE=rrf|cosine` (`cosine` = embedding re-rank over dense+BM25 candidate union)
 - `GRAPH_RETRIEVER_ENABLED=0|1` (enables Neo4j graph candidate retrieval + fusion with base retriever)
 - `GRAPH_RAG_ENABLED=0|1` (legacy alias; also enables graph retrieval path)
 - `GRAPH_RETRIEVER_HOPS=1` (entity graph expansion depth)
 - `GRAPH_RETRIEVER_ENTITY_LIMIT=30` (max graph entities considered per query)
 - `GRAPH_RETRIEVER_PASSAGE_LIMIT=30` (max graph passages before fusion)
 - `GRAPH_RETRIEVER_WEIGHT=0.35` (graph contribution in fusion, base weight is `1 - GRAPH_RETRIEVER_WEIGHT`)
+- `GRAPH_MIN_DOCS_IN_FINAL=0..TOP_K` (minimum number of graph-origin documents enforced in final context)
 - `GRAPH_KEYWORD_CHANNEL_ENABLED=1` (enables keyword retrieval channel `G_k`)
 - `GRAPH_KEYWORD_QUERY_LIMIT=40` (max keyword candidates for query)
 - `GRAPH_RETRIEVAL_THETA=0.65` (graph channel split between `G_s` entities and `G_k` keywords)
+- `GRAPH_CHANNEL_FUSION_MODE=rrf|cosine` (fusion mode inside graph channel: entity + keyword)
+- `GRAPH_FINAL_FUSION_MODE=rrf|cosine` (fusion mode for base retriever + graph retriever)
 
 ## Query the RAG System
 
 ```bash
+# basic query
 python src/query.py "Your question here"
 ```
 
 Conversation controls (same command, optional flags):
 
 ```bash
+# persistent chat session
 python src/query.py "How does gradient descent work?" --session-id ml_course
 python src/query.py "How to implement it in Python?" --session-id ml_course
+
+# one-off request without history
 python src/query.py "One-off question" --stateless
+
+# clear saved history for session and ask again
 python src/query.py "Reset session and ask again" --session-id ml_course --clear-history
+
+# override number of turns sent from history
+python src/query.py "Follow-up question" --session-id ml_course --max-history-turns 4
 ```
 
 The query command runs the same RAG chain and emits tracing spans to Phoenix.
+
+## Run RAG Chain (Python API)
+
+`rag_chain.py` does not expose a standalone CLI command.  
+Use it from Python:
+
+```bash
+python -c "import sys; sys.path.append('src'); from dotenv import load_dotenv; load_dotenv(); from settings import Settings; from rag_chain import build_rag_chain; chain = build_rag_chain(Settings()); print(chain.invoke({'input': 'What is gradient descent?', 'chat_history': []})['answer'])"
+```
 
 ## RAG Evaluation (DeepEval)
 
@@ -234,10 +264,22 @@ Smoke test:
 python src/deepeval_eval.py --max-rows 1 --output-prefix deepeval_smoke
 ```
 
-Full run:
+Typical run:
 
 ```bash
 python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs.json --output-prefix deepeval
+```
+
+Extended run with explicit runtime knobs:
+
+```bash
+python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs.json --max-rows 30 --eval-batch-size 1 --deepeval-timeout-seconds 300 --max-contexts 2 --max-context-chars 1400 --output-prefix deepeval
+```
+
+Strict mode (stop on first batch error):
+
+```bash
+python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs.json --fail-on-eval-error
 ```
 
 Used metrics:
@@ -254,7 +296,21 @@ If your eval model is `qwen3:*` or `deepseek-r1:*` and metrics fail with `Invali
 - `OLLAMA_EVAL_MAX_NUM_PREDICT=512` (caps growth to avoid timeout spikes)
 - `OLLAMA_EVAL_STRUCTURED_RECOVERY=1` (runs one JSON-normalization pass from content)
 - `OLLAMA_EVAL_STRUCTURED_RECOVERY_INPUT_CHARS=6000` (limits recovery prompt size)
+- `DEEPEVAL_EMBED_SIM_THRESHOLD=None|0.65` (optional similarity threshold for answer vs reference)
+- `DEEPEVAL_EMBED_SIM_AUTOPASS_ENABLED=0|1` (default `0`: keep pure LLM-as-judge; set `1` to auto-pass by threshold)
 - optional last resort: `OLLAMA_EVAL_JSON_RETRY_WITHOUT_THINK=1`
+
+You can override threshold from CLI for experiments:
+
+```bash
+python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs_3.json --embed-sim-threshold 0.65 --embed-sim-autopass
+```
+
+Disable it explicitly:
+
+```bash
+python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs_3.json --embed-sim-threshold None
+```
 
 ## Tracing (Arize Phoenix)
 

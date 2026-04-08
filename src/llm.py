@@ -121,7 +121,7 @@ class ChatOllamaCompat(_CommunityChatOllama):
         resp = requests.post(
             f"{self.base_url}/api/chat",
             json=payload,
-            timeout=self.timeout or 180,
+            timeout=self.timeout or 300,
         )
         if resp.status_code != 200:
             raise ValueError(
@@ -154,7 +154,7 @@ class ChatOllamaCompat(_CommunityChatOllama):
         if think_value is not None:
             payload["think"] = think_value
 
-        timeout = aiohttp.ClientTimeout(total=self.timeout or 180)
+        timeout = aiohttp.ClientTimeout(total=self.timeout or 300)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(f"{self.base_url}/api/chat", json=payload) as resp:
                 if resp.status != 200:

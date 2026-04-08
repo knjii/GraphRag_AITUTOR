@@ -63,6 +63,21 @@ def _env_optional_int(name: str, default: int | None = None) -> int | None:
         return default
 
 
+def _env_optional_float(name: str, default: float | None = None) -> float | None:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = str(raw).strip().strip("'\"")
+    if value == "":
+        return default
+    if value.lower() in {"none", "null", "off"}:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
 @dataclass
 class Settings:
     """Central configuration for the RAG pipeline."""
@@ -180,6 +195,7 @@ class Settings:
     hybrid_dense_weight: float = float(os.getenv("HYBRID_DENSE_WEIGHT", "0.6"))
     hybrid_sparse_weight: float = float(os.getenv("HYBRID_SPARSE_WEIGHT", "0.4"))
     hybrid_rrf_k: int = int(os.getenv("HYBRID_RRF_K", "60"))
+    hybrid_fusion_mode: str = _env_choice("HYBRID_FUSION_MODE", "rrf", {"rrf", "cosine"})
     chunker_use_llm: bool = _env_bool("CHUNKER_USE_LLM", "1")
     mineru_model_source: str = os.getenv("MINERU_MODEL_SOURCE", "huggingface").strip().lower()
     mineru_tools_config_json: str = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
@@ -241,7 +257,14 @@ class Settings:
     graph_retriever_entity_limit: int = int(os.getenv("GRAPH_RETRIEVER_ENTITY_LIMIT", "30"))
     graph_retriever_passage_limit: int = int(os.getenv("GRAPH_RETRIEVER_PASSAGE_LIMIT", "30"))
     graph_retriever_weight: float = float(os.getenv("GRAPH_RETRIEVER_WEIGHT", "0.35"))
+    graph_min_docs_in_final: int = _env_int("GRAPH_MIN_DOCS_IN_FINAL", 0)
     graph_retrieval_theta: float = _env_float("GRAPH_RETRIEVAL_THETA", 0.65)
+    graph_channel_fusion_mode: str = _env_choice(
+        "GRAPH_CHANNEL_FUSION_MODE", "rrf", {"rrf", "cosine"}
+    )
+    graph_final_fusion_mode: str = _env_choice(
+        "GRAPH_FINAL_FUSION_MODE", "rrf", {"rrf", "cosine"}
+    )
     graph_keyword_channel_enabled: bool = _env_bool("GRAPH_KEYWORD_CHANNEL_ENABLED", "1")
     graph_keyword_min_count: int = _env_int("GRAPH_KEYWORD_MIN_COUNT", 1)
     graph_keyword_max_keywords: int = _env_int("GRAPH_KEYWORD_MAX_KEYWORDS", 2000)
@@ -265,6 +288,12 @@ class Settings:
     ket_use_bigrams: bool = _env_bool("KET_USE_BIGRAMS", "1")
     ket_semantic_fallback_to_lexical: bool = _env_bool("KET_SEMANTIC_FALLBACK_TO_LEXICAL", "1")
     graph_fail_on_error: bool = _env_bool("GRAPH_FAIL_ON_ERROR", "0")
+    deepeval_embed_sim_threshold: float | None = _env_optional_float(
+        "DEEPEVAL_EMBED_SIM_THRESHOLD", None
+    )
+    deepeval_embed_sim_autopass_enabled: bool = _env_bool(
+        "DEEPEVAL_EMBED_SIM_AUTOPASS_ENABLED", "0"
+    )
 
     contextualize_q_system_prompt: str = str(
         os.getenv(

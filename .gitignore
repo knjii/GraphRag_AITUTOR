@@ -69,11 +69,15 @@ src/backfill_graph_from_chroma.py
 # src/pdf_processing_test.ipynb
 # src/test_sql.ipynb
 pdf_parsing/
+_tmp_agentic_graph_rag
 
 graph_indexing/metrics/*
 
 # Local notebooks (can be removed from ignore if you want to version notebooks)
 *.ipynb
 last_prompt.txt
+ket_query_test.txt
+rag_eval_inputs_2.txt
 successful_indexing.txt
+last_ket_indexing_logs.txt
 sprints.md

@@ -84,6 +84,10 @@ def _build_graph_metrics_base(settings: Settings) -> Dict[str, Any]:
             "llm_passages_success": 0,
             "llm_passages_failed": 0,
             "llm_applied_passages": 0,
+            "llm_parse_nonempty": 0,
+            "llm_parse_empty": 0,
+            "llm_parse_invalid": 0,
+            "llm_parse_invalid_structure": 0,
             "rule_applied_passages": 0,
             "ket_enabled": False,
             "ket_core_passages": 0,
@@ -692,6 +696,18 @@ def prepare_index(
                     )
                     metrics["graph_write"]["llm_applied_passages"] += int(
                         graph_stats.get("llm_applied_passages", 0)
+                    )
+                    metrics["graph_write"]["llm_parse_nonempty"] += int(
+                        graph_stats.get("llm_parse_nonempty", 0)
+                    )
+                    metrics["graph_write"]["llm_parse_empty"] += int(
+                        graph_stats.get("llm_parse_empty", 0)
+                    )
+                    metrics["graph_write"]["llm_parse_invalid"] += int(
+                        graph_stats.get("llm_parse_invalid", 0)
+                    )
+                    metrics["graph_write"]["llm_parse_invalid_structure"] += int(
+                        graph_stats.get("llm_parse_invalid_structure", 0)
                     )
                     metrics["graph_write"]["rule_applied_passages"] += int(
                         graph_stats.get("rule_applied_passages", 0)

@@ -66,6 +66,85 @@ def _doc_key(doc: Document) -> Tuple[str, str, str, str]:
     )
 
 
+def _cosine(a: List[float], b: List[float]) -> float:
+    if not a or not b:
+        return 0.0
+    dim = min(len(a), len(b))
+    if dim <= 0:
+        return 0.0
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    for i in range(dim):
+        av = float(a[i])
+        bv = float(b[i])
+        dot += av * bv
+        na += av * av
+        nb += bv * bv
+    if na <= 0 or nb <= 0:
+        return 0.0
+    return dot / ((na ** 0.5) * (nb ** 0.5))
+
+
+def _safe_text_for_embedding(text: str, max_chars: int) -> str:
+    value = str(text or "").strip()
+    if not value:
+        return ""
+    return value[: max(200, int(max_chars))]
+
+
+def _cosine_rerank_documents(
+    *,
+    query: str,
+    docs_by_key: Dict[Tuple[str, str, str, str], Document],
+    key_weight_sum: Dict[Tuple[str, str, str, str], float],
+    settings: Any,
+    batch_size: int,
+    max_chars: int,
+    purpose: str,
+    fallback_scores: Dict[Tuple[str, str, str, str], float] | None = None,
+) -> List[Document]:
+    if settings is None:
+        return []
+    keys = list(docs_by_key.keys())
+    if not keys:
+        return []
+
+    query_vecs = embed_texts_resilient(
+        [query],
+        settings,
+        batch_size=1,
+        purpose=f"{purpose}_query",
+    )
+    if not query_vecs or not query_vecs[0]:
+        return []
+    query_vec = query_vecs[0]
+
+    texts = [_safe_text_for_embedding(docs_by_key[key].page_content, max_chars) for key in keys]
+    doc_vecs = embed_texts_resilient(
+        texts,
+        settings,
+        batch_size=max(1, int(batch_size)),
+        purpose=f"{purpose}_docs",
+    )
+    if not doc_vecs:
+        return []
+
+    scored: List[Tuple[float, Tuple[str, str, str, str]]] = []
+    for idx, key in enumerate(keys):
+        vec = doc_vecs[idx] if idx < len(doc_vecs) else []
+        if not vec:
+            continue
+        sim = _cosine(query_vec, vec)
+        channel_weight = max(0.0, float(key_weight_sum.get(key, 1.0)))
+        score = sim * (channel_weight if channel_weight > 0 else 1.0)
+        if fallback_scores is not None:
+            score += float(fallback_scores.get(key, 0.0)) * 1e-6
+        scored.append((score, key))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [docs_by_key[key] for _, key in scored]
+
+
 class WeightedHybridRetriever(BaseRetriever):
     dense_retriever: BaseRetriever
     sparse_retriever: BaseRetriever
@@ -73,6 +152,10 @@ class WeightedHybridRetriever(BaseRetriever):
     dense_weight: float = 0.6
     sparse_weight: float = 0.4
     rrf_k: int = 60
+    fusion_mode: str = "rrf"
+    settings: Any = None
+    cosine_batch_size: int = 32
+    cosine_max_chars: int = 4000
 
     def _get_relevant_documents(self, query: str, *, run_manager=None) -> List[Document]:
         dense_docs = _retrieve(self.dense_retriever, query)
@@ -81,15 +164,33 @@ class WeightedHybridRetriever(BaseRetriever):
         dense_weight, sparse_weight = _normalize_weights(self.dense_weight, self.sparse_weight)
         scored: Dict[Tuple[str, str, str, str], float] = {}
         by_key: Dict[Tuple[str, str, str, str], Document] = {}
+        key_weight_sum: Dict[Tuple[str, str, str, str], float] = {}
 
         for idx, doc in enumerate(dense_docs):
             key = _doc_key(doc)
             scored[key] = scored.get(key, 0.0) + dense_weight / (self.rrf_k + idx + 1)
             by_key[key] = doc
+            key_weight_sum[key] = key_weight_sum.get(key, 0.0) + dense_weight
         for idx, doc in enumerate(sparse_docs):
             key = _doc_key(doc)
             scored[key] = scored.get(key, 0.0) + sparse_weight / (self.rrf_k + idx + 1)
             by_key[key] = doc
+            key_weight_sum[key] = key_weight_sum.get(key, 0.0) + sparse_weight
+
+        if str(self.fusion_mode).strip().lower() == "cosine":
+            reranked = _cosine_rerank_documents(
+                query=query,
+                docs_by_key=by_key,
+                key_weight_sum=key_weight_sum,
+                settings=self.settings,
+                batch_size=max(1, int(self.cosine_batch_size)),
+                max_chars=max(200, int(self.cosine_max_chars)),
+                purpose="hybrid_fusion",
+                fallback_scores=scored,
+            )
+            if reranked:
+                return reranked[: max(1, int(self.top_k))]
+            logger.warning("Cosine rerank failed in hybrid fusion. Falling back to RRF.")
 
         ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)
         return [by_key[key] for key, _ in ranked[: max(1, int(self.top_k))]]
@@ -161,7 +262,7 @@ class Neo4jEntityRetriever(BaseRetriever):
             RETURN
               p.text AS text,
               p.source AS source,
-              p.page AS page,
+              p.order_in_source AS page,
               p.chunk_id AS chunk_id,
               score,
               matched_entities
@@ -312,7 +413,7 @@ class Neo4jKeywordRetriever(BaseRetriever):
             RETURN
               p.text AS text,
               p.source AS source,
-              p.page AS page,
+              p.order_in_source AS page,
               p.chunk_id AS chunk_id,
               score,
               matched_keywords,
@@ -378,6 +479,10 @@ class ThetaGraphRetriever(BaseRetriever):
     top_k: int = 30
     theta: float = 0.65
     rrf_k: int = 60
+    fusion_mode: str = "rrf"
+    settings: Any = None
+    cosine_batch_size: int = 32
+    cosine_max_chars: int = 4000
 
     def _get_relevant_documents(self, query: str, *, run_manager=None) -> List[Document]:
         gs_docs = _retrieve(self.entity_retriever, query)
@@ -386,15 +491,33 @@ class ThetaGraphRetriever(BaseRetriever):
         gk_weight = 1.0 - theta
         scored: Dict[Tuple[str, str, str, str], float] = {}
         by_key: Dict[Tuple[str, str, str, str], Document] = {}
+        key_weight_sum: Dict[Tuple[str, str, str, str], float] = {}
 
         for idx, doc in enumerate(gs_docs):
             key = _doc_key(doc)
             scored[key] = scored.get(key, 0.0) + theta / (self.rrf_k + idx + 1)
             by_key[key] = doc
+            key_weight_sum[key] = key_weight_sum.get(key, 0.0) + theta
         for idx, doc in enumerate(gk_docs):
             key = _doc_key(doc)
             scored[key] = scored.get(key, 0.0) + gk_weight / (self.rrf_k + idx + 1)
             by_key[key] = doc
+            key_weight_sum[key] = key_weight_sum.get(key, 0.0) + gk_weight
+
+        if str(self.fusion_mode).strip().lower() == "cosine":
+            reranked = _cosine_rerank_documents(
+                query=query,
+                docs_by_key=by_key,
+                key_weight_sum=key_weight_sum,
+                settings=self.settings,
+                batch_size=max(1, int(self.cosine_batch_size)),
+                max_chars=max(200, int(self.cosine_max_chars)),
+                purpose="graph_channel_fusion",
+                fallback_scores=scored,
+            )
+            if reranked:
+                return reranked[: max(1, int(self.top_k))]
+            logger.warning("Cosine rerank failed in graph channel fusion. Falling back to RRF.")
 
         ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)
         return [by_key[key] for key, _ in ranked[: max(1, int(self.top_k))]]
@@ -407,26 +530,131 @@ class WeightedGraphFusionRetriever(BaseRetriever):
     base_weight: float = 0.65
     graph_weight: float = 0.35
     rrf_k: int = 60
+    fusion_mode: str = "rrf"
+    settings: Any = None
+    cosine_batch_size: int = 32
+    cosine_max_chars: int = 4000
+    min_graph_docs_in_final: int = 0
+
+    @staticmethod
+    def _dedup_keys(keys: List[Tuple[str, str, str, str]]) -> List[Tuple[str, str, str, str]]:
+        seen: set[Tuple[str, str, str, str]] = set()
+        out: List[Tuple[str, str, str, str]] = []
+        for key in keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+        return out
+
+    def _apply_min_graph_docs(
+        self,
+        selected_keys: List[Tuple[str, str, str, str]],
+        graph_ranked_keys: List[Tuple[str, str, str, str]],
+        top_k: int,
+    ) -> List[Tuple[str, str, str, str]]:
+        top_k = max(1, int(top_k))
+        min_graph = max(0, int(self.min_graph_docs_in_final))
+        if min_graph <= 0:
+            return selected_keys[:top_k]
+
+        min_graph = min(min_graph, top_k)
+        graph_ranked_keys = self._dedup_keys(graph_ranked_keys)
+        graph_key_set = set(graph_ranked_keys)
+        if not graph_key_set:
+            return selected_keys[:top_k]
+
+        selected = self._dedup_keys(selected_keys)[:top_k]
+        graph_count = sum(1 for key in selected if key in graph_key_set)
+        if graph_count >= min_graph:
+            return selected
+
+        for key in graph_ranked_keys:
+            if key in selected:
+                continue
+            selected.append(key)
+            graph_count += 1
+            if graph_count >= min_graph:
+                break
+
+        idx = len(selected) - 1
+        while len(selected) > top_k and idx >= 0:
+            key = selected[idx]
+            is_graph = key in graph_key_set
+            if not is_graph:
+                selected.pop(idx)
+            else:
+                current_graph = sum(1 for k in selected if k in graph_key_set)
+                if current_graph > min_graph:
+                    selected.pop(idx)
+            idx -= 1
+
+        while len(selected) > top_k:
+            selected.pop()
+
+        final_graph = sum(1 for key in selected if key in graph_key_set)
+        if final_graph < min_graph:
+            logger.warning(
+                "Graph minimum in final context was not fully satisfied (%s/%s). Increase graph candidate budget.",
+                final_graph,
+                min_graph,
+            )
+        return selected[:top_k]
 
     def _get_relevant_documents(self, query: str, *, run_manager=None) -> List[Document]:
         base_docs = _retrieve(self.base_retriever, query)
         graph_docs = _retrieve(self.graph_retriever, query)
+        graph_key_set = {_doc_key(doc) for doc in graph_docs}
 
         base_weight, graph_weight = _normalize_weights(self.base_weight, self.graph_weight)
         scored: Dict[Tuple[str, str, str, str], float] = {}
         by_key: Dict[Tuple[str, str, str, str], Document] = {}
+        key_weight_sum: Dict[Tuple[str, str, str, str], float] = {}
 
         for idx, doc in enumerate(base_docs):
             key = _doc_key(doc)
             scored[key] = scored.get(key, 0.0) + base_weight / (self.rrf_k + idx + 1)
             by_key[key] = doc
+            key_weight_sum[key] = key_weight_sum.get(key, 0.0) + base_weight
         for idx, doc in enumerate(graph_docs):
             key = _doc_key(doc)
             scored[key] = scored.get(key, 0.0) + graph_weight / (self.rrf_k + idx + 1)
             by_key[key] = doc
+            key_weight_sum[key] = key_weight_sum.get(key, 0.0) + graph_weight
+
+        if str(self.fusion_mode).strip().lower() == "cosine":
+            reranked = _cosine_rerank_documents(
+                query=query,
+                docs_by_key=by_key,
+                key_weight_sum=key_weight_sum,
+                settings=self.settings,
+                batch_size=max(1, int(self.cosine_batch_size)),
+                max_chars=max(200, int(self.cosine_max_chars)),
+                purpose="graph_final_fusion",
+                fallback_scores=scored,
+            )
+            if reranked:
+                top_k = max(1, int(self.top_k))
+                reranked_keys = self._dedup_keys([_doc_key(doc) for doc in reranked])
+                graph_ranked_keys = [key for key in reranked_keys if key in graph_key_set]
+                selected_keys = self._apply_min_graph_docs(
+                    selected_keys=reranked_keys[:top_k],
+                    graph_ranked_keys=graph_ranked_keys,
+                    top_k=top_k,
+                )
+                return [by_key[key] for key in selected_keys if key in by_key]
+            logger.warning("Cosine rerank failed in final graph fusion. Falling back to RRF.")
 
         ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)
-        return [by_key[key] for key, _ in ranked[: max(1, int(self.top_k))]]
+        top_k = max(1, int(self.top_k))
+        ranked_keys = [key for key, _ in ranked]
+        graph_ranked_keys = [key for key in ranked_keys if key in graph_key_set]
+        selected_keys = self._apply_min_graph_docs(
+            selected_keys=ranked_keys[:top_k],
+            graph_ranked_keys=graph_ranked_keys,
+            top_k=top_k,
+        )
+        return [by_key[key] for key in selected_keys if key in by_key]
 
 
 def _load_sparse_documents(store) -> List[Document]:
@@ -450,7 +678,7 @@ def _build_base_retriever(settings: Settings) -> BaseRetriever:
         raise RuntimeError("Vector store not initialized. Run ingest.py first.")
 
     # dense_retriever = store.as_retriever(search_kwargs={"k": max(1, int(settings.top_k))})
-    dense_retriever = store.as_retriever(search_type='mmr', search_kwargs={"k": max(1, int(settings.top_k))})
+    dense_retriever = store.as_retriever(search_type='similarity', search_kwargs={"k": max(1, int(settings.top_k))})
     mode = str(settings.retriever_mode).strip().lower()
     if mode != "hybrid":
         logger.info("Retriever mode: dense (top_k=%s)", settings.top_k)
@@ -469,11 +697,12 @@ def _build_base_retriever(settings: Settings) -> BaseRetriever:
         settings.hybrid_sparse_weight,
     )
     logger.info(
-        "Retriever mode: hybrid (top_k=%s, sparse_k=%s, weights=%.2f/%.2f)",
+        "Retriever mode: hybrid (top_k=%s, sparse_k=%s, weights=%.2f/%.2f, fusion=%s)",
         settings.top_k,
         sparse_retriever.k,
         dense_weight,
         sparse_weight,
+        str(settings.hybrid_fusion_mode),
     )
     return WeightedHybridRetriever(
         dense_retriever=dense_retriever,
@@ -482,6 +711,10 @@ def _build_base_retriever(settings: Settings) -> BaseRetriever:
         dense_weight=dense_weight,
         sparse_weight=sparse_weight,
         rrf_k=max(1, int(settings.hybrid_rrf_k)),
+        fusion_mode=str(settings.hybrid_fusion_mode),
+        settings=settings,
+        cosine_batch_size=max(1, int(settings.embed_batch_size)),
+        cosine_max_chars=max(200, int(settings.graph_llm_input_max_chars)),
     )
 
 
@@ -530,12 +763,16 @@ def build_retriever(settings: Settings) -> BaseRetriever:
             top_k=max(1, int(settings.graph_retriever_passage_limit)),
             theta=max(0.0, min(1.0, float(settings.graph_retrieval_theta))),
             rrf_k=max(1, int(settings.hybrid_rrf_k)),
+            fusion_mode=str(settings.graph_channel_fusion_mode),
+            settings=settings,
+            cosine_batch_size=max(1, int(settings.embed_batch_size)),
+            cosine_max_chars=max(200, int(settings.graph_llm_input_max_chars)),
         )
 
     graph_weight = max(0.0, float(settings.graph_retriever_weight))
     base_weight = max(0.0, 1.0 - graph_weight)
     logger.info(
-        "Graph retriever enabled (hops=%s, entity_limit=%s, passage_limit=%s, keyword_channel=%s, theta=%.2f, weights=base:%.2f graph:%.2f)",
+        "Graph retriever enabled (hops=%s, entity_limit=%s, passage_limit=%s, keyword_channel=%s, theta=%.2f, weights=base:%.2f graph:%.2f, channel_fusion=%s, final_fusion=%s, min_graph_docs=%s)",
         max(1, int(settings.graph_retriever_hops)),
         max(1, int(settings.graph_retriever_entity_limit)),
         max(1, int(settings.graph_retriever_passage_limit)),
@@ -543,6 +780,9 @@ def build_retriever(settings: Settings) -> BaseRetriever:
         max(0.0, min(1.0, float(settings.graph_retrieval_theta))),
         base_weight,
         graph_weight,
+        str(settings.graph_channel_fusion_mode),
+        str(settings.graph_final_fusion_mode),
+        max(0, int(settings.graph_min_docs_in_final)),
     )
     return WeightedGraphFusionRetriever(
         base_retriever=base_retriever,
@@ -551,4 +791,9 @@ def build_retriever(settings: Settings) -> BaseRetriever:
         base_weight=base_weight,
         graph_weight=graph_weight,
         rrf_k=max(1, int(settings.hybrid_rrf_k)),
+        fusion_mode=str(settings.graph_final_fusion_mode),
+        settings=settings,
+        cosine_batch_size=max(1, int(settings.embed_batch_size)),
+        cosine_max_chars=max(200, int(settings.graph_llm_input_max_chars)),
+        min_graph_docs_in_final=max(0, int(settings.graph_min_docs_in_final)),
     )
