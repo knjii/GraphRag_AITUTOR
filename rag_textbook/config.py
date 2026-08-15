@@ -27,6 +27,12 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 CommaSeparatedStr = Annotated[tuple[str, ...], NoDecode]
 CommaSeparatedInt = Annotated[tuple[int, ...], NoDecode]
 
+# Назначение вызова языковой модели. Определяет и модель, и режим размышления.
+# `chat` — единственное назначение, где ответ читает человек; `utility` — те же
+# текстовые задачи, но служебные: роутер, переписывание запроса, генерация
+# эталонных вопросов.
+LLMPurpose = Literal["chat", "utility", "vision", "extraction", "judge"]
+
 # Путь к файлу переменных окружения. Переопределяется через RAG_ENV_FILE —
 # это нужно тестам: иначе их результат зависит от того, лежит ли рядом рабочий
 # .env, и на сервере с развёрнутым окружением они падают, а на машине без
@@ -292,12 +298,17 @@ class LLMSettings(_Base):
     # управляется отдельно и по умолчанию остаётся на усмотрение движка.
     chat_reasoning_effort: str = Field(default="", alias="LLM_CHAT_REASONING_EFFORT")
 
-    def reasoning_effort_for(
-        self, purpose: Literal["chat", "vision", "extraction", "judge"]
-    ) -> str:
+    def reasoning_effort_for(self, purpose: LLMPurpose) -> str:
+        # Размышление оставляем включаемым ровно для одного случая — финального
+        # ответа пользователю. Всё остальное, включая короткие служебные вызовы
+        # роутера и переписывания запроса, идёт с выключенным размышлением:
+        # им отводится 8-400 токенов, и цепочка рассуждений съедает лимит
+        # целиком, возвращая пустой content. Отличать «служебный вызов
+        # текстовой моделью» от «ответа пользователю» приходится явно, потому
+        # что модель у них одна и та же.
         return self.chat_reasoning_effort if purpose == "chat" else self.reasoning_effort
 
-    def model_for(self, purpose: Literal["chat", "vision", "extraction", "judge"]) -> str:
+    def model_for(self, purpose: LLMPurpose) -> str:
         if purpose == "vision":
             return self.vision_model or self.model
         if purpose == "extraction":
@@ -377,6 +388,30 @@ class GraphSettings(_Base):
             )
         return value
 
+    # Связи между фрагментами.
+    #
+    # Обычное извлечение видит один фрагмент за раз, поэтому каждое ребро
+    # RELATES соединяет сущности, встретившиеся в одном тексте. Замер показал
+    # следствие: обход такого графа приводит туда же, куда лексический поиск,
+    # и исключительный вклад графового канала в контекст равен нулю.
+    #
+    # Здесь модель получает выдержки об одном понятии из разных мест книги
+    # и ищет связи, следующие из их сопоставления. Стоимость — один вызов
+    # на понятие, поэтому число понятий ограничено.
+    cross_chunk_relations_enabled: bool = Field(
+        default=False, alias="GRAPH_CROSS_CHUNK_ENABLED"
+    )
+    cross_chunk_max_entities: int = Field(
+        default=200, ge=1, le=5000, alias="GRAPH_CROSS_CHUNK_MAX_ENTITIES"
+    )
+    # Понятие, встреченное в одном-двух фрагментах, сопоставлять не с чем.
+    cross_chunk_min_chunks: int = Field(
+        default=3, ge=2, le=50, alias="GRAPH_CROSS_CHUNK_MIN_CHUNKS"
+    )
+    cross_chunk_max_excerpts: int = Field(
+        default=6, ge=2, le=20, alias="GRAPH_CROSS_CHUNK_MAX_EXCERPTS"
+    )
+
     # Извлечение
     retrieval_enabled: bool = Field(default=True, alias="GRAPH_RETRIEVAL_ENABLED")
     expansion_hops: int = Field(default=1, ge=1, le=3, alias="GRAPH_EXPANSION_HOPS")
@@ -386,6 +421,23 @@ class GraphSettings(_Base):
     seed_entity_limit: int = Field(default=20, ge=1, alias="GRAPH_SEED_ENTITY_LIMIT")
     passage_limit: int = Field(default=30, ge=1, alias="GRAPH_PASSAGE_LIMIT")
     weight: float = Field(default=0.4, ge=0.0, le=1.0, alias="GRAPH_WEIGHT")
+    # От чего отталкивается обход графа.
+    #
+    # `query` — от терминов вопроса. Замер показал, что так канал вырождается
+    # в ослабленный лексический поиск: он находит те же фрагменты, что и BM25,
+    # его уникальный вклад — 2.3 процентных пункта recall, а вносимый шум выше.
+    #
+    # `passages` — от сущностей уже найденных фрагментов. Это принципиально
+    # другая информация: не «что похоже на вопрос», а «что связано с найденным
+    # ответом». Именно этого требуют многошаговые вопросы, где второй фрагмент
+    # связан с первым, а не с формулировкой вопроса.
+    seed_mode: Literal["query", "passages", "both"] = Field(
+        default="query", alias="GRAPH_SEED_MODE"
+    )
+    # Сколько верхних фрагментов векторного канала служат опорой при
+    # `seed_mode=passages`. Брать много бессмысленно: у нижних фрагментов
+    # выдачи релевантность уже низкая, и их сущности вносят шум.
+    seed_passages: int = Field(default=3, ge=1, le=20, alias="GRAPH_SEED_PASSAGES")
 
     @field_validator("expansion_rel_types", mode="before")
     @classmethod
@@ -422,10 +474,64 @@ class RetrievalSettings(_Base):
     )
     min_graph_docs: int = Field(default=0, ge=0, alias="RETRIEVAL_MIN_GRAPH_DOCS")
 
+    # Сколько мест в пуле кандидатов реранкера резервируется за фрагментами,
+    # которые нашёл ТОЛЬКО графовый канал.
+    #
+    # Зачем. На вопросах, где пара фрагментов связана в графе и почти не
+    # пересекается по словам, графовый канал находит 10-12 процентных пунктов
+    # эталонного материала, которого нет в векторной выдаче. Но до контекста
+    # этот материал не доходит: ранговое слияние ставит его ниже плотной
+    # векторной выдачи, а до реранкера доезжают только первые 30 кандидатов.
+    # Измеренное следствие — `graph_only_share` равен нулю при 18% присутствия
+    # графа в контексте.
+    #
+    # Резерв не навязывает фрагменты ответу: он лишь доводит их до реранкера,
+    # а тот решает сам. Ноль отключает резерв.
+    graph_candidate_quota: int = Field(
+        default=0, ge=0, le=32, alias="RETRIEVAL_GRAPH_CANDIDATE_QUOTA"
+    )
+
     # Переписывание вопроса по истории. Без него запрос вида «а как это на Python?»
     # уходил в поиск буквально — этого в прежней версии не было вовсе.
     query_rewrite_enabled: bool = Field(default=True, alias="RETRIEVAL_QUERY_REWRITE_ENABLED")
     max_history_turns: int = Field(default=3, ge=0, alias="RETRIEVAL_MAX_HISTORY_TURNS")
+
+    # Разложение связывающего вопроса на подвопросы.
+    #
+    # Замер на 59 многошаговых вопросах: векторный канал приносит в пул
+    # кандидатов 103 эталонных фрагмента из 118, а до финальной выдачи
+    # доживают 68. Материал найден, но теряется при отборе — реранкер
+    # оценивает каждый фрагмент против ВСЕГО вопроса, а каждый фрагмент
+    # отвечает лишь на его половину, и оба получают средний балл.
+    #
+    # Разложение убирает именно эту причину: каждый подвопрос ищется и
+    # ранжируется отдельно, поэтому фрагмент сравнивается с той частью
+    # вопроса, на которую он действительно отвечает.
+    decompose_enabled: bool = Field(default=False, alias="RETRIEVAL_DECOMPOSE_ENABLED")
+    decompose_max_parts: int = Field(default=2, ge=2, le=4, alias="RETRIEVAL_DECOMPOSE_MAX_PARTS")
+
+    # Размер выдачи для связывающих вопросов.
+    #
+    # Кривая recall по размеру выдачи (172 вопроса, полный корпус):
+    #
+    #   тип             @8     @12    @16    @24
+    #   одношаговые     0.944  0.963  0.963  0.963
+    #   с формулами     0.966  0.983  0.983  0.983
+    #   многошаговые    0.576  0.686  0.737  0.822
+    #
+    # Простые вопросы насыщаются к двенадцати фрагментам, связывающие растут
+    # до двадцати четырёх. Причина проста: связывающему вопросу нужно два
+    # эталонных фрагмента вместо одного, и та же квота вмещает вдвое меньше
+    # ответов. Расширять выдачу всем — платить токенами там, где прироста нет;
+    # поэтому квота расширяется только там, где роутер увидел связь.
+    #
+    # Ноль означает «как у обычных вопросов».
+    top_k_linking: int = Field(default=0, ge=0, le=64, alias="RETRIEVAL_TOP_K_LINKING")
+
+    def top_k_for(self, linking: bool) -> int:
+        if linking and self.top_k_linking > 0:
+            return max(self.top_k, self.top_k_linking)
+        return self.top_k
 
 
 class EvalSettings(_Base):

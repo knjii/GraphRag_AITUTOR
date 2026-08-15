@@ -31,6 +31,9 @@ class GraphBuildResult:
     entities: int = 0
     mentions: int = 0
     relations: int = 0
+    # Из них полученных сопоставлением нескольких фрагментов: только такие
+    # рёбра несут сведения, которых нет ни в одном отдельном фрагменте.
+    cross_chunk_relations: int = 0
     cooccurrences: int = 0
     cooccurrence_candidates: int = 0
     pruned_hubs: int = 0
@@ -42,6 +45,7 @@ class GraphBuildResult:
             "entities": self.entities,
             "mentions": self.mentions,
             "relations": self.relations,
+            "cross_chunk_relations": self.cross_chunk_relations,
             "cooccurrences": self.cooccurrences,
             "cooccurrence_candidates": self.cooccurrence_candidates,
             "cooccurrence_kept_ratio": (
@@ -138,6 +142,72 @@ class GraphBuilder:
         )
         return edges, candidates
 
+    # ------------------------------------------------ связи между фрагментами
+
+    def _build_cross_chunk_relations(
+        self,
+        chunks: Sequence[Chunk],
+        entity_ids_per_chunk: list[list[str]],
+        merged_entities: dict[str, Entity],
+    ) -> list[Relation]:
+        """Извлекает связи, видимые только при сопоставлении разных фрагментов.
+
+        Отбор понятий не случайный: берутся те, что упомянуты в достаточном
+        числе **разных** фрагментов. Понятие из одного фрагмента сопоставлять
+        не с чем, а самые частотные дают больше всего шансов найти связь между
+        далёкими разделами. Стоимость — один вызов модели на понятие, поэтому
+        их число ограничено настройкой.
+        """
+        if not self.settings.cross_chunk_relations_enabled:
+            return []
+
+        chunks_by_entity: dict[str, list[Chunk]] = defaultdict(list)
+        for chunk, entity_ids in zip(chunks, entity_ids_per_chunk, strict=True):
+            for entity_id in set(entity_ids):
+                chunks_by_entity[entity_id].append(chunk)
+
+        eligible = [
+            (entity_id, items)
+            for entity_id, items in chunks_by_entity.items()
+            if len(items) >= self.settings.cross_chunk_min_chunks
+        ]
+        eligible.sort(key=lambda item: len(item[1]), reverse=True)
+        eligible = eligible[: self.settings.cross_chunk_max_entities]
+        if not eligible:
+            logger.info("Связи между фрагментами: подходящих понятий нет")
+            return []
+
+        known = [entity.canonical for entity in merged_entities.values()]
+
+        def one(item: tuple[str, list[Chunk]]) -> list[Relation]:
+            entity_id, items = item
+            entity = merged_entities.get(entity_id)
+            if entity is None:
+                return []
+            # Выдержки берутся из максимально далёких друг от друга мест:
+            # соседние фрагменты перекрываются, и сопоставлять их бессмысленно.
+            ordered = sorted(items, key=lambda chunk: chunk.ordinal)
+            step = max(1, len(ordered) // self.settings.cross_chunk_max_excerpts)
+            excerpts = [chunk.text for chunk in ordered[::step]][
+                : self.settings.cross_chunk_max_excerpts
+            ]
+            return self.extractor.extract_cross_chunk(entity.canonical, excerpts, known)
+
+        logger.info(
+            "Связи между фрагментами: понятий %s (порог %s фрагментов)",
+            len(eligible),
+            self.settings.cross_chunk_min_chunks,
+        )
+        if self.max_workers == 1:
+            batches = [one(item) for item in eligible]
+        else:
+            with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+                batches = list(pool.map(one, eligible))
+
+        relations = [relation for batch in batches for relation in batch]
+        logger.info("Связи между фрагментами: получено %s рёбер", len(relations))
+        return relations
+
     # ---------------------------------------------------------------- публично
 
     def build(
@@ -190,12 +260,18 @@ class GraphBuilder:
             entity_ids_per_chunk.append(chunk_entity_ids)
             relations.extend(extraction.relations)
 
+        cross_chunk = self._build_cross_chunk_relations(
+            chunks, entity_ids_per_chunk, merged_entities
+        )
+        relations.extend(cross_chunk)
+
         cooccurrences, candidates = self._build_cooccurrences(entity_ids_per_chunk, entity_doc)
 
         result.passages = len(chunks)
         result.entities = len(merged_entities)
         result.mentions = len(mentions)
         result.relations = len(relations)
+        result.cross_chunk_relations = len(cross_chunk)
         result.cooccurrences = len(cooccurrences)
         result.cooccurrence_candidates = candidates
 
@@ -203,10 +279,12 @@ class GraphBuilder:
         # «RELATES=0» не отличить от «в тексте нет связей», хотя это могут быть
         # пустые ответы модели или невалидный JSON на каждом чанке.
         logger.info(
-            "Граф собран: сущностей=%s, упоминаний=%s, RELATES=%s, CO_OCCURS=%s, извлечение=%s",
+            "Граф собран: сущностей=%s, упоминаний=%s, RELATES=%s (из них между "
+            "фрагментами %s), CO_OCCURS=%s, извлечение=%s",
             result.entities,
             result.mentions,
             result.relations,
+            result.cross_chunk_relations,
             result.cooccurrences,
             dict(result.extraction_status),
         )

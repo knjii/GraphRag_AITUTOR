@@ -84,6 +84,16 @@ def ingest(
         bool, typer.Option("--monitor/--no-monitor", help="Собирать метрики ресурсов по стадиям")
     ] = True,
     monitor_interval: Annotated[float, typer.Option(help="Интервал замеров, с")] = 2.0,
+    stages: Annotated[
+        str,
+        typer.Option(
+            help=(
+                "Какие стадии выполнить через запятую: parse,chunk,embed,graph. "
+                "По умолчанию все. Нужно там, где карта одна: сервер инференса "
+                "держит видеопамять постоянно и не помещается рядом с MinerU"
+            )
+        ),
+    ] = "",
 ) -> None:
     """Индексирует корпус: разбор, чанкинг, векторы, граф."""
     from datetime import datetime
@@ -99,7 +109,11 @@ def ingest(
     try:
         with resource_monitor:
             pipeline = IndexingPipeline(context, monitor=resource_monitor)
-            report = pipeline.run(sources=source, force=force)
+            report = pipeline.run(
+                sources=source,
+                force=force,
+                stages=[item for item in stages.split(",") if item.strip()] or None,
+            )
     finally:
         context.close()
 
@@ -277,7 +291,10 @@ def goldset_build(
             console.print("[red]В хранилище нет чанков. Сначала выполните ingest.[/red]")
             raise typer.Exit(code=1)
         console.print(f"Доступно чанков: {len(chunks)}")
-        builder = GoldsetBuilder(context.llm)
+        # Граф передаётся, чтобы часть многошаговых пар отбиралась по связям,
+        # а не по общим словам: на лексически похожих парах вклад графа
+        # принципиально неизмерим.
+        builder = GoldsetBuilder(context.llm, graph_store=context.graph_store)
         questions = builder.build(chunks, single_count=single, multihop_count=multihop)
         path = save_goldset(questions, output or settings.evaluation.goldset_path)
     finally:
@@ -362,17 +379,44 @@ def eval_run(
             )
         console.print(type_table)
 
+    routed = metrics.graph_usage.get("routed_to_graph", 0.0)
+    share = metrics.graph_usage.get("avg_graph_share_in_context", 0.0)
+    only = metrics.graph_usage.get("avg_graph_only_share", 0.0)
     console.print(
-        f"Граф: маршрутизировано {metrics.graph_usage.get('routed_to_graph', 0):.1%} вопросов, "
-        f"средняя доля графа в контексте {metrics.graph_usage.get('avg_graph_share_in_context', 0):.1%}"
+        f"Граф: маршрутизировано {routed:.1%} вопросов, "
+        f"нашёл {share:.1%} контекста, "
+        f"из них [bold]только он — {only:.1%}[/bold]"
     )
+    if share > 0.05 and only <= 0.001:
+        console.print(
+            "[yellow]Графовый канал находит то же, что и векторный: "
+            "исключительного вклада нет. Прирост качества от него невозможен "
+            "при любых весах слияния.[/yellow]"
+        )
+    # Расхождение «канал включён, вопросы в него направлены, вклад нулевой»
+    # означает поломку канала, а не отсутствие пользы от графа. Именно так
+    # выглядел отказ обхода графа: запрос падал на каждом вопросе, метрики
+    # считались по одному лишь векторному каналу, и вывод «граф не помогает»
+    # получался про графовый канал, который не работал.
+    if settings.graph.retrieval_enabled and routed > 0 and share <= 0.0:
+        console.print(
+            "[red]Внимание: графовый канал включён и получал вопросы, но не дал "
+            "ни одного фрагмента. Это отказ канала, а не отсутствие эффекта — "
+            "результаты сравнения с графом недействительны.[/red]"
+        )
 
 
 @eval_app.command("ab")
 def eval_ab(
     goldset: Annotated[Path | None, typer.Option(help="Путь к эталонному набору")] = None,
     experiment: Annotated[
-        str, typer.Option(help="Что сравниваем: graph | reranker | fusion")
+        str,
+        typer.Option(
+            help=(
+                "Что сравниваем: graph | graph_seed | graph_seed_both | "
+                "reranker | candidates | fusion"
+            )
+        ),
     ] = "graph",
 ) -> None:
     """Сравнивает две конфигурации на одном наборе вопросов."""
@@ -385,6 +429,51 @@ def eval_ab(
             {"graph.retrieval_enabled": False},
             {"graph.retrieval_enabled": True},
             ("без графа", "с графом"),
+        ),
+        # От чего отталкивается обход графа. Замер показал, что старт от
+        # терминов вопроса вырождает канал в ослабленный лексический поиск:
+        # он ищет по тому же сигналу, что и BM25. Старт от найденных
+        # фрагментов — другой сигнал, и проверять надо именно его.
+        "graph_seed": (
+            {"graph.retrieval_enabled": True, "graph.seed_mode": "query"},
+            {"graph.retrieval_enabled": True, "graph.seed_mode": "passages"},
+            ("граф от вопроса", "граф от найденного"),
+        ),
+        "graph_seed_both": (
+            {"graph.retrieval_enabled": True, "graph.seed_mode": "query"},
+            {"graph.retrieval_enabled": True, "graph.seed_mode": "both"},
+            ("граф от вопроса", "граф от обоих"),
+        ),
+        # Реранкер доказал крупный прирост, поэтому осмысленно проверить,
+        # не упирается ли он в число кандидатов, которые ему подают.
+        "candidates": (
+            {"reranker.enabled": True, "reranker.candidates": 30},
+            {"reranker.enabled": True, "reranker.candidates": 60},
+            ("30 кандидатов", "60 кандидатов"),
+        ),
+        # Резерв мест в пуле кандидатов за находками одного лишь графа.
+        # Целится в измеренный разрыв: канал находит 10-12 процентных пунктов
+        # эталонного материала вне векторной выдачи, а до контекста доходит ноль.
+        "graph_quota": (
+            {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 0},
+            {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 6},
+            ("без резерва", "резерв 6 мест"),
+        ),
+        # Разложение связывающего вопроса на подвопросы. Целится в самую
+        # крупную измеренную потерю: из 118 эталонных фрагментов многошаговых
+        # вопросов в пул кандидатов попадают 103, а в выдачу — 68.
+        "decompose": (
+            {"retrieval.decompose_enabled": False},
+            {"retrieval.decompose_enabled": True},
+            ("без разложения", "с разложением"),
+        ),
+        # Схлопывание похожих фрагментов. На многошаговых вопросах эталонных
+        # фрагментов два, и они по построению об одном и том же — есть риск,
+        # что дедупликация выбрасывает второй как дубликат первого.
+        "dedup": (
+            {"retrieval.dedup_enabled": True},
+            {"retrieval.dedup_enabled": False},
+            ("со схлопыванием", "без схлопывания"),
         ),
         "reranker": (
             {"reranker.enabled": False},
@@ -406,27 +495,44 @@ def eval_ab(
         questions, baseline, candidate, base_settings=settings, labels=labels
     )
 
-    comparison = result["comparison"]
-    table = Table(title=f"A/B: {labels[0]} против {labels[1]} (k={comparison['k']})")
+    paired = result["paired"]
+    table = Table(
+        title=(
+            f"A/B: {labels[0]} против {labels[1]} "
+            f"(k={paired['k']}, вопросов {paired['questions']}, парное сравнение)"
+        )
+    )
     table.add_column("Метрика")
     table.add_column(labels[0], justify="right")
     table.add_column(labels[1], justify="right")
     table.add_column("Δ", justify="right")
+    table.add_column("95% интервал", justify="center")
+    table.add_column("Лучше/хуже", justify="center")
     table.add_column("Значимо", justify="center")
-    for name in ("recall", "precision", "ndcg", "hit_rate"):
-        delta = comparison["delta"][name]
-        significant = comparison["likely_significant"].get(name, False)
+    for name in ("recall", "precision", "ndcg", "hit_rate", "mrr"):
+        row = paired["metrics"][name]
+        delta = row["delta"]
         colour = "green" if delta > 0 else ("red" if delta < 0 else "white")
         table.add_row(
             name,
-            f"{comparison['baseline'].get(name, 0):.3f}",
-            f"{comparison['candidate'].get(name, 0):.3f}",
+            f"{row['baseline']:.3f}",
+            f"{row['candidate']:.3f}",
             f"[{colour}]{delta:+.3f}[/{colour}]",
-            "да" if significant else "нет",
+            f"[{row['ci_low']:+.3f}; {row['ci_high']:+.3f}]",
+            f"{row['improved']}/{row['worsened']}",
+            "[bold]да[/bold]" if row["significant"] else "нет",
         )
     console.print(table)
-    if comparison["warning"]:
-        console.print(f"[yellow]{comparison['warning']}[/yellow]")
+    console.print(
+        "Значимость — доверительный интервал среднего различия по парному "
+        "бутстрэпу не покрывает ноль. «Лучше/хуже» — на скольких вопросах "
+        "метрика выросла и упала."
+    )
+    if paired["questions"] < 100:
+        console.print(
+            "[yellow]Выборка меньше 100 вопросов: интервалы широкие, "
+            "отсутствие значимости здесь не означает отсутствия эффекта.[/yellow]"
+        )
 
 
 @graph_app.command("stats")

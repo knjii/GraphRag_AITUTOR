@@ -22,6 +22,7 @@ from rag_textbook.evaluation.metrics import (
     QueryOutcome,
     RetrievalMetrics,
     compare,
+    compare_paired,
     evaluate_retrieval,
 )
 from rag_textbook.logging_setup import get_logger
@@ -50,6 +51,7 @@ def run_retrieval_evaluation(
             relevant=list(question.gold_chunk_ids),
             used_graph=bool(result.route and result.route.use_graph),
             graph_share=result.graph_share,
+            graph_only_share=result.graph_only_share,
             latency_ms=result.timings_ms.get("total", 0.0),
         )
 
@@ -104,6 +106,7 @@ def save_evaluation(
                 "relevant": item.relevant,
                 "used_graph": item.used_graph,
                 "graph_share": round(item.graph_share, 3),
+                "graph_only_share": round(item.graph_only_share, 3),
                 "latency_ms": round(item.latency_ms, 1),
             }
             for item in outcomes
@@ -131,6 +134,7 @@ def run_ab_comparison(
     """
 
     results: dict[str, RetrievalMetrics] = {}
+    outcomes_by_label: dict[str, list[QueryOutcome]] = {}
     for label, overrides in zip(labels, (baseline_overrides, candidate_overrides), strict=True):
         settings = (base_settings or Settings()).model_copy(deep=True)
         for path, value in overrides.items():
@@ -147,14 +151,23 @@ def run_ab_comparison(
             )
             save_evaluation(metrics, outcomes, settings, label=label)
             results[label] = metrics
+            outcomes_by_label[label] = list(outcomes)
         finally:
             context.close()
 
     baseline_metrics = results[labels[0]]
     candidate_metrics = results[labels[1]]
-    k = (base_settings or Settings()).retrieval.top_k
+    # Сравнивать надо по всему контексту, который реально отдаётся. Для
+    # связывающих вопросов квота выдачи шире, и при жёстком k=top_k прирост,
+    # приходящий в позиции с девятой по шестнадцатую, невидим: A/B показывал
+    # нулевую разницу там, где прямой замер давал +0.044 recall.
+    retrieval = (base_settings or Settings()).retrieval
+    k = max(retrieval.top_k, retrieval.top_k_linking)
     return {
         "labels": list(labels),
+        # Основной вывод делается по парному сравнению: конфигурации оценены
+        # на одних и тех же вопросах, и учитывать это обязательно.
+        "paired": compare_paired(outcomes_by_label[labels[0]], outcomes_by_label[labels[1]], k),
         "comparison": compare(baseline_metrics, candidate_metrics, k),
         labels[0]: baseline_metrics.as_dict(),
         labels[1]: candidate_metrics.as_dict(),

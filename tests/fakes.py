@@ -110,6 +110,43 @@ class InMemoryGraphStore:
         found.sort(key=lambda row: (-row["score"], row["canonical"]))
         return found[: max(1, int(limit))]
 
+    def entities_of_passages(self, chunk_ids: Sequence[str], limit: int) -> list[dict[str, Any]]:
+        """Сущности опорных фрагментов с обратной частотой по корпусу.
+
+        Повторяет логику боевого запроса, а не подменяет её готовым ответом:
+        иначе тест доказывал бы работоспособность заглушки.
+        """
+        wanted = {str(item) for item in chunk_ids}
+        if not wanted:
+            return []
+        corpus = max(1, len(self.passages))
+
+        local: dict[str, float] = {}
+        document_frequency: dict[str, set[str]] = {}
+        for mention in self.mentions:
+            entity_id = str(mention["entity_id"])
+            chunk_id = str(mention["chunk_id"])
+            document_frequency.setdefault(entity_id, set()).add(chunk_id)
+            if chunk_id in wanted:
+                local[entity_id] = local.get(entity_id, 0.0) + math.log(
+                    1 + int(mention.get("count", 1))
+                )
+
+        rows: list[dict[str, Any]] = []
+        for entity_id, value in local.items():
+            frequency = max(1, len(document_frequency.get(entity_id, ())))
+            entity = self.entities.get(entity_id)
+            rows.append(
+                {
+                    "id": entity_id,
+                    "canonical": entity.canonical if entity else "",
+                    "document_frequency": frequency,
+                    "weight": value * math.log(corpus / frequency),
+                }
+            )
+        rows.sort(key=lambda row: row["weight"], reverse=True)
+        return rows[: max(1, int(limit))]
+
     def expand_entities(
         self, seed_ids: Sequence[str], hops: int, rel_types: Sequence[str], limit: int
     ) -> dict[str, float]:

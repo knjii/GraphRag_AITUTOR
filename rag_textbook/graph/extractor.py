@@ -57,6 +57,26 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
     "required": ["entities", "relations"],
 }
 
+# Схема для связей, извлекаемых из нескольких фрагментов сразу. Источник здесь
+# известен заранее — это понятие, вокруг которого собраны выдержки.
+CROSS_CHUNK_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "relations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string"},
+                    "relation": {"type": "string"},
+                },
+                "required": ["target", "relation"],
+            },
+        }
+    },
+    "required": ["relations"],
+}
+
 # Закрытый список меток. Свободный текст в поле relation давал сотни синонимов
 # одного отношения, по которым потом невозможно осмысленно обходить граф.
 RELATION_LABELS: tuple[str, ...] = (
@@ -252,6 +272,103 @@ class EntityExtractor:
         return ExtractionResult(
             entities=list(by_canonical.values()), relations=relations, status=status
         )
+
+    # ------------------------------------------------- связи между фрагментами
+
+    def extract_cross_chunk(
+        self, subject: str, excerpts: Sequence[str], known: Sequence[str]
+    ) -> list[Relation]:
+        """Извлекает связи понятия, видимые только при сопоставлении фрагментов.
+
+        Ради этого метода и затевалась переделка графа. Обычное извлечение
+        видит один фрагмент за раз, поэтому каждое ребро ``RELATES`` соединяет
+        сущности, встретившиеся в одном и том же тексте. Обход такого графа
+        приводит туда же, куда и лексический поиск: измерено, что его
+        исключительный вклад в контекст равен нулю.
+
+        Здесь модель получает выдержки об одном понятии из **разных** мест
+        учебника и ищет связи, которые следуют из их сопоставления. Ровно такие
+        рёбра соединяют далёкие разделы и не выводимы из отдельного фрагмента.
+
+        ``known`` ограничивает второй конец связи уже существующими понятиями:
+        без этого граф заполняется висячими узлами, которых нет ни в одном
+        фрагменте.
+        """
+        if self.llm is None or not excerpts:
+            return []
+
+        numbered = "\n\n".join(
+            f"Фрагмент {index}:\n{truncate(text, 700)}" for index, text in enumerate(excerpts, 1)
+        )
+        prompt = (
+            f"Ниже выдержки из разных разделов учебника, в которых упоминается «{subject}».\n\n"
+            f"{numbered}\n\n"
+            f"Назови связи понятия «{subject}» с другими понятиями, которые видны "
+            "ТОЛЬКО при сопоставлении нескольких фрагментов.\n"
+            "Требования:\n"
+            "- не называй связи, очевидные из одного фрагмента;\n"
+            "- второе понятие должно быть названо в выдержках;\n"
+            "- связь называй глаголом или коротким оборотом;\n"
+            "- если сопоставление ничего нового не даёт, верни пустой список.\n\n"
+            'Верни строго JSON: {"relations": [{"target": "...", "relation": "..."}]}'
+        )
+        try:
+            raw = self.llm.chat(
+                [ChatMessage(role="user", content=prompt)],
+                purpose="extraction",
+                json_schema=CROSS_CHUNK_SCHEMA,
+                temperature=0.0,
+                max_tokens=512,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Извлечение связей между фрагментами не удалось: %s", exc)
+            return []
+
+        if not str(raw or "").strip():
+            return []
+        try:
+            payload = json.loads(_strip_code_fence(raw))
+        except json.JSONDecodeError:
+            return []
+
+        subject_canonical = canonicalize_entity(
+            subject, lemmatize=self.settings.lemmatize_entities
+        )
+        # Канонизируем и здесь: вызывающий может передать сырые имена, и тогда
+        # сравнение с канонизированной целью молча не находило бы ничего.
+        known_canonical = {
+            canonicalize_entity(name, lemmatize=self.settings.lemmatize_entities)
+            for name in known
+        }
+        relations: list[Relation] = []
+        seen: set[tuple[str, str]] = set()
+        for item in payload.get("relations") or []:
+            if not isinstance(item, dict):
+                continue
+            target = canonicalize_entity(
+                str(item.get("target") or ""), lemmatize=self.settings.lemmatize_entities
+            )
+            if not target or target == subject_canonical or target not in known_canonical:
+                continue
+            label = _normalize_label(str(item.get("relation") or ""))
+            if (target, label) in seen:
+                continue
+            seen.add((target, label))
+            relations.append(
+                Relation(
+                    source_id=Entity.make_id(subject_canonical),
+                    target_id=Entity.make_id(target),
+                    label=label,
+                    # Фрагмент не указывается намеренно: связь следует
+                    # из нескольких фрагментов сразу и ни одному не принадлежит.
+                    chunk_id="",
+                    doc_id="",
+                    weight=1.0,
+                )
+            )
+            if len(relations) >= self.settings.max_relations_per_chunk:
+                break
+        return relations
 
     # ---------------------------------------------------------------- стратегии
 

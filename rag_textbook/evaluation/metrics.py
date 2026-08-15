@@ -12,6 +12,7 @@ LLM-судью на конце пайплайна. Судьёй была та ж
 from __future__ import annotations
 
 import math
+import random
 import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -75,6 +76,8 @@ class QueryOutcome:
     relevant: list[str]
     used_graph: bool = False
     graph_share: float = 0.0
+    # Доля фрагментов, которых без графового канала в контексте не было бы.
+    graph_only_share: float = 0.0
     latency_ms: float = 0.0
 
 
@@ -162,6 +165,8 @@ def evaluate_retrieval(
     result.graph_usage = {
         "routed_to_graph": statistics.fmean(1.0 if item.used_graph else 0.0 for item in outcomes),
         "avg_graph_share_in_context": statistics.fmean(item.graph_share for item in outcomes),
+        # Вклад канала: доля фрагментов, которых без него не было бы.
+        "avg_graph_only_share": statistics.fmean(item.graph_only_share for item in outcomes),
     }
 
     latencies = sorted(item.latency_ms for item in outcomes)
@@ -173,6 +178,104 @@ def evaluate_retrieval(
             "max": latencies[-1],
         }
     return result
+
+
+_METRIC_FUNCS: dict[str, Any] = {
+    "recall": recall_at_k,
+    "precision": precision_at_k,
+    "ndcg": ndcg_at_k,
+    "hit_rate": hit_rate_at_k,
+}
+
+
+def _per_question(outcomes: Sequence[QueryOutcome], name: str, k: int) -> dict[str, float]:
+    if name == "mrr":
+        return {item.question_id: mrr(item.retrieved, item.relevant) for item in outcomes}
+    func = _METRIC_FUNCS[name]
+    return {item.question_id: func(item.retrieved, item.relevant, k) for item in outcomes}
+
+
+def _paired_bootstrap(
+    differences: Sequence[float], *, resamples: int = 10000, seed: int = 20260815
+) -> dict[str, float]:
+    """Доверительный интервал среднего различия по парному бутстрэпу.
+
+    Парный, потому что обе конфигурации оцениваются на одних и тех же вопросах.
+    Вопросы различаются по трудности гораздо сильнее, чем конфигурации между
+    собой, и если считать выборки независимыми, эта общая дисперсия попадает
+    в оценку шума целиком. Тогда реальный эффект тонет: при 140 вопросах
+    независимый критерий не увидит прироста меньше 8 процентных пунктов,
+    хотя типичный эффект от графа — единицы пунктов.
+    """
+    values = list(differences)
+    n = len(values)
+    if n == 0:
+        return {"mean": 0.0, "low": 0.0, "high": 0.0, "p_value": 1.0}
+    mean = statistics.fmean(values)
+
+    rng = random.Random(seed)
+    means: list[float] = []
+    for _ in range(resamples):
+        total = 0.0
+        for _ in range(n):
+            total += values[rng.randrange(n)]
+        means.append(total / n)
+    means.sort()
+    low = means[int(0.025 * resamples)]
+    high = means[min(resamples - 1, int(0.975 * resamples))]
+
+    # Двусторонняя доля повторных выборок по ту сторону нуля от наблюдаемого
+    # среднего. Это не точное p-значение, а его бутстрэп-приближение.
+    if mean >= 0:
+        tail = sum(1 for value in means if value <= 0.0)
+    else:
+        tail = sum(1 for value in means if value >= 0.0)
+    p_value = min(1.0, 2.0 * tail / resamples)
+
+    return {"mean": mean, "low": low, "high": high, "p_value": p_value}
+
+
+def compare_paired(
+    baseline_outcomes: Sequence[QueryOutcome],
+    candidate_outcomes: Sequence[QueryOutcome],
+    k: int,
+) -> dict[str, Any]:
+    """Парное сравнение двух конфигураций по каждому вопросу.
+
+    Возвращает не только средние, но и разбор по вопросам: сколько вопросов
+    улучшилось, сколько ухудшилось, и доверительный интервал среднего различия.
+    Счёт «выиграло/проиграло» важен сам по себе: прирост, собранный из
+    +12 и −9 вопросов, требует другого решения, чем прирост из +3 и −0.
+    """
+    base_by_id = {item.question_id: item for item in baseline_outcomes}
+    cand_by_id = {item.question_id: item for item in candidate_outcomes}
+    shared = [qid for qid in base_by_id if qid in cand_by_id]
+
+    base_shared = [base_by_id[qid] for qid in shared]
+    cand_shared = [cand_by_id[qid] for qid in shared]
+
+    metrics: dict[str, Any] = {}
+    for name in ("recall", "precision", "ndcg", "hit_rate", "mrr"):
+        base_values = _per_question(base_shared, name, k)
+        cand_values = _per_question(cand_shared, name, k)
+        differences = [cand_values[qid] - base_values[qid] for qid in shared]
+        stats = _paired_bootstrap(differences)
+        metrics[name] = {
+            "baseline": round(statistics.fmean(base_values.values()) if shared else 0.0, 4),
+            "candidate": round(statistics.fmean(cand_values.values()) if shared else 0.0, 4),
+            "delta": round(stats["mean"], 4),
+            "ci_low": round(stats["low"], 4),
+            "ci_high": round(stats["high"], 4),
+            "p_value": round(stats["p_value"], 4),
+            # Значимость — это интервал, не покрывающий ноль. Формулировка
+            # «доверительный интервал» честнее, чем голое «да/нет».
+            "significant": stats["low"] > 0.0 or stats["high"] < 0.0,
+            "improved": sum(1 for value in differences if value > 1e-9),
+            "worsened": sum(1 for value in differences if value < -1e-9),
+            "unchanged": sum(1 for value in differences if abs(value) <= 1e-9),
+        }
+
+    return {"k": k, "questions": len(shared), "metrics": metrics}
 
 
 def compare(baseline: RetrievalMetrics, candidate: RetrievalMetrics, k: int) -> dict[str, Any]:

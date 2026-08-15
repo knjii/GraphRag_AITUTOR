@@ -83,13 +83,28 @@ class GraphStore:
     def _session(self) -> Any:
         return self.driver.session(database=self.settings.database)
 
+    @staticmethod
+    def _run(session: Any, cypher: str, **params: Any) -> Any:
+        """Выполняет запрос, передавая параметры словарём.
+
+        Именованными аргументами их передавать нельзя: сигнатура драйвера —
+        ``Session.run(query, parameters=None, **kwparameters)``, поэтому
+        параметр Cypher с именем ``query`` или ``parameters`` перекрывает
+        собственный аргумент метода. Ошибка при этом не синтаксическая, а
+        времени выполнения, и всплывает только на том единственном запросе,
+        где имена совпали: поиск стартовых сущностей падал на каждом вопросе,
+        графовый канал молча отдавал пустоту, а замер показывал «граф не даёт
+        прироста» — при том что граф просто не участвовал в поиске.
+        """
+        return session.run(cypher, params)
+
     # ------------------------------------------------------------------- схема
 
     def ensure_schema(self) -> None:
         with self._session() as session:
             for statement in SCHEMA_STATEMENTS:
                 try:
-                    session.run(statement).consume()
+                    self._run(session, statement).consume()
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Не удалось применить схему (%s): %s", statement[:60], exc)
         logger.info("Схема графа применена")
@@ -109,7 +124,7 @@ class GraphStore:
         with self._session() as session:
             for start in range(0, len(rows), step):
                 batch = rows[start : start + step]
-                session.run(query, rows=batch).consume()
+                self._run(session, query, rows=batch).consume()
                 written += len(batch)
                 if start and start % (step * 10) == 0:
                     logger.debug("%s: записано %s/%s", label, written, len(rows))
@@ -118,7 +133,8 @@ class GraphStore:
 
     def upsert_document(self, doc_id: str, doc_name: str, source_path: str) -> None:
         with self._session() as session:
-            session.run(
+            self._run(
+                session,
                 """
                 MERGE (d:Document {id: $doc_id})
                 SET d.name = $doc_name, d.path = $source_path, d.updated_at = timestamp()
@@ -279,7 +295,8 @@ class GraphStore:
 
     def delete_document(self, doc_id: str) -> dict[str, int]:
         with self._session() as session:
-            record = session.run(
+            record = self._run(
+                session,
                 """
                 MATCH (p:Passage {doc_id: $doc_id})
                 DETACH DELETE p
@@ -289,7 +306,8 @@ class GraphStore:
             ).single()
             passages = int((record or {}).get("passages") or 0)
             # Сущности без единого упоминания больше не нужны.
-            record = session.run(
+            record = self._run(
+                session,
                 """
                 MATCH (e:Entity)
                 WHERE NOT (e)<-[:MENTIONS]-()
@@ -316,16 +334,81 @@ class GraphStore:
         if not query_string:
             return []
         with self._session() as session:
-            rows = session.run(
+            rows = self._run(
+                session,
                 f"""
-                CALL db.index.fulltext.queryNodes('{FULLTEXT_INDEX}', $query)
+                CALL db.index.fulltext.queryNodes('{FULLTEXT_INDEX}', $search)
                 YIELD node, score
                 RETURN node.id AS id, node.canonical AS canonical, node.name AS name,
                        coalesce(node.count, 1) AS count, score
                 ORDER BY score DESC
                 LIMIT $limit
                 """,
-                query=query_string,
+                search=query_string,
+                limit=int(limit),
+            ).data()
+        return rows
+
+    def linked_passage_pairs(
+        self, limit: int, min_distance: int = 10
+    ) -> list[dict[str, Any]]:
+        """Пары фрагментов, соединённые типизированной связью через сущности.
+
+        Нужна для сборки эталонного набора: пара, где связь существует
+        в графе, но фрагменты стоят далеко друг от друга, — это ровно тот
+        случай, ради которого граф и строится. Соседние фрагменты исключены:
+        они перекрываются, и связь между ними ничего не доказывает.
+
+        Возвращает только пары, связанные ``RELATES``: совместная встречаемость
+        для этой цели не годится, она и есть переодетый лексический сигнал.
+        """
+        with self._session() as session:
+            rows = self._run(
+                session,
+                """
+                MATCH (left:Passage)-[:MENTIONS]->(a:Entity)
+                      -[:RELATES]-(b:Entity)<-[:MENTIONS]-(right:Passage)
+                WHERE left.doc_id = right.doc_id
+                  AND left.ordinal + $min_distance < right.ordinal
+                WITH left, right, count(DISTINCT [a.id, b.id]) AS links
+                RETURN left.id AS left, right.id AS right, links
+                ORDER BY links DESC
+                LIMIT $limit
+                """,
+                min_distance=int(min_distance),
+                limit=int(limit),
+            ).data()
+        return rows
+
+    def entities_of_passages(self, chunk_ids: Sequence[str], limit: int) -> list[dict[str, Any]]:
+        """Сущности, упомянутые в заданных фрагментах.
+
+        Опора обхода не на формулировку вопроса, а на уже найденный текст.
+        Вклад сущности взвешен числом упоминаний и **обратной** частотой по
+        корпусу: термин, встречающийся в каждом втором фрагменте, ничего
+        не сообщает о связях именно этого фрагмента, а вот редкий — сообщает.
+        """
+        if not chunk_ids:
+            return []
+        with self._session() as session:
+            rows = self._run(
+                session,
+                """
+                MATCH (total:Passage)
+                WITH count(total) AS corpus
+                UNWIND $chunk_ids AS cid
+                MATCH (p:Passage {id: cid})-[m:MENTIONS]->(e:Entity)
+                WITH corpus, e, sum(log(1 + coalesce(m.count, 1))) AS local
+                MATCH (e)<-[:MENTIONS]-(other:Passage)
+                WITH corpus, e, local, count(DISTINCT other) AS document_frequency
+                RETURN e.id AS id,
+                       e.canonical AS canonical,
+                       document_frequency,
+                       local * log(toFloat(corpus) / document_frequency) AS weight
+                ORDER BY weight DESC
+                LIMIT $limit
+                """,
+                chunk_ids=[str(item) for item in chunk_ids],
                 limit=int(limit),
             ).data()
         return rows
@@ -347,7 +430,8 @@ class GraphStore:
         depth = max(1, min(int(hops), 3))
 
         with self._session() as session:
-            rows = session.run(
+            rows = self._run(
+                session,
                 f"""
                 UNWIND $seed_ids AS seed_id
                 MATCH (s:Entity {{id: seed_id}})
@@ -386,7 +470,8 @@ class GraphStore:
             for entity_id, weight in entity_weights.items()
         ]
         with self._session() as session:
-            rows = session.run(
+            rows = self._run(
+                session,
                 """
                 UNWIND $entities AS item
                 MATCH (p:Passage)-[m:MENTIONS]->(e:Entity {id: item.entity_id})
@@ -413,13 +498,14 @@ class GraphStore:
 
     def stats(self) -> dict[str, int]:
         with self._session() as session:
-            record = session.run(
+            record = self._run(
+                session,
                 """
-                CALL {MATCH (p:Passage) RETURN count(p) AS passages}
-                CALL {MATCH (e:Entity) RETURN count(e) AS entities}
-                CALL {MATCH ()-[r:RELATES]->() RETURN count(r) AS relates}
-                CALL {MATCH ()-[c:CO_OCCURS]->() RETURN count(c) AS cooccurs}
-                CALL {MATCH ()-[m:MENTIONS]->() RETURN count(m) AS mentions}
+                CALL () {MATCH (p:Passage) RETURN count(p) AS passages}
+                CALL () {MATCH (e:Entity) RETURN count(e) AS entities}
+                CALL () {MATCH ()-[r:RELATES]->() RETURN count(r) AS relates}
+                CALL () {MATCH ()-[c:CO_OCCURS]->() RETURN count(c) AS cooccurs}
+                CALL () {MATCH ()-[m:MENTIONS]->() RETURN count(m) AS mentions}
                 RETURN passages, entities, relates, cooccurs, mentions
                 """
             ).single()
@@ -432,7 +518,8 @@ class GraphStore:
         превращает обход в перебор всего графа. Такие узлы полезнее удалить.
         """
         with self._session() as session:
-            record = session.run(
+            record = self._run(
+                session,
                 """
                 MATCH (e:Entity)
                 WITH e, COUNT { (e)-[:RELATES]-() } + COUNT { (e)-[:CO_OCCURS]-() } AS degree

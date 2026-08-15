@@ -37,6 +37,12 @@ def settings(tmp_path) -> Settings:
         vector_store={"provider": "memory"},
         graph={"enabled": False, "retrieval_enabled": False},
         retrieval={"top_k": 5, "router_mode": "heuristic"},
+        # Страж видеопамяти опрашивает настоящую карту и ждёт освобождения
+        # до верхней границы таймера. С запущенным сервером инференса на карте
+        # нет свободного места, и сквозной тест индексации простаивал минуты
+        # вместо секунд. Тест, зависящий от загрузки видеокарты, ничего
+        # не гарантирует — по той же причине тесты не читают рабочий .env.
+        indexing={"vram_guard_enabled": False},
     )
     settings.paths.cache_dir = tmp_path / "cache"
     settings.paths.parsed_dir = tmp_path / "parsed"

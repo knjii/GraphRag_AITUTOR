@@ -36,6 +36,10 @@ from rag_textbook.parsing.pdf_parser import MineruPdfParser, PdfParseError, file
 
 logger = get_logger("indexing.pipeline")
 
+# Стадии обхода корпуса в порядке выполнения. Каждая занимает видеопамять
+# своим потребителем, поэтому их можно разносить по времени.
+ALL_STAGES: tuple[str, ...] = ("parse", "chunk", "embed", "graph")
+
 
 @dataclass
 class DocumentReport:
@@ -300,7 +304,22 @@ class IndexingPipeline:
             seen.setdefault(path.name, path)
         return list(seen.values())
 
-    def run(self, sources: Sequence[Path] | None = None, force: bool = False) -> IndexingReport:
+    def run(
+        self,
+        sources: Sequence[Path] | None = None,
+        force: bool = False,
+        stages: Sequence[str] | None = None,
+    ) -> IndexingReport:
+        """Индексирует корпус.
+
+        ``stages`` ограничивает набор выполняемых стадий. Это нужно там, где
+        карта одна: сервер инференса держит свою долю видеопамяти постоянно,
+        пока контейнер запущен, и вместе с MinerU они на 24 ГБ не помещаются.
+        Разнести их по времени иначе нельзя — проход по стадиям выполняется
+        одним процессом. Манифест делает разбиение безопасным: пропущенная
+        стадия не помечается выполненной и доделывается следующим запуском.
+        """
+        selected = self._resolve_stages(stages)
         documents = list(sources) if sources else self.discover_documents()
         report = IndexingReport(
             started_at=datetime.now(UTC).isoformat(),
@@ -323,11 +342,23 @@ class IndexingPipeline:
 
         mode = self.settings.indexing.mode
         report.config["indexing_mode"] = mode
-        logger.info("Индексация: документов=%s, режим=%s, force=%s", len(documents), mode, force)
+        report.config["stages"] = list(selected)
+        logger.info(
+            "Индексация: документов=%s, режим=%s, force=%s, стадии=%s",
+            len(documents),
+            mode,
+            force,
+            ",".join(selected),
+        )
 
         if mode == "stage":
-            self._run_stage_major(documents, report, force=force)
+            self._run_stage_major(documents, report, force=force, stages=selected)
         else:
+            if set(selected) != set(ALL_STAGES):
+                raise ValueError(
+                    "Выбор стадий поддерживается только в режиме INDEXING_MODE=stage: "
+                    "обход по документам по устройству не разделяется на стадии"
+                )
             for position, source in enumerate(documents, start=1):
                 logger.info("[%s/%s] %s", position, len(documents), source.name)
                 doc_report = self.index_document(source, force=force)
@@ -351,8 +382,27 @@ class IndexingPipeline:
 
     # -------------------------------------------------- обход по стадиям
 
+    @staticmethod
+    def _resolve_stages(stages: Sequence[str] | None) -> tuple[str, ...]:
+        if not stages:
+            return ALL_STAGES
+        selected = tuple(
+            dict.fromkeys(str(item).strip().lower() for item in stages if str(item).strip())
+        )
+        unknown = [item for item in selected if item not in ALL_STAGES]
+        if unknown:
+            raise ValueError(
+                f"Неизвестные стадии: {', '.join(unknown)}. Доступны: {', '.join(ALL_STAGES)}"
+            )
+        return selected or ALL_STAGES
+
     def _run_stage_major(
-        self, documents: Sequence[Path], report: IndexingReport, *, force: bool
+        self,
+        documents: Sequence[Path],
+        report: IndexingReport,
+        *,
+        force: bool,
+        stages: Sequence[str] = ALL_STAGES,
     ) -> None:
         """Проходит корпус по стадиям, а не по документам.
 
@@ -396,8 +446,12 @@ class IndexingPipeline:
         alive = [doc_id for doc_id, item in reports.items() if item.status != "failed"]
 
         # Стадия 1: разбор. Карту целиком занимает MinerU.
-        logger.info("Стадия «разбор»: документов %s", len(alive))
-        for doc_id in list(alive):
+        if "parse" not in stages:
+            logger.info("Стадия «разбор» пропущена по выбору стадий")
+            alive = [doc_id for doc_id in alive if states[doc_id].is_done("parsed")]
+        else:
+            logger.info("Стадия «разбор»: документов %s", len(alive))
+        for doc_id in list(alive) if "parse" in stages else []:
             source, state, doc_report = paths[doc_id], states[doc_id], reports[doc_id]
             started = time.perf_counter()
             try:
@@ -422,9 +476,14 @@ class IndexingPipeline:
         for doc_id in list(alive):
             source, state, doc_report = paths[doc_id], states[doc_id], reports[doc_id]
             blocks = blocks_by_doc.get(doc_id) or []
+            # Загрузка готовых чанков выполняется всегда, даже если стадия
+            # не выбрана: последующим стадиям они нужны на входе.
             if not force and state.is_done("chunked"):
                 chunks_by_doc[doc_id] = self._load_chunks(doc_id)
                 doc_report.chunks = len(chunks_by_doc[doc_id])
+                continue
+            if "chunk" not in stages:
+                logger.info("Стадия «чанкинг» пропущена по выбору стадий: %s", doc_report.doc_name)
                 continue
             started = time.perf_counter()
             images_dir = self.parser.images_dir_for(source)
@@ -449,11 +508,15 @@ class IndexingPipeline:
         blocks_by_doc.clear()
 
         # Стадия 3: векторизация. Один непрерывный поток по всему корпусу.
-        pending_embed = [
-            doc_id
-            for doc_id in alive
-            if (force or not states[doc_id].is_done("embedded")) and chunks_by_doc.get(doc_id)
-        ]
+        pending_embed = (
+            [
+                doc_id
+                for doc_id in alive
+                if (force or not states[doc_id].is_done("embedded")) and chunks_by_doc.get(doc_id)
+            ]
+            if "embed" in stages
+            else []
+        )
         if pending_embed:
             total = sum(len(chunks_by_doc[doc_id]) for doc_id in pending_embed)
             logger.info(
@@ -478,11 +541,15 @@ class IndexingPipeline:
             self.manifest.save()
 
         # Стадия 4: граф. Карту занимает модель извлечения.
-        pending_graph = [
-            doc_id
-            for doc_id in alive
-            if (force or not states[doc_id].is_done("graphed")) and chunks_by_doc.get(doc_id)
-        ]
+        pending_graph = (
+            [
+                doc_id
+                for doc_id in alive
+                if (force or not states[doc_id].is_done("graphed")) and chunks_by_doc.get(doc_id)
+            ]
+            if "graph" in stages
+            else []
+        )
         if pending_graph:
             logger.info("Стадия «граф»: документов %s", len(pending_graph))
             for doc_id in pending_graph:
@@ -517,7 +584,9 @@ class IndexingPipeline:
                 # Причина обязана быть видна в логе, а не только в JSON-отчёте:
                 # иначе прогон выглядит как «failed» без объяснений и разбираться
                 # приходится вручную.
-                logger.error("Документ %s не проиндексирован: %s", doc_report.doc_name, doc_report.error)
+                logger.error(
+                    "Документ %s не проиндексирован: %s", doc_report.doc_name, doc_report.error
+                )
                 report.failed += 1
             elif not doc_report.stage_seconds:
                 report.skipped += 1

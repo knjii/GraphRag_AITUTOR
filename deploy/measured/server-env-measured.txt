@@ -20,7 +20,6 @@ LOG_JSON=0
 # pipeline — стабильный и нетребовательный; hybrid быстрее (в MinerU 3.3+ это дефолт);
 # vlm точнее на таблицах, но требует около 8 ГБ видеопамяти.
 MINERU_BACKEND=pipeline
-# Именно east_slavic: значения "ru" MinerU не знает и падает с кодом 2.
 MINERU_LANG=east_slavic
 MINERU_METHOD=auto
 MINERU_FORMULA_ENABLE=1
@@ -62,17 +61,12 @@ INDEXING_EMBED_PER_ITEM_MIB=0
 # --------------------------------------------------------------- эмбеддинги
 # openai_compatible — Infinity, TEI или vLLM; ollama — запасной вариант; fake — для тестов.
 EMBEDDING_PROVIDER=openai_compatible
-# Без /v1: Infinity отдаёт OpenAI-совместимые пути в корне.
 EMBEDDING_BASE_URL=http://127.0.0.1:7997
-# bge-m3 построена на XLM-RoBERTa и понимается любым transformers.
-# Qwen3-Embedding здесь не работает: образы Infinity 0.0.76 и 0.0.77 не знают
-# архитектуру qwen3 и не стартуют вовсе.
 EMBEDDING_MODEL=BAAI/bge-m3
 EMBEDDING_DIMENSIONS=1024
 EMBEDDING_BATCH_SIZE=64
 EMBEDDING_CACHE_ENABLED=1
-# У bge-m3 обучение симметричное — инструктивный префикс запросу не нужен.
-# Для асимметричных моделей (Qwen3-Embedding, e5) впишите префикс сюда.
+# Qwen3-Embedding обучена асимметрично: запрос с инструкцией, документ без.
 EMBEDDING_QUERY_PREFIX=
 EMBEDDING_DOCUMENT_PREFIX=
 
@@ -87,8 +81,8 @@ RERANKER_TOP_N=8
 # ---------------------------------------------------------------------- LLM
 # Ollama: http://127.0.0.1:11434/v1 ; vLLM: http://127.0.0.1:8000/v1
 LLM_PROVIDER=openai_compatible
-LLM_BASE_URL=http://127.0.0.1:11434/v1
-LLM_MODEL=qwen3.5:4b
+LLM_BASE_URL=http://127.0.0.1:8001/v1
+LLM_MODEL=Qwen/Qwen3.5-4B
 LLM_VISION_MODEL=qwen2.5vl:3b
 # Пусто = использовать LLM_MODEL
 LLM_EXTRACTION_MODEL=
@@ -97,15 +91,7 @@ LLM_TEMPERATURE=0.1
 LLM_MAX_TOKENS=768
 LLM_CONTEXT_WINDOW=8192
 LLM_TIMEOUT_SECONDS=300
-LLM_MAX_CONCURRENCY=4
-# Размышление для служебных вызовов (извлечение графа, описание иллюстраций).
-# У рассуждающих моделей вроде Qwen3.5 оно съедает весь лимит токенов, и ответ
-# приходит пустым — граф получается без связей. Замер на qwen3.5:4b:
-# 1962 токена с размышлением против 116 без него при том же результате.
-# Пустое значение — не передавать параметр движку.
-LLM_REASONING_EFFORT=none
-# Для ответов пользователю размышление может быть полезно — задаётся отдельно.
-LLM_CHAT_REASONING_EFFORT=
+LLM_MAX_CONCURRENCY=16
 
 # ------------------------------------------------------- векторное хранилище
 QDRANT_PROVIDER=qdrant
@@ -121,7 +107,7 @@ QDRANT_SPARSE_LANGUAGE=russian
 GRAPH_ENABLED=1
 NEO4J_URI=bolt://127.0.0.1:7687
 NEO4J_USER=neo4j
-NEO4J_PASSWORD=
+NEO4J_PASSWORD=<задаётся при развёртывании>
 NEO4J_DATABASE=neo4j
 GRAPH_WRITE_BATCH_SIZE=2000
 GRAPH_FAIL_ON_ERROR=0
@@ -146,41 +132,11 @@ GRAPH_RETRIEVAL_ENABLED=1
 GRAPH_EXPANSION_HOPS=1
 GRAPH_EXPANSION_REL_TYPES=RELATES
 GRAPH_SEED_ENTITY_LIMIT=20
-# От чего отталкивается обход графа: query | passages | both.
-# `query` — от терминов вопроса. Измерено: канал вырождается в ослабленный
-# лексический поиск, его исключительный вклад в контекст равен нулю.
-# `passages` — от сущностей уже найденных фрагментов; на многошаговых вопросах
-# уникальный вклад вдвое выше, но в абсолютных числах всё ещё мал (0.034).
-# `both` — измеренный оптимум: recall 0.840 -> 0.859, вклад графа 0.000 -> 0.023.
-GRAPH_SEED_MODE=both
-GRAPH_SEED_PASSAGES=3
-# Связи, извлекаемые сопоставлением выдержек об одном понятии из разных мест
-# книги. Без них любое ребро RELATES соединяет сущности, встретившиеся в одном
-# фрагменте, и граф не содержит ничего сверх текста фрагментов.
-GRAPH_CROSS_CHUNK_ENABLED=1
-# 250 понятий дали прирост recall +0.018; 1200 понятий — +0.015 при вдвое
-# большем числе рёбер. Больше не значит лучше: лишние рёбра вносят шум.
-GRAPH_CROSS_CHUNK_MAX_ENTITIES=250
-GRAPH_CROSS_CHUNK_MIN_CHUNKS=3
 GRAPH_PASSAGE_LIMIT=30
 GRAPH_WEIGHT=0.4
 
 # -------------------------------------------------------------------- поиск
 RETRIEVAL_TOP_K=8
-# Размер выдачи для связывающих вопросов. Им нужно два эталонных фрагмента
-# вместо одного, поэтому та же квота вмещает вдвое меньше ответов.
-# Замер на 172 вопросах полного корпуса: recall многошаговых 0.576 -> 0.729,
-# общий 0.826 -> 0.878, средний контекст 8.0 -> 11.2 фрагмента, задержка та же.
-# Ноль означает «как у обычных вопросов».
-RETRIEVAL_TOP_K_LINKING=16
-# Разложение связывающего вопроса на подвопросы. Измерено и отклонено:
-# nDCG -0.024, MRR -0.034 при значимых интервалах. Кросс-энкодер на полном
-# вопросе точнее, чем два его суждения по половинам. Оставлено выключенным.
-RETRIEVAL_DECOMPOSE_ENABLED=0
-# Резерв мест в пуле кандидатов реранкера за фрагментами, которые нашёл только
-# графовый канал. Без резерва его находки не доезжают до реранкера: замерено,
-# что доля таких фрагментов в контексте равнялась нулю при 18% присутствия.
-RETRIEVAL_GRAPH_CANDIDATE_QUOTA=6
 RETRIEVAL_DENSE_CANDIDATES=40
 RETRIEVAL_SPARSE_CANDIDATES=40
 RETRIEVAL_FUSION=rrf
@@ -219,3 +175,19 @@ SERVICE_HISTORY_DB_PATH=artifacts/state/chat_history.sqlite3
 # QA_SYSTEM_PROMPT=
 # CONTEXTUALIZE_Q_SYSTEM_PROMPT=
 PROMPT_VERSION=v2
+MINERU_PAGE_START=0
+MINERU_PAGE_END=-1
+LLM_REASONING_EFFORT=none
+
+# Расширенная квота выдачи для связывающих вопросов (замер: recall
+# многошаговых 0.576 -> 0.729, общий 0.826 -> 0.878).
+RETRIEVAL_TOP_K_LINKING=16
+
+# Батч упирался в слоты состояния mamba, а не в KV-кэш (занят на 8%).
+# Стадии разнесены по времени, поэтому память свободна.
+SGLANG_GPU_FRACTION=0.75
+GRAPH_CROSS_CHUNK_ENABLED=1
+GRAPH_CROSS_CHUNK_MAX_ENTITIES=250
+GRAPH_CROSS_CHUNK_MIN_CHUNKS=3
+GRAPH_SEED_MODE=both
+RETRIEVAL_GRAPH_CANDIDATE_QUOTA=6

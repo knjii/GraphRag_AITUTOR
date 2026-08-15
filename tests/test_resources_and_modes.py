@@ -1,4 +1,4 @@
-"""Тесты страховки по видеопамяти и режимов обхода конвейера."""
+﻿"""Тесты страховки по видеопамяти и режимов обхода конвейера."""
 
 from __future__ import annotations
 
@@ -183,7 +183,7 @@ def _prepare(settings, monkeypatch, tmp_path, sample_blocks, count: int = 3):
 
 def test_stage_major_indexes_all_documents(settings, monkeypatch, tmp_path, sample_blocks) -> None:
     _prepare(settings, monkeypatch, tmp_path, sample_blocks, count=3)
-    settings.indexing = IndexingSettings(mode="stage")
+    settings.indexing = IndexingSettings(mode="stage", vram_guard_enabled=False)
 
     context = build_context(settings)
     try:
@@ -203,7 +203,7 @@ def test_both_modes_produce_identical_index(settings, monkeypatch, tmp_path, sam
     """Смена режима обхода не должна менять результат — только скорость."""
     _prepare(settings, monkeypatch, tmp_path, sample_blocks, count=2)
 
-    settings.indexing = IndexingSettings(mode="document")
+    settings.indexing = IndexingSettings(mode="document", vram_guard_enabled=False)
     context = build_context(settings)
     try:
         by_document = IndexingPipeline(context).run()
@@ -214,7 +214,7 @@ def test_both_modes_produce_identical_index(settings, monkeypatch, tmp_path, sam
     # Чистое состояние для второго прогона.
     for path in settings.paths.manifest_dir.glob("*.json"):
         path.unlink()
-    settings.indexing = IndexingSettings(mode="stage")
+    settings.indexing = IndexingSettings(mode="stage", vram_guard_enabled=False)
     context = build_context(settings)
     try:
         by_stage = IndexingPipeline(context).run()
@@ -228,7 +228,7 @@ def test_both_modes_produce_identical_index(settings, monkeypatch, tmp_path, sam
 
 def test_stage_major_is_resumable(settings, monkeypatch, tmp_path, sample_blocks) -> None:
     _prepare(settings, monkeypatch, tmp_path, sample_blocks, count=2)
-    settings.indexing = IndexingSettings(mode="stage")
+    settings.indexing = IndexingSettings(mode="stage", vram_guard_enabled=False)
 
     context = build_context(settings)
     try:
@@ -248,7 +248,7 @@ def test_stage_major_isolates_failed_document(
 ) -> None:
     """Сбой на одном документе не должен ронять остальные."""
     _prepare(settings, monkeypatch, tmp_path, sample_blocks, count=3)
-    settings.indexing = IndexingSettings(mode="stage")
+    settings.indexing = IndexingSettings(mode="stage", vram_guard_enabled=False)
 
     from rag_textbook.parsing.pdf_parser import PdfParseError
 
@@ -274,7 +274,7 @@ def test_stage_major_isolates_failed_document(
 
 def test_report_records_oom_events(settings, monkeypatch, tmp_path, sample_blocks) -> None:
     _prepare(settings, monkeypatch, tmp_path, sample_blocks, count=1)
-    settings.indexing = IndexingSettings(mode="stage")
+    settings.indexing = IndexingSettings(mode="stage", vram_guard_enabled=False)
 
     context = build_context(settings)
     try:

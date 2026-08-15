@@ -207,7 +207,21 @@ class ScoredChunk(BaseModel):
 
     @property
     def from_graph(self) -> bool:
+        """Графовый канал нашёл этот фрагмент — возможно, не он один."""
         return any(channel.startswith("graph") for channel in self.channels)
+
+    @property
+    def only_from_graph(self) -> bool:
+        """Фрагмент нашёл **только** графовый канал.
+
+        Различать это обязательно. Прежняя метрика «доля графа в контексте»
+        считала графовыми и те фрагменты, которые векторный канал нашёл сам,
+        и показывала 16-23% вклада там, где A/B давал ровно нулевую разницу
+        по всем метрикам. Вклад канала — это то, чего без него не было бы.
+        """
+        return self.from_graph and not any(
+            not channel.startswith("graph") for channel in self.channels
+        )
 
 
 class Entity(BaseModel):
@@ -289,9 +303,14 @@ class GoldQuestion(BaseModel):
     gold_chunk_ids: list[str]
     gold_doc_ids: list[str] = Field(default_factory=list)
     answer: str = ""
-    question_type: Literal["single_chunk", "multi_hop", "relation", "formula_table"] = (
-        "single_chunk"
-    )
+    # `graph_linked` — пара фрагментов, соединённая типизированной связью графа
+    # и почти не пересекающаяся по словам. Выделен в отдельный тип потому, что
+    # только на таких вопросах вклад графа вообще измерим: обычные многошаговые
+    # пары отбираются по общим терминам, то есть по тому же сигналу, на котором
+    # и так работают векторный и лексический каналы.
+    question_type: Literal[
+        "single_chunk", "multi_hop", "graph_linked", "relation", "formula_table"
+    ] = "single_chunk"
     expected_hops: int = 1
     generator_model: str = ""
     verified: bool = False

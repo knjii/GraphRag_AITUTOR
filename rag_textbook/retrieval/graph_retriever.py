@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from rag_textbook.config import GraphSettings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, ScoredChunk
@@ -47,52 +49,53 @@ class GraphRetriever:
         # Биграммы идут первыми: составной термин точнее одиночного слова.
         return (bigrams + unigrams)[:24]
 
-    def retrieve(self, question: str, limit: int | None = None) -> list[ScoredChunk]:
+    def retrieve(
+        self,
+        question: str,
+        limit: int | None = None,
+        seed_chunk_ids: Sequence[str] | None = None,
+    ) -> list[ScoredChunk]:
+        """Возвращает фрагменты графового канала.
+
+        ``seed_chunk_ids`` — опорные фрагменты для режимов ``passages``
+        и ``both``: обход начинается от их сущностей, а не от терминов вопроса.
+        """
         if not self.settings.retrieval_enabled:
             return []
 
-        terms = self._query_terms(question)
-        if not terms:
+        mode = self.settings.seed_mode
+        weights: dict[str, float] = {}
+        exclude: set[str] = set()
+
+        if mode in ("query", "both"):
+            weights.update(self._weights_from_query(question))
+        if mode in ("passages", "both"):
+            seeds = list(seed_chunk_ids or [])[: self.settings.seed_passages]
+            exclude = set(seeds)
+            weights.update(self._weights_from_passages(seeds))
+
+        if not weights:
+            logger.debug("Графовый канал: стартовые сущности не найдены (режим %s)", mode)
             return []
 
         try:
-            seeds = self.store.find_seed_entities(terms, self.settings.seed_entity_limit)
-        except Exception as exc:  # noqa: BLE001
-            # Графовый канал — дополнение. Его недоступность не должна ронять запрос.
-            logger.warning("Поиск стартовых сущностей не удался: %s", exc)
-            return []
-
-        if not seeds:
-            logger.debug("Графовый канал: стартовые сущности не найдены для «%s»", question[:60])
-            return []
-
-        seed_ids = [str(row["id"]) for row in seeds if row.get("id")]
-        try:
-            weights = self.store.expand_entities(
-                seed_ids,
-                hops=self.settings.expansion_hops,
-                rel_types=list(self.settings.expansion_rel_types),
-                limit=self.settings.seed_entity_limit * 4,
-            )
+            weights = self._expand(weights)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Расширение графа не удалось: %s", exc)
-            weights = {entity_id: 1.0 for entity_id in seed_ids}
-
-        # Стартовые сущности взвешиваем релевантностью полнотекстового поиска.
-        max_score = max((float(row.get("score") or 0.0) for row in seeds), default=1.0) or 1.0
-        for row in seeds:
-            entity_id = str(row.get("id") or "")
-            if entity_id:
-                weights[entity_id] = float(row.get("score") or 0.0) / max_score
 
         try:
-            rows = self.store.find_passages(weights, limit or self.settings.passage_limit)
+            # Запрашиваем с запасом: опорные фрагменты из выдачи исключаются,
+            # иначе канал вернёт то, что уже найдено векторным поиском.
+            requested = (limit or self.settings.passage_limit) + len(exclude)
+            rows = self.store.find_passages(weights, requested)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Поиск пассажей в графе не удался: %s", exc)
             return []
 
         results: list[ScoredChunk] = []
         for row in rows:
+            if str(row.get("chunk_id") or "") in exclude:
+                continue
             text = str(row.get("text") or "").strip()
             if not text:
                 continue
@@ -116,9 +119,64 @@ class GraphRetriever:
             )
 
         logger.debug(
-            "Графовый канал: seed=%s, расширено до %s сущностей, пассажей=%s",
-            len(seed_ids),
+            "Графовый канал (%s): сущностей %s, пассажей %s",
+            mode,
             len(weights),
             len(results),
         )
         return results
+
+    # ------------------------------------------------------------- источники
+
+    def _weights_from_query(self, question: str) -> dict[str, float]:
+        """Стартовые сущности по терминам вопроса."""
+        terms = self._query_terms(question)
+        if not terms:
+            return {}
+        try:
+            seeds = self.store.find_seed_entities(terms, self.settings.seed_entity_limit)
+        except Exception as exc:  # noqa: BLE001
+            # Графовый канал — дополнение. Его недоступность не должна ронять запрос.
+            logger.warning("Поиск стартовых сущностей не удался: %s", exc)
+            return {}
+        return _normalized(seeds, "score")
+
+    def _weights_from_passages(self, chunk_ids: Sequence[str]) -> dict[str, float]:
+        """Стартовые сущности по уже найденным фрагментам."""
+        if not chunk_ids:
+            return {}
+        try:
+            seeds = self.store.entities_of_passages(chunk_ids, self.settings.seed_entity_limit)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Сущности опорных фрагментов не получены: %s", exc)
+            return {}
+        return _normalized(seeds, "weight")
+
+    def _expand(self, weights: dict[str, float]) -> dict[str, float]:
+        """Расширяет множество сущностей, сохраняя веса стартовых."""
+        expanded = self.store.expand_entities(
+            list(weights),
+            hops=self.settings.expansion_hops,
+            rel_types=list(self.settings.expansion_rel_types),
+            limit=self.settings.seed_entity_limit * 4,
+        )
+        # Стартовые сущности не должны терять свой вес: расширение
+        # проставляет им единицу независимо от исходной релевантности.
+        expanded.update(weights)
+        return expanded
+
+
+def _normalized(rows: Sequence[dict], key: str) -> dict[str, float]:
+    """Приводит веса стартовых сущностей к отрезку от нуля до единицы.
+
+    Нормировка обязательна: полнотекстовый поиск и подсчёт по упоминаниям
+    живут в разных шкалах, и в режиме ``both`` без неё один источник
+    полностью подавил бы другой.
+    """
+    values = {
+        str(row.get("id") or ""): float(row.get(key) or 0.0) for row in rows if row.get("id")
+    }
+    top = max(values.values(), default=0.0)
+    if top <= 0:
+        return dict.fromkeys(values, 1.0)
+    return {entity_id: value / top for entity_id, value in values.items()}

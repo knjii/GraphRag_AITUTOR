@@ -97,7 +97,7 @@ class QueryRouter:
         try:
             answer = self.llm.chat(
                 [ChatMessage(role="user", content=prompt)],
-                purpose="chat",
+                purpose="utility",
                 max_tokens=8,
                 temperature=0.0,
             )
@@ -105,6 +105,11 @@ class QueryRouter:
             logger.warning("LLM-роутер недоступен, откатываюсь к эвристике: %s", exc)
             return self._heuristic(question)
         normalized = answer.strip().lower()
+        if not normalized:
+            # Пустой ответ — это не «нет». Молча трактовать его как отказ от
+            # графа значит незаметно отключить графовый канал целиком.
+            logger.warning("LLM-роутер вернул пустой ответ, откатываюсь к эвристике")
+            return self._heuristic(question)
         use_graph = normalized.startswith("да") or normalized.startswith("yes")
         return RouteDecision(use_graph, f"решение LLM: «{normalized[:20]}»", 0.6)
 
