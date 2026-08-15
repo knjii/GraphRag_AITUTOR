@@ -1,43 +1,36 @@
-# Python caches and build artifacts
+# Кэши Python и артефакты сборки
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
 *.so
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
-.coverage.*
 htmlcov/
+dist/
+build/
+*.egg-info/
 .ipynb_checkpoints/
 
-# Virtual environments
+# Виртуальные окружения
 .venv/
 venv/
 env/
 ENV/
 
-# IDE and OS
+# IDE и ОС
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
 
-# Local secrets
+# Локальные секреты
 .env
 .env.*
 !.env.example
 
-# Local models and data
+# Данные и модели
 models/
-chroma_db/
-chroma_db_stress/
-output/
-output_docling/
-converted_for_rag/
-
-# Knowledge base content (keep folder structure local-only)
 documents/*
 !documents/pdf_docs/
 !documents/markdown_docs/
@@ -45,39 +38,54 @@ documents/pdf_docs/*
 documents/markdown_docs/*
 !documents/pdf_docs/.gitkeep
 !documents/markdown_docs/.gitkeep
+учебники_для_оценки/
 
-# DeepEval and run artifacts
+# Черновые ноутбуки: экспериментальный код, версионировать шумно
+*.ipynb
+
+# Артефакты прогонов: разбор, кэши, манифесты, метрики, состояние
+artifacts/
+chroma_db/
+chroma_db_stress/
+output/
+output_docling/
+converted_for_rag/
+chat_history/
+graph_indexing/metrics/*
+!graph_indexing/metrics/.gitkeep
+
+# Эталонные наборы: сами файлы версионируем, промежуточные прогоны — нет
+evaluation/goldsets/*_draft.json
+
+# DeepEval
 .deepeval/
 deepeval_artifacts/*
 !deepeval_artifacts/rag_eval_inputs.json
 !deepeval_artifacts/.gitkeep
-chat_history/
+
+# Архив прежних экспериментов и временные каталоги
 archive/
-graph_indexing/metrics/*
-!graph_indexing/metrics/.gitkeep
+_tmp_agentic_graph_rag/
+logs/
+*.tmp
+__root_test.tmp
 
-# Legacy and experimental directories not needed in main repo
-rag_eval/
-ai_rag_tutor/
-src/parse_test/
-src/preflight.py
-src/documents/
-src/ollama_test/
-src/app.py
-src/vectorization_stress_test.py
-src/backfill_graph_from_chroma.py
-# src/pdf_processing_test.ipynb
-# src/test_sql.ipynb
-pdf_parsing/
-_tmp_agentic_graph_rag
-
-graph_indexing/metrics/*
-
-# Local notebooks (can be removed from ignore if you want to version notebooks)
-*.ipynb
+# Локальные заметки и выгрузки логов прогонов
 last_prompt.txt
 ket_query_test.txt
 rag_eval_inputs_2.txt
 successful_indexing.txt
 last_ket_indexing_logs.txt
+
+Отчет_1курс_ссылки.tex
 sprints.md
+hypotheses_and_experiments.md
+
+# legacy
+src/app.py
+src/preflight.py
+src/backfill_graph_from_chroma.py
+# ВАЖНО: рабочий код больше НЕ исключается.
+# Прежде здесь были src/app.py, src/preflight.py, src/backfill_graph_from_chroma.py —
+# то есть интерфейс, health-check и главный инструмент бэкфилла графа
+# существовали только на одной машине и не версионировались.

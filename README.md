@@ -1,327 +1,207 @@
 # rag_textbook
 
-Local RAG project with:
-- LangChain + ChromaDB
-- Hybrid retrieval (dense embeddings + BM25 sparse fusion)
-- Ollama for generation/evaluation models
-- DeepEval metrics for RAG evaluation
-- Arize Phoenix tracing (OpenInference spans)
+ИИ-ассистент для глубокого изучения математической и технической литературы:
+работа с формулами, таблицами и иллюстрациями, дополненная графом знаний
+для вопросов, требующих связать разные разделы.
 
-## Project Structure
+## Устройство
 
-```text
-rag_textbook/
-|-- src/
-|   |-- ingest.py
-|   |-- query.py
-|   |-- deepeval_eval.py
-|   |-- rag_chain.py
-|   |-- retriever.py
-|   |-- chat_history.py
-|   |-- chunker.py
-|   |-- embeddings.py
-|   |-- llm.py
-|   |-- vectorstore.py
-|   |-- settings.py
-|   `-- utils.py
-|-- documents/
-|   |-- pdf_docs/          # knowledge base PDFs (ignored in git)
-|   `-- markdown_docs/     # knowledge base MD/TXT (ignored in git)
-|-- deepeval_artifacts/
-|   `-- rag_eval_inputs.json
-|-- .env.example
-|-- requirements.txt
-`-- README.md
+```
+PDF ──MinerU──> блоки ──обогащение──> чанки ──┬──> Qdrant  (плотный + BM25)
+                                              └──> Neo4j   (граф знаний)
+
+вопрос ──переписывание──> роутер ──┬──> гибридный поиск ──┐
+                                   └──> графовый канал ───┴──> слияние ──> реранкер ──> ответ с цитатами
 ```
 
-## Environment Setup
+Ключевые свойства:
+
+- **формулы и таблицы не теряются** — LaTeX и HTML из MinerU индексируются вместе
+  с описанием, а не заменяются им;
+- **цитаты с номерами страниц** — ответ можно проверить по учебнику;
+- **лексический поиск знает русскую морфологию** — BM25 со стеммингом на стороне Qdrant;
+- **граф используется по делу** — роутер включает его на вопросах, требующих связей,
+  а рёбра фильтруются по PMI, чтобы граф не вырождался в клики частотных слов;
+- **всё измеримо** — retrieval-метрики считаются без LLM за секунды;
+- **индексация возобновляема** — падение на стадии графа не заставляет заново парсить PDF.
+
+## Состояние
+
+Стек развёрнут и проверен вживую на арендованном сервере с RTX 3090
+(Ubuntu 24.04, драйвер 610.x, CUDA 13). Проведён сквозной прогон индексации
+с замерами ресурсов.
+
+Измерено на 150 страницах учебника, движок Ollama:
+
+| Показатель | Прежняя версия (вся книга) | Сейчас |
+|---|---|---|
+| Доля типизированных связей графа | 0.57 % | **68 %** |
+| Статусы извлечения | 13 % невалидных | `ok` 65 из 66 |
+| Пик видеопамяти | — | 12.6 из 24 ГБ |
+
+Подробности — в [`docs/REPORT.md`](docs/REPORT.md).
+
+## Установка
 
 ```bash
-conda create -n rag_test python=3.11 -y
-conda activate rag_test
-pip install -r requirements.txt
+uv sync --extra dev
 ```
 
-Create local env config:
+Для разбора PDF дополнительно (нужно только там, где реально парсим):
 
 ```bash
-cp .env.example .env
+uv sync --extra parsing
 ```
 
-PowerShell alternative:
+Extra `parsing` тянет `mineru[core]` — именно с дополнением `core`, иначе
+приедет оболочка без моделей и без PyTorch, и разбор не запустится.
 
-```powershell
-Copy-Item .env.example .env
-```
-
-Then update paths and model names in `.env` for your machine.
-
-## Knowledge Base Organization
-
-Put source files here:
-- `documents/pdf_docs/` for PDF files
-- `documents/markdown_docs/` for Markdown and text files
-
-These folders are intentionally excluded from git, so each user keeps their own dataset locally.
-
-## Build/Refresh Vector Index
-
-Run from repository root:
+## Инфраструктура
 
 ```bash
-python src/ingest.py
+cp .env.example .env   # заполните NEO4J_PASSWORD
+docker compose --env-file .env -f docker/docker-compose.yml up -d
 ```
 
-This reads files from `PDF_DIR` / `MARKDOWN_DIR` and writes Chroma index to `CHROMA_DIR`.
+`--env-file` обязателен: каталогом проекта Compose считает каталог
+compose-файла, а `.env` лежит в корне репозитория.
 
-Main `ingest.py` launch modes:
+Поднимаются Qdrant, Neo4j, Infinity (эмбеддер + реранкер) и Phoenix.
+Все порты слушают только localhost — наружу ходите через SSH-туннель.
+
+Генеративная модель запускается отдельно: на этапе разработки Ollama,
+на этапе пилота SGLang или vLLM. Переключение — сменой `LLM_BASE_URL`,
+код не меняется.
+
+### Развёртывание на арендованном сервере
 
 ```bash
-# regular run
-python src/ingest.py
-
-# resume by source file after failures
-python src/ingest.py --checkpoint
-
-# custom checkpoint location
-python src/ingest.py --checkpoint-file chroma_db/ingest_checkpoint.json
-
-# rebuild index from scratch (first persisted source) + checkpointing
-python src/ingest.py --force --checkpoint
+.\deploy\upload.ps1 -ServerIp <адрес>     # с вашей машины
 ```
 
-Default checkpoint path can be configured via `INGEST_CHECKPOINT_FILE` in `.env`.
-
-Graph indexing metrics are automatically saved after each `ingest.py` run:
-- directory: `graph_indexing/metrics/`
-- file pattern: `<GRAPH_ENTITY_EXTRACTOR>_graph_indexing_metrics_<timestamp>.json`
-- includes run config, indexing counters, graph write counters (`passages`, `mentions`, `co_occurs`, `relates`, `keywords`, `keyword_near`, KET core/periphery stats, LLM extraction stats), and failures.
-
-Optional graph write during indexing (safe off by default):
-- `NEO4J_ENABLED=1`
-- `GRAPH_WRITE_ENABLED=1`
-- `GRAPH_RELATIONS_ENABLED=1` (write `MENTIONS`/`CO_OCCURS`, set `0` to write only passages)
-- `GRAPH_ENTITY_EXTRACTOR=rule|llm` (`rule` by default; set `llm` to extract entities/relations with Ollama)
-- `GRAPH_LLM_MODEL` (optional override for graph extraction model; empty = `OLLAMA_MODEL`)
-- `GRAPH_LLM_TEMPERATURE=0.0`
-- `GRAPH_LLM_NUM_PREDICT=384`
-- `GRAPH_LLM_INPUT_MAX_CHARS=4000` (per-chunk prompt truncate for extraction)
-- `GRAPH_LLM_MAX_RELATIONS_PER_PASSAGE=20`
-- `GRAPH_LLM_PROGRESS_EVERY=25` (progress log interval for LLM extraction by passage count)
-- `GRAPH_LLM_FALLBACK_TO_RULE=1` (fallback to rule extractor if LLM extraction fails)
-- `GRAPH_ENTITY_MIN_TOKEN_LEN=3` (minimum token length for rule-based entity extraction)
-- `GRAPH_ENTITY_USE_BIGRAMS=1` (enable adjacent bigram keyphrase candidates)
-- `GRAPH_ENTITY_MAX_BIGRAMS_PER_PASSAGE=12` (caps how many bigram candidates are added per chunk)
-- `GRAPH_ENTITY_MAX_PER_PASSAGE=20` (caps extracted entity terms per chunk)
-- `GRAPH_COOCCURS_MAX_PER_PASSAGE=200` (caps co-occurrence pairs per chunk)
-- `GRAPH_COOCCURS_PROVENANCE_LIMIT=20` (caps `passage_ids/chunk_ids` evidence list size per `CO_OCCURS` edge)
-- `GRAPH_KEYWORD_CHANNEL_ENABLED=1` (writes keyword graph channel for KET retrieval)
-- `GRAPH_KEYWORD_MIN_COUNT=1` (minimum mention count to keep keyword)
-- `GRAPH_KEYWORD_MAX_KEYWORDS=2000` (cap keyword nodes per source in one run)
-- `GRAPH_KEYWORD_MAX_SENTENCES_PER_KEYWORD=32` (sentence evidence cap per keyword embedding)
-- `GRAPH_KEYWORD_EMBEDDING_DIMS=256` (stored embedding dimensions per keyword, `0` = full)
-- `GRAPH_KEYWORD_EMBED_BATCH_SIZE=64` (sentence embedding batch size for keyword channel)
-- `GRAPH_KEYWORD_NEIGHBORS_PER_PASSAGE=8` (cap keyword co-neighbor edges per passage)
-- `KET_RAG_ENABLED=0|1` (enable KET core/periphery selection for graph extraction)
-- `KET_K=12` (hybrid KNN width for KET)
-- `KET_BETA=0.3` (core ratio target)
-- `KET_LEXICAL_RATIO=0.5`, `KET_SEMANTIC_RATIO=0.5` (K/2 lexical + K/2 semantic by default)
-- `KET_MIN_CORE_PER_SOURCE`, `KET_MAX_CORE_PER_SOURCE` (hard bounds for selected core passages; set `KET_MAX_CORE_PER_SOURCE=None` to disable upper cap and rely only on `beta`)
-- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`
-- `GRAPH_FAIL_ON_ERROR=0` (keep ingest running even if graph write fails)
-
-When enabled, `ingest.py` upserts `(:Passage)` nodes to Neo4j alongside Chroma indexing.
-It links `(:Source)-[:HAS_PASSAGE]->(:Passage)` and sequential `(:Passage)-[:NEXT]->(:Passage)` per source.
-If `GRAPH_RELATIONS_ENABLED=1`, it also creates `(:Passage)-[:MENTIONS]->(:Entity)` and `(:Entity)-[:CO_OCCURS {source_id, weight, passage_ids, chunk_ids, relation_labels}]->(:Entity)`.
-In LLM extraction mode it additionally creates directed `(:Entity)-[:RELATES {source_id, passage_id, chunk_id, relation, count}]->(:Entity)`.
-When keyword channel is enabled it also creates `(:Keyword)` nodes with `(:Passage)-[:HAS_KEYWORD]->(:Keyword)` and `(:Keyword)-[:KEYWORD_NEAR]->(:Keyword)` edges.
-With `KET_RAG_ENABLED=1` and `GRAPH_ENTITY_EXTRACTOR=llm`, LLM extraction is applied only to KET-selected core passages; periphery passages use rule extraction to reduce indexing time.
-
-For large corpora / GPU stability during embedding, tune:
-- `EMBEDDINGS_BACKEND=ollama|sentence` (default: `ollama` for offline local embeddings)
-- `OLLAMA_EMBED_MODEL` (local Ollama embedding model, default `qwen3-embedding:0.6b`)
-- `EMBED_BATCH_SIZE` (batch size inside sentence-transformers encode)
-- `CHROMA_ADD_BATCH_SIZE` (how many chunks are sent per `add_documents` call)
-- `EMBED_DEVICE=auto|cpu|cuda` (embedding device policy)
-- `EMBED_MIN_FREE_VRAM_MB` (minimum free VRAM target before embedding)
-- `EMBED_MIN_FREE_VRAM_RATIO` (required free VRAM ratio, default `0.7`)
-- `EMBED_POST_UNLOAD_WAIT_SECONDS=180` (wait window for delayed VRAM release after unloading LLM)
-- `EMBED_POST_UNLOAD_POLL_SECONDS=5` (VRAM recheck interval during wait window)
-- `EMBED_FORCE_CPU_ON_LOW_VRAM=1` (fallback to CPU when VRAM remains low)
-- `EMBED_PROBE_LLM_BEFORE_INDEX=1` (run LLM ping before VRAM check/unload)
-- `MINERU_MODEL_SOURCE=huggingface|modelscope|local` (model source for MinerU; use `local` for offline/cached runs)
-- `MINERU_TOOLS_CONFIG_JSON=mineru.json` (MinerU config file path, absolute or relative to user home)
-- `MINERU_LOCAL_PIPELINE_MODELS_DIR=<path>` (required when `MINERU_MODEL_SOURCE=local`)
-- `MINERU_LOCAL_VLM_MODELS_DIR=<path>` (optional local VLM model root)
-- `MINERU_PARSE_IN_SUBPROCESS=1` (force MinerU PDF parse to run in a child process; process exit force-releases CUDA context)
-- `MINERU_PARSE_SUBPROCESS_TIMEOUT_SECONDS=0` (hard timeout in seconds; `0` means event-based wait until child exits)
-- `MINERU_PARSE_STALL_TIMEOUT_SECONDS=300` (watchdog timeout for stale/no heartbeat; kills stuck child process)
-- `MINERU_PARSE_HEARTBEAT_INTERVAL_SECONDS=5` (child heartbeat update interval)
-- `MINERU_PARSE_WAIT_POLL_SECONDS=5` (parent polling interval while waiting child exit)
-- `MINERU_GPU_RELEASE_WAIT_SECONDS=60` (max wait after child exit to verify GPU release)
-- `MINERU_GPU_RELEASE_POLL_SECONDS=5` (poll interval for post-exit GPU checks)
-- `MINERU_GPU_RELEASE_TARGET_FREE_VRAM_MB=3000` (target free VRAM threshold during post-exit checks)
-- `MINERU_POST_RELEASE_WAIT_SECONDS=120` (mandatory pause between MinerU parse and next stage)
-- `MINERU_POST_RELEASE_POLL_SECONDS=5` (poll interval for MinerU unload checks)
-- `MINERU_RELEASE_CHECK_ENABLED=1` (verify MinerU singleton caches are unloaded during barrier)
-
-If CUDA errors appear on indexing, reduce both values first (e.g. `EMBED_BATCH_SIZE=16`, `CHROMA_ADD_BATCH_SIZE=64`).
-
-If MinerU fails with network/SSL download errors after upgrade, switch to local cached models:
-- set `MINERU_MODEL_SOURCE=local`
-- set `MINERU_LOCAL_PIPELINE_MODELS_DIR` to your cached `PDF-Extract-Kit-1.0` root
-- run `ingest.py` again; pipeline auto-generates `mineru.json` with local model paths
-
-For fully offline embedding flow with Ollama, pull embedding model once:
+Затем на сервере:
 
 ```bash
-ollama pull qwen3-embedding:0.6b
+cd rag_textbook && bash deploy/bootstrap.sh && bash deploy/services.sh up
 ```
 
-Stress test for vectorization path (tripled markdown + split 1200/300):
+`bootstrap.sh` идемпотентен и умеет обходить особенности хостинга: выбирает
+доступное зеркало PyPI, снимает удержание с контейнерных пакетов NVIDIA,
+проверяет проброс видеокарты в контейнеры. Подробности — в
+[`deploy/README.md`](deploy/README.md).
+
+## Работа
 
 ```bash
-python src/vectorization_stress_test.py --force
+# проверить, что всё поднялось
+rag-textbook health
+
+# проиндексировать корпус из PDF_DIR
+rag-textbook ingest
+
+# задать вопрос
+rag-textbook ask "Как связаны сингулярное разложение и метод главных компонент?" --show-context
+
+# собрать эталонный набор из проиндексированных чанков
+rag-textbook goldset build --single 100 --multihop 50
+
+# измерить качество поиска
+rag-textbook eval run
+
+# проверить, даёт ли граф прирост
+rag-textbook eval ab --experiment graph
+
+# статистика графа знаний
+rag-textbook graph stats
 ```
 
-## Retrieval Configuration
-
-Hybrid retrieval is enabled by default and does not change CLI commands.
-
-Set in `.env`:
-- `CONVERSATIONAL_RAG_ENABLED=1` (set `0` for stateless mode by default)
-- Use `OLLAMA_NUM_CTX`, `OLLAMA_NUM_GPU`, `OLLAMA_NUM_BATCH`, `OLLAMA_NUM_PREDICT` as canonical runtime keys.
-- Legacy aliases `N_CTX`, `N_GPU_LAYERS`, `N_BATCH` are still accepted as fallback for backward compatibility.
-- `OLLAMA_FALLBACK_MODEL=<model>` (optional fallback for query path when primary model crashes, e.g. `GGML_ASSERT` with some VLMs)
-- `OLLAMA_THINK=auto|0|1` (`auto` disables think for `qwen3*` and `deepseek-r1*` on query generation to avoid empty outputs)
-- `OLLAMA_REQUEST_TIMEOUT_SECONDS=0|N` (`0` = model-aware auto timeout, uses 600s for `deepseek-r1*`, 180s otherwise)
-- `CHAT_HISTORY_DIR=chat_history` (JSONL storage for sessions)
-- `CHAT_SESSION_ID=default` (default conversation id)
-- `CHAT_HISTORY_MAX_TURNS=6` (how many latest turns are sent to LLM)
-- `RETRIEVER_MODE=hybrid` (`dense` for dense-only mode)
-- `TOP_K=4` (final number of retrieved chunks)
-- `HYBRID_SPARSE_K=8` (BM25 candidate pool size)
-- `HYBRID_DENSE_WEIGHT=0.6`
-- `HYBRID_SPARSE_WEIGHT=0.4`
-- `HYBRID_RRF_K=60` (reciprocal-rank-fusion smoothing)
-- `HYBRID_FUSION_MODE=rrf|cosine` (`cosine` = embedding re-rank over dense+BM25 candidate union)
-- `GRAPH_RETRIEVER_ENABLED=0|1` (enables Neo4j graph candidate retrieval + fusion with base retriever)
-- `GRAPH_RAG_ENABLED=0|1` (legacy alias; also enables graph retrieval path)
-- `GRAPH_RETRIEVER_HOPS=1` (entity graph expansion depth)
-- `GRAPH_RETRIEVER_ENTITY_LIMIT=30` (max graph entities considered per query)
-- `GRAPH_RETRIEVER_PASSAGE_LIMIT=30` (max graph passages before fusion)
-- `GRAPH_RETRIEVER_WEIGHT=0.35` (graph contribution in fusion, base weight is `1 - GRAPH_RETRIEVER_WEIGHT`)
-- `GRAPH_MIN_DOCS_IN_FINAL=0..TOP_K` (minimum number of graph-origin documents enforced in final context)
-- `GRAPH_KEYWORD_CHANNEL_ENABLED=1` (enables keyword retrieval channel `G_k`)
-- `GRAPH_KEYWORD_QUERY_LIMIT=40` (max keyword candidates for query)
-- `GRAPH_RETRIEVAL_THETA=0.65` (graph channel split between `G_s` entities and `G_k` keywords)
-- `GRAPH_CHANNEL_FUSION_MODE=rrf|cosine` (fusion mode inside graph channel: entity + keyword)
-- `GRAPH_FINAL_FUSION_MODE=rrf|cosine` (fusion mode for base retriever + graph retriever)
-
-## Query the RAG System
+Сервис для пилота:
 
 ```bash
-# basic query
-python src/query.py "Your question here"
+uvicorn rag_textbook.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-Conversation controls (same command, optional flags):
+## Мониторинг и утилизация
 
 ```bash
-# persistent chat session
-python src/query.py "How does gradient descent work?" --session-id ml_course
-python src/query.py "How to implement it in Python?" --session-id ml_course
-
-# one-off request without history
-python src/query.py "One-off question" --stateless
-
-# clear saved history for session and ask again
-python src/query.py "Reset session and ask again" --session-id ml_course --clear-history
-
-# override number of turns sent from history
-python src/query.py "Follow-up question" --session-id ml_course --max-history-turns 4
+rag-textbook ingest --monitor          # метрики ресурсов с разметкой по стадиям
+rag-textbook bottlenecks <каталог>     # во что упирается каждая стадия
+rag-textbook bench                     # пропускная способность сервера инференса
 ```
 
-The query command runs the same RAG chain and emits tracing spans to Phoenix.
+Режим обхода корпуса задаётся `INDEXING_MODE`: `stage` (по умолчанию) обрабатывает
+корпус по стадиям — крупные батчи и один потребитель видеопамяти в каждый момент;
+`document` экономнее по оперативной памяти. Результат обоих режимов идентичен.
 
-## Run RAG Chain (Python API)
+Для пробных прогонов объём ограничивается диапазоном страниц
+(`MINERU_PAGE_START`, `MINERU_PAGE_END`) — разбор самая дорогая стадия,
+и сокращать нагрузку осмысленно именно там. Диапазон входит в ключ кэша
+разбора, поэтому пробный прогон не подменяет собой полный.
 
-`rag_chain.py` does not expose a standalone CLI command.  
-Use it from Python:
+## Подводные камни, которые уже учтены
+
+Эти настройки выглядят мелочью, но каждая из них ломала работу целиком.
+
+| Параметр | Значение | Почему именно так |
+|---|---|---|
+| `LLM_REASONING_EFFORT` | `none` | рассуждающая модель тратит весь лимит токенов на размышление и возвращает пустой ответ — граф остаётся без связей |
+| `EMBEDDING_MODEL` | `BAAI/bge-m3` | `Qwen3-Embedding` построена на архитектуре `qwen3`, которую не знает ни один выпущенный образ Infinity |
+| `EMBEDDING_BASE_URL` | без `/v1` | Infinity отдаёт OpenAI-совместимые пути в корне |
+| `MINERU_LANG` | `east_slavic` | значения `ru` MinerU не знает и падает с кодом 2 |
+| `EMBEDDING_QUERY_PREFIX` | пусто | у `bge-m3` симметричное обучение, инструктивный префикс мешает |
+
+Версии образов закреплены и должны оставаться свежими: старый образ с новой
+моделью не деградирует, а не стартует вовсе.
+
+## Оценка
+
+Схема из трёх слоёв описана в [`docs/MIGRATION-PLAN.md`](docs/MIGRATION-PLAN.md)
+и в памяти проекта:
+
+1. **Свой корпус** — эталонный набор с идентификаторами эталонных чанков,
+   метрики Recall@k, nDCG@k, MRR. По ним принимаются решения.
+2. **OmniDocBench** — качество разбора PDF: формулы, таблицы, порядок чтения.
+3. **Публичный multi-hop бенчмарк** — сопоставимость с опубликованными базлайнами.
+
+Важно: набор, сгенерированный моделью, — это черновик. Перед использованием как
+эталона его нужно просмотреть вручную и проставить `verified: true`.
+Набор меньше 100 вопросов даёт доверительный интервал шире типичного эффекта,
+и различия между конфигурациями по нему считать нельзя — команда `eval ab`
+предупреждает об этом явно.
+
+## Тесты
 
 ```bash
-python -c "import sys; sys.path.append('src'); from dotenv import load_dotenv; load_dotenv(); from settings import Settings; from rag_chain import build_rag_chain; chain = build_rag_chain(Settings()); print(chain.invoke({'input': 'What is gradient descent?', 'chat_history': []})['answer'])"
+uv run pytest -q
 ```
 
-## RAG Evaluation (DeepEval)
+Тесты не требуют ни GPU, ни Qdrant, ни Neo4j, ни сервера инференса: внешние
+клиенты подменяются детерминированными заглушками, векторное хранилище —
+реализацией в памяти. Рабочий `.env` они намеренно не читают: путь к файлу
+задаётся переменной `RAG_ENV_FILE`, иначе результат зависел бы от того, лежит
+ли рядом чужой файл настроек.
 
-Default dataset:
-- `deepeval_artifacts/rag_eval_inputs.json`
+## Документы
 
-Smoke test:
+- **[`docs/REPORT.md`](docs/REPORT.md) — сводный отчёт о переработке: что найдено,
+  что построено, чем проверено и чего проверка не доказывает. Начинать отсюда.**
+- [`docs/MIGRATION-PLAN.md`](docs/MIGRATION-PLAN.md) — полный перечень найденных
+  дефектов и решений по ним, включая раздел о том, что намеренно не перенесено.
+- [`docs/engineering-log.md`](docs/engineering-log.md) — журнал: что сделано,
+  зачем, какими командами и как проверено.
+- [`docs/INFERENCE.md`](docs/INFERENCE.md) — движок инференса, бюджет видеопамяти,
+  утилизация, режимы обхода конвейера.
+- [`docs/SETUP-CHECKLIST.md`](docs/SETUP-CHECKLIST.md) — подготовка к аренде сервера.
+- [`deploy/README.md`](deploy/README.md) — пошаговый запуск на сервере.
+- [`src/README-DEPRECATED.md`](src/README-DEPRECATED.md) — статус прежней реализации.
 
-```bash
-python src/deepeval_eval.py --max-rows 1 --output-prefix deepeval_smoke
-```
+## Ограничения текущего состояния
 
-Typical run:
-
-```bash
-python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs.json --output-prefix deepeval
-```
-
-Extended run with explicit runtime knobs:
-
-```bash
-python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs.json --max-rows 30 --eval-batch-size 1 --deepeval-timeout-seconds 300 --max-contexts 2 --max-context-chars 1400 --output-prefix deepeval
-```
-
-Strict mode (stop on first batch error):
-
-```bash
-python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs.json --fail-on-eval-error
-```
-
-Used metrics:
-- `AnswerRelevancyMetric`
-- `FaithfulnessMetric`
-- `ContextualPrecisionMetric`
-
-Outputs are saved to `deepeval_artifacts/` using the selected prefix.
-
-If your eval model is `qwen3:*` or `deepseek-r1:*` and metrics fail with `Invalid JSON ... input_value=''`, use non-thinking eval mode for structured metrics:
-- `OLLAMA_EVAL_THINK=0` (or `auto`, which sets `think=0` for `qwen3:*` and `deepseek-r1:*`)
-- `OLLAMA_EVAL_JSON_RETRY_ATTEMPTS=1` (one extra structured retry in think mode)
-- `OLLAMA_EVAL_RETRY_NUM_PREDICT_MULTIPLIER=1.5` (increases `num_predict` on retry)
-- `OLLAMA_EVAL_MAX_NUM_PREDICT=512` (caps growth to avoid timeout spikes)
-- `OLLAMA_EVAL_STRUCTURED_RECOVERY=1` (runs one JSON-normalization pass from content)
-- `OLLAMA_EVAL_STRUCTURED_RECOVERY_INPUT_CHARS=6000` (limits recovery prompt size)
-- `DEEPEVAL_EMBED_SIM_THRESHOLD=None|0.65` (optional similarity threshold for answer vs reference)
-- `DEEPEVAL_EMBED_SIM_AUTOPASS_ENABLED=0|1` (default `0`: keep pure LLM-as-judge; set `1` to auto-pass by threshold)
-- optional last resort: `OLLAMA_EVAL_JSON_RETRY_WITHOUT_THINK=1`
-
-You can override threshold from CLI for experiments:
-
-```bash
-python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs_3.json --embed-sim-threshold 0.65 --embed-sim-autopass
-```
-
-Disable it explicitly:
-
-```bash
-python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs_3.json --embed-sim-threshold None
-```
-
-## Tracing (Arize Phoenix)
-
-Set in `.env`:
-- `PHOENIX_ENDPOINT` (default: `http://127.0.0.1:4317`)
-- `PHOENIX_PROTOCOL` (default: `grpc`)
-- `PHOENIX_PROJECT_NAME` (default: `rag_eval`)
-
-Make sure Phoenix collector is running before query/evaluation.
-
-## Notes
-
-- This repository uses DeepEval for evaluation. Legacy Ragas demo content is excluded from git.
-- Local models, vector DB, and generated artifacts are ignored via `.gitignore`.
+- Прирост качества от графа **пока не измерен**: эталонный набор собирается,
+  до него сравнивать конфигурации нельзя.
+- Замеры сняты на части учебника, не на всём корпусе. Числа по времени
+  переносятся на полный корпус с осторожностью: доля страниц с формулами
+  и иллюстрациями по книге неравномерна.
+- Ollama не батчит запросы (ускорение от параллелизма 1.11×). Сравнение
+  с SGLang и vLLM подготовлено, но ещё не проведено.
+- Генеративные метрики пока остаются в прежнем `src/deepeval_eval.py`.

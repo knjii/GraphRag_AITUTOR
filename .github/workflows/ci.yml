@@ -1,0 +1,45 @@
+name: CI
+
+# Тесты не требуют ни GPU, ни Qdrant, ни Neo4j, ни сервера инференса:
+# внешние клиенты подменяются заглушками. Поэтому CI выполняется за минуту
+# и ловит регрессии до того, как мы потратим GPU-часы на арендованном сервере.
+
+on:
+  push:
+    branches: [main, develop/**]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установить uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Установить Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Установить зависимости
+        run: uv sync --extra dev
+
+      - name: Проверить согласованность зависимостей
+        # Прежнее окружение давало 30+ конфликтов версий; здесь это блокирующая ошибка.
+        run: uv pip check
+
+      - name: Линтер
+        run: uv run ruff check rag_textbook tests
+
+      - name: Форматирование
+        run: uv run ruff format --check rag_textbook tests
+
+      - name: Тесты
+        run: uv run pytest -q

@@ -1,0 +1,111 @@
+# Альтернативные движки инференса для стадии извлечения графа.
+#
+# Использование:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.vllm.yml \
+#       --profile vllm up -d
+#   # затем в .env: LLM_BASE_URL=http://127.0.0.1:8000/v1
+#
+# Оба движка выключены профилями и не поднимаются по умолчанию.
+# Включать имеет смысл только после замера `rag-textbook bench`:
+# если коэффициент масштабирования у Ollama близок к единице, переход даст
+# кратный выигрыш; если Ollama и так батчит — выигрыш будет скромным.
+#
+# ВАЖНО ПРО ВИДЕОПАМЯТЬ. И vLLM, и SGLang резервируют KV-кэш заранее и по
+# умолчанию забирают почти всю карту. На одной RTX 3090 они делят её с Infinity
+# (эмбеддер и реранкер, ~4 ГБ) и с MinerU на стадии разбора (~6-8 ГБ), поэтому
+# доля памяти задана явно и намеренно скромно. Не поднимайте значение вслепую:
+# при нехватке памяти падать будет не движок, а MinerU посреди разбора.
+
+services:
+  vllm:
+    profiles: ["vllm"]
+    # Версия должна быть свежей: старые выпуски не знают новых архитектур и
+    # не стартуют вовсе — так уже вышло с образом Infinity и моделью на qwen3.
+    image: vllm/vllm-openai:v0.27.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    environment:
+      HUGGING_FACE_HUB_TOKEN: "${HF_TOKEN:-}"
+    command:
+      - --model
+      # Та же модель, что крутится в Ollama, иначе сравнение движков
+      # превращается в сравнение моделей. Оговорка: Ollama держит её в
+      # четырёхбитном квантовании (3.4 ГБ), vLLM берёт исходные веса bf16
+      # (~8 ГБ) — сравнима пропускная способность движка, но не расход памяти.
+      - ${VLLM_MODEL:-Qwen/Qwen3.5-4B}
+      # Доля видеопамяти под веса и KV-кэш.
+      # 0.55 (~13 ГБ) — при обходе по стадиям (INDEXING_MODE=stage) на стадии
+      # графа MinerU уже выгружен, и делить карту приходится только с Infinity
+      # (~4 ГБ). Если запускаете обход по документам, снижайте до 0.42:
+      # иначе при нехватке памяти падать будет MinerU посреди разбора.
+      - --gpu-memory-utilization
+      - "${VLLM_GPU_FRACTION:-0.55}"
+      # Длина контекста напрямую определяет размер KV-кэша. Наши промпты
+      # извлечения укладываются в 8k с запасом, брать больше — терять батч.
+      - --max-model-len
+      - "${VLLM_MAX_MODEL_LEN:-8192}"
+      # Кэш общего префикса: у промптов извлечения одинаковая инструкция
+      # длиной в несколько сотен токенов, считать её заново на каждом запросе не нужно.
+      - --enable-prefix-caching
+      # Структурированный вывод по JSON-схеме на стороне движка.
+      # Это то, что чинит долю невалидного JSON в корне, а не ретраями.
+      - --guided-decoding-backend
+      - xgrammar
+      - --disable-log-requests
+    shm_size: "8gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+
+  sglang:
+    profiles: ["sglang"]
+    # Сборка под CUDA 13 — совпадает с драйвером сервера (610.x) и с тем,
+    # под что собран наш PyTorch (2.13+cu130).
+    image: lmsysorg/sglang:v0.5.17-cu130
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    environment:
+      HUGGING_FACE_HUB_TOKEN: "${HF_TOKEN:-}"
+    command: >
+      python3 -m sglang.launch_server
+      --model-path ${SGLANG_MODEL:-Qwen/Qwen3.5-4B}
+      --host 0.0.0.0
+      --port 8000
+      --mem-fraction-static ${SGLANG_GPU_FRACTION:-0.55}
+      --context-length ${SGLANG_MAX_MODEL_LEN:-8192}
+      --grammar-backend xgrammar
+    shm_size: "8gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+
+volumes:
+  hf_cache:
+    external: false
+    name: rag-textbook_hf_cache
