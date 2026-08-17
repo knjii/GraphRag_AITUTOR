@@ -87,7 +87,9 @@ class GraphRetriever:
             # Запрашиваем с запасом: опорные фрагменты из выдачи исключаются,
             # иначе канал вернёт то, что уже найдено векторным поиском.
             requested = (limit or self.settings.passage_limit) + len(exclude)
-            rows = self.store.find_passages(weights, requested)
+            rows = self.store.find_passages(
+                weights, requested, use_idf=self.settings.passage_idf_enabled
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Поиск пассажей в графе не удался: %s", exc)
             return []
@@ -154,11 +156,16 @@ class GraphRetriever:
 
     def _expand(self, weights: dict[str, float]) -> dict[str, float]:
         """Расширяет множество сущностей, сохраняя веса стартовых."""
+        if self.settings.hop_decay <= 0:
+            # Расширение выключено намеренно: проверено, что так хуже,
+            # но настройка нужна для A/B без правки кода.
+            return weights
         expanded = self.store.expand_entities(
             list(weights),
             hops=self.settings.expansion_hops,
             rel_types=list(self.settings.expansion_rel_types),
             limit=self.settings.seed_entity_limit * 4,
+            decay=self.settings.hop_decay,
         )
         # Стартовые сущности не должны терять свой вес: расширение
         # проставляет им единицу независимо от исходной релевантности.

@@ -117,6 +117,32 @@ def save_evaluation(
     return path
 
 
+def load_outcomes(path: Path) -> tuple[str, list[QueryOutcome]]:
+    """Читает сохранённый прогон обратно в объекты.
+
+    Нужно там, где ``eval ab`` бессилен. Он переключает настройки на лету
+    и потому умеет сравнивать только то, что влияет на запрос. Порог отсечения
+    хабов влияет на индекс: граф с ним пересобирается, и две конфигурации
+    физически не могут существовать одновременно. Остаётся снять два прогона
+    и сравнить их по файлам — парно, по одним и тем же вопросам.
+    """
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    outcomes = [
+        QueryOutcome(
+            question_id=str(row.get("question_id") or ""),
+            question_type=str(row.get("type") or ""),
+            retrieved=[str(item) for item in (row.get("retrieved") or [])],
+            relevant=[str(item) for item in (row.get("relevant") or [])],
+            used_graph=bool(row.get("used_graph")),
+            graph_share=float(row.get("graph_share") or 0.0),
+            graph_only_share=float(row.get("graph_only_share") or 0.0),
+            latency_ms=float(row.get("latency_ms") or 0.0),
+        )
+        for row in payload.get("outcomes", [])
+    ]
+    return str(payload.get("label") or Path(path).stem), outcomes
+
+
 def run_ab_comparison(
     questions: Sequence[GoldQuestion],
     baseline_overrides: dict[str, Any],

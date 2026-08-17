@@ -2,9 +2,16 @@
 # Запускать на своём компьютере из корня проекта:
 #
 #   .\deploy\upload.ps1 -ServerIp 1.2.3.4
+#   .\deploy\upload.ps1 -ServerIp 1.2.3.4 -WithCaches     # на новый сервер
 #
-# Копируется только необходимое: артефакты прогонов, кэши и виртуальные окружения
-# остаются локально — иначе на канал уйдут гигабайты без пользы.
+# По умолчанию копируется только код и корпус: артефакты прогонов и виртуальные
+# окружения остаются локально, иначе на канал уйдут гигабайты без пользы.
+#
+# Ключ -WithCaches нужен при переезде на другой сервер. Он переносит кэши
+# разбора, обогащения и извлечения — это разница между шестью минутами
+# восстановления и полутора часами. Замер: сборка графа по всей книге занимает
+# 72 минуты, а с кэшем извлечения — 4 минуты, потому что заново считается
+# только проход по связям между фрагментами.
 
 param(
     [Parameter(Mandatory = $true)][string]$ServerIp,
@@ -12,6 +19,8 @@ param(
     [int]$Port = 22,
     [string]$KeyPath = "$env:USERPROFILE\.ssh\intelion_ed25519",
     [string]$RemoteDir = "~/rag_textbook",
+    # Перенести кэши и эталонный набор. Осмысленно при переезде на новый сервер.
+    [switch]$WithCaches,
     # Для первого прогона берём один учебник — тот же, на котором снят прежний
     # baseline в 14.5 часа. Иначе ускорение не с чем будет сравнивать.
     [string[]]$Pdfs = @(
@@ -55,6 +64,37 @@ foreach ($path in $codePaths) {
     Write-Host "    $path"
     & scp @scpArgs -r -q $path "${target}:${RemoteDir}/"
     if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать $path" }
+}
+
+if ($WithCaches) {
+    Write-Host "`n==> Копирую кэши и эталонный набор" -ForegroundColor Cyan
+    # Порядок важен только для наглядности. Каждый каталог самодостаточен:
+    #   parsed    — результат MinerU и готовые чанки, снимает стадию разбора;
+    #   cache     — описания иллюстраций и извлечённые сущности со связями;
+    #   manifests — отметки о выполненных стадиях;
+    #   goldsets  — измеритель, без него нечем сравнивать конфигурации.
+    Invoke-Remote "mkdir -p $RemoteDir/artifacts $RemoteDir/evaluation"
+    $cachePaths = @(
+        @{ Local = "artifacts\parsed";     Remote = "artifacts" },
+        @{ Local = "artifacts\cache";      Remote = "artifacts" },
+        @{ Local = "artifacts\manifests";  Remote = "artifacts" },
+        @{ Local = "evaluation\goldsets";  Remote = "evaluation" }
+    )
+    foreach ($item in $cachePaths) {
+        if (-not (Test-Path $item.Local)) {
+            Write-Host "    пропускаю отсутствующий $($item.Local)" -ForegroundColor DarkYellow
+            continue
+        }
+        $sizeMb = [math]::Round(
+            (Get-ChildItem $item.Local -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1
+        )
+        Write-Host "    $($item.Local) ($sizeMb МБ)"
+        & scp @scpArgs -r -q $item.Local "${target}:${RemoteDir}/$($item.Remote)/"
+        if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать $($item.Local)" }
+    }
+    Write-Host "    после развёртывания восстановите индекс двумя командами:" -ForegroundColor DarkGray
+    Write-Host "      rag-textbook ingest --stages parse,chunk,embed --force" -ForegroundColor DarkGray
+    Write-Host "      rag-textbook ingest --stages graph --force" -ForegroundColor DarkGray
 }
 
 Write-Host "`n==> Копирую корпус" -ForegroundColor Cyan

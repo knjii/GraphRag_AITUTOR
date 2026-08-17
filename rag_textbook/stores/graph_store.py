@@ -414,12 +414,20 @@ class GraphStore:
         return rows
 
     def expand_entities(
-        self, seed_ids: Sequence[str], hops: int, rel_types: Sequence[str], limit: int
+        self,
+        seed_ids: Sequence[str],
+        hops: int,
+        rel_types: Sequence[str],
+        limit: int,
+        decay: float = 0.5,
     ) -> dict[str, float]:
         """Расширяет множество сущностей по типизированным связям.
 
         Вес соседа затухает с расстоянием, поэтому дальние узлы не забивают
         стартовые — прежний обход всех соседей считал их равнозначными.
+
+        Скорость затухания вынесена в настройку: прежняя формула 1/(1+расстояние)
+        давала соседу 0.5, а замер второго шага показал, что 0.8 лучше.
         """
         if not seed_ids:
             return {}
@@ -447,21 +455,28 @@ class GraphStore:
             ).data()
 
         weights: dict[str, float] = {entity_id: 1.0 for entity_id in seed_ids}
+        step = max(0.0, min(float(decay), 1.0))
         for row in rows:
             entity_id = str(row.get("id") or "")
-            distance = int(row.get("distance") or 1)
+            distance = max(1, int(row.get("distance") or 1))
             if not entity_id or entity_id in weights:
                 continue
-            weights[entity_id] = 1.0 / (1.0 + distance)
+            weights[entity_id] = step**distance
         return weights
 
-    def find_passages(self, entity_weights: dict[str, float], limit: int) -> list[dict[str, Any]]:
+    def find_passages(
+        self, entity_weights: dict[str, float], limit: int, use_idf: bool = True
+    ) -> list[dict[str, Any]]:
         """Взвешенное ранжирование пассажей.
 
         Прежняя версия считала ``count(*)`` — число совпавших сущностей, из-за чего
         наверх всплывали просто самые терминологически плотные чанки.
         Здесь вклад сущности взвешен её близостью к запросу и логарифмом числа
         упоминаний, а сумма нормируется на насыщенность пассажа терминами.
+
+        Множитель IDF добавлен по итогам замера второго шага: без него понятие,
+        встречающееся в сотне фрагментов, весит столько же, сколько встреченное
+        дважды, и обход сваливается к самым общим разделам книги.
         """
         if not entity_weights:
             return []
@@ -469,14 +484,26 @@ class GraphStore:
             {"entity_id": entity_id, "weight": float(weight)}
             for entity_id, weight in entity_weights.items()
         ]
+        # Редкость считается по числу фрагментов с упоминанием и только для
+        # сущностей запроса: их десятки, а не тысячи, поэтому подсчёт дёшев.
+        idf_clause = (
+            "log(toFloat(total) / toFloat(CASE WHEN df < 1 THEN 1 ELSE df END))"
+            if use_idf
+            else "1.0"
+        )
         with self._session() as session:
             rows = self._run(
                 session,
-                """
+                f"""
+                MATCH (any:Passage)
+                WITH count(any) AS total
                 UNWIND $entities AS item
-                MATCH (p:Passage)-[m:MENTIONS]->(e:Entity {id: item.entity_id})
+                MATCH (e:Entity {{id: item.entity_id}})
+                WITH total, item, e, COUNT {{ (e)<-[:MENTIONS]-(:Passage) }} AS df
+                WITH total, item, e, {idf_clause} AS idf
+                MATCH (p:Passage)-[m:MENTIONS]->(e)
                 WITH p,
-                     sum(item.weight * log(1 + coalesce(m.count, 1))) AS raw_score,
+                     sum(item.weight * idf * log(1 + coalesce(m.count, 1))) AS raw_score,
                      collect(DISTINCT e.canonical)[0..6] AS matched
                 MATCH (p)-[:MENTIONS]->(all_e:Entity)
                 WITH p, raw_score, matched, count(all_e) AS entity_count

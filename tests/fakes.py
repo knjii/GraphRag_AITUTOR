@@ -148,12 +148,18 @@ class InMemoryGraphStore:
         return rows[: max(1, int(limit))]
 
     def expand_entities(
-        self, seed_ids: Sequence[str], hops: int, rel_types: Sequence[str], limit: int
+        self,
+        seed_ids: Sequence[str],
+        hops: int,
+        rel_types: Sequence[str],
+        limit: int,
+        decay: float = 0.5,
     ) -> dict[str, float]:
         """Обход только по разрешённым типам связей, вес затухает с расстоянием."""
         allowed = {rel.upper() for rel in rel_types}
         weights: dict[str, float] = {entity_id: 1.0 for entity_id in seed_ids}
         frontier = set(seed_ids)
+        step = max(0.0, min(float(decay), 1.0))
 
         for distance in range(1, max(1, int(hops)) + 1):
             next_frontier: set[str] = set()
@@ -165,7 +171,7 @@ class InMemoryGraphStore:
                     (relation.target_id, relation.source_id),
                 ):
                     if source in frontier and target not in weights:
-                        weights[target] = 1.0 / (1.0 + distance)
+                        weights[target] = step**distance
                         next_frontier.add(target)
             if "CO_OCCURS" in allowed:
                 for edge in self.cooccurrences:
@@ -174,7 +180,7 @@ class InMemoryGraphStore:
                         (edge["target_id"], edge["source_id"]),
                     ):
                         if source in frontier and target not in weights:
-                            weights[target] = 1.0 / (1.0 + distance)
+                            weights[target] = step**distance
                             next_frontier.add(target)
             frontier = next_frontier
             if not frontier:
@@ -182,21 +188,34 @@ class InMemoryGraphStore:
 
         return dict(list(weights.items())[: max(1, int(limit))])
 
-    def find_passages(self, entity_weights: dict[str, float], limit: int) -> list[dict[str, Any]]:
+    def find_passages(
+        self, entity_weights: dict[str, float], limit: int, use_idf: bool = True
+    ) -> list[dict[str, Any]]:
         """Взвешенный отбор с нормировкой на насыщенность пассажа терминами."""
         mentions_by_passage: dict[str, list[dict[str, Any]]] = {}
+        document_frequency: dict[str, set[str]] = {}
         for mention in self.mentions:
             mentions_by_passage.setdefault(str(mention["chunk_id"]), []).append(mention)
+            document_frequency.setdefault(str(mention["entity_id"]), set()).add(
+                str(mention["chunk_id"])
+            )
+        corpus = max(1, len(self.passages))
 
         scored: list[tuple[float, str, list[str]]] = []
         for chunk_id, mentions in mentions_by_passage.items():
             raw = 0.0
             matched: list[str] = []
             for mention in mentions:
-                weight = entity_weights.get(str(mention["entity_id"]))
+                entity_id = str(mention["entity_id"])
+                weight = entity_weights.get(entity_id)
                 if weight is None:
                     continue
-                raw += weight * math.log(1 + int(mention.get("count", 1)))
+                idf = (
+                    math.log(corpus / max(1, len(document_frequency.get(entity_id, ()))))
+                    if use_idf
+                    else 1.0
+                )
+                raw += weight * idf * math.log(1 + int(mention.get("count", 1)))
                 entity = self.entities.get(str(mention["entity_id"]))
                 if entity is not None and entity.canonical not in matched:
                     matched.append(entity.canonical)

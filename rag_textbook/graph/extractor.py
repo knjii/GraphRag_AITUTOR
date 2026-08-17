@@ -30,6 +30,14 @@ from rag_textbook.utils.text import canonicalize_entity, content_terms, truncate
 
 logger = get_logger("graph.extractor")
 
+# Статусы, при которых имеет смысл попробовать ещё раз. Все они означают, что
+# ответа по существу не получено: сеть, пустой ответ, испорченный JSON.
+# Содержательные результаты — даже с пустым списком связей — сюда не входят,
+# повторять их незачем.
+_RETRYABLE_STATUSES = frozenset(
+    {"error", "invalid_json", "invalid_structure", "empty_response"}
+)
+
 EXTRACTION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -435,14 +443,34 @@ class EntityExtractor:
             result = self.extract_rule_based(chunk)
         else:
             result = self.extract_llm(chunk)
-            if result.status in {
-                "error",
-                "invalid_json",
-                "invalid_structure",
-                "empty_response",
-                "no_llm",
-            }:
+            # Повтор перед откатом. Сбой извлечения почти всегда разовый:
+            # разбор неудачных фрагментов показал, что они неотличимы
+            # от успешных по длине, насыщенности формулами и языку и разбросаны
+            # по всему корпусу без группировки. Так выглядит случайная ошибка,
+            # а не содержательная трудность. Детерминизм здесь не спасает:
+            # temperature=0 не делает движок с непрерывным батчингом
+            # побитово воспроизводимым, состав батча влияет на результат.
+            #
+            # Цена повтора мала: он приходится на несколько процентов
+            # фрагментов. Цена отказа заметна — пассаж попадает в граф
+            # с сущностями от правил, то есть мешком слов.
+            attempts = max(0, self.settings.extraction_retries)
+            for _ in range(attempts):
+                if result.status not in _RETRYABLE_STATUSES:
+                    break
+                logger.debug(
+                    "Повторяю извлечение для %s после статуса %s", chunk.id, result.status
+                )
+                result = self.extract_llm(chunk)
+
+            if result.status in _RETRYABLE_STATUSES or result.status == "no_llm":
                 # Падение экстрактора не должно оставлять пассаж вне графа.
+                logger.info(
+                    "Откат к правилам для %s: статус %s после %s попыток",
+                    chunk.id,
+                    result.status,
+                    attempts + 1,
+                )
                 result = self.extract_rule_based(chunk)
                 result.status = "rule_fallback"
 

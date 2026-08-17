@@ -221,13 +221,54 @@ def test_llm_extractor_normalizes_unknown_relation_label() -> None:
     )
 
 
-def test_llm_extractor_falls_back_on_broken_json() -> None:
-    settings = GraphSettings(extractor="llm", extraction_cache_enabled=False)
-    extractor = EntityExtractor(settings, llm=FakeLLMClient(responses=["не json вовсе"]))
+def test_llm_extractor_falls_back_when_retries_are_exhausted() -> None:
+    """Откат к правилам — последнее средство, после исчерпания повторов."""
+    settings = GraphSettings(
+        extractor="llm", extraction_cache_enabled=False, extraction_retries=2
+    )
+    # Три поломанных ответа: первая попытка плюс два повтора.
+    broken = ["не json вовсе"] * 3
+    extractor = EntityExtractor(settings, llm=FakeLLMClient(responses=broken))
     result = extractor.extract(_chunk("c1", "матрица разложение собственные значения"))
 
     assert result.status == "rule_fallback"
     assert result.entities, "пассаж не должен остаться вне графа из-за сбоя разбора"
+
+
+def test_transient_failure_is_retried_not_written_off() -> None:
+    """Разовый сбой не должен стоить пассажу извлечения моделью.
+
+    Разбор реального прогона: 47 фрагментов из 1151 ушли в правиловый откат,
+    и они неотличимы от успешных по длине, насыщенности формулами и языку.
+    Это подпись случайного сбоя, а движок с непрерывным батчингом не побитово
+    воспроизводим даже при нулевой температуре.
+    """
+    settings = GraphSettings(
+        extractor="llm", extraction_cache_enabled=False, extraction_retries=2
+    )
+    good = '{"entities": [{"name": "сингулярное разложение"}], "relations": []}'
+    llm = FakeLLMClient(responses=["", good])
+    extractor = EntityExtractor(settings, llm=llm)
+
+    result = extractor.extract(_chunk("c1", "текст про сингулярное разложение"))
+
+    assert result.status != "rule_fallback", "повтор не сработал"
+    assert [entity.name for entity in result.entities] == ["сингулярное разложение"]
+    assert len(llm.calls) == 2, "ожидалась одна неудачная попытка и один повтор"
+
+
+def test_retries_can_be_disabled() -> None:
+    """Ноль повторов возвращает прежнее поведение — для A/B и отладки."""
+    settings = GraphSettings(
+        extractor="llm", extraction_cache_enabled=False, extraction_retries=0
+    )
+    llm = FakeLLMClient(responses=["не json вовсе"])
+    extractor = EntityExtractor(settings, llm=llm)
+
+    result = extractor.extract(_chunk("c1", "матрица разложение"))
+
+    assert result.status == "rule_fallback"
+    assert len(llm.calls) == 1
 
 
 def test_extraction_cache_prevents_repeated_llm_calls(tmp_path) -> None:

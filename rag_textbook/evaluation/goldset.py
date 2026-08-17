@@ -389,6 +389,43 @@ class GoldsetBuilder:
         return questions
 
 
+def merge_goldsets(
+    existing: Sequence[GoldQuestion], added: Sequence[GoldQuestion]
+) -> tuple[list[GoldQuestion], int]:
+    """Дописывает новые вопросы к набору, не трогая прежние.
+
+    Расширять набор пересборкой нельзя: сборка перезаписывает файл целиком,
+    и все прежние прогоны становятся несравнимыми — не с чем сопоставлять
+    даже точку отсчёта. Здесь прежние вопросы сохраняются как есть, включая
+    отметку ``verified``, поставленную вручную.
+
+    Совпадения ищутся и по идентификатору, и по тексту вопроса: идентификатор
+    считается от текста и фрагмента, поэтому один и тот же вопрос, полученный
+    от другого фрагмента, дал бы новый идентификатор и попал в набор дважды.
+    """
+    merged = list(existing)
+    seen_ids = {question.id for question in merged}
+    seen_text = {" ".join(question.question.lower().split()) for question in merged}
+
+    appended = 0
+    for question in added:
+        text = " ".join(question.question.lower().split())
+        if question.id in seen_ids or text in seen_text:
+            continue
+        merged.append(question)
+        seen_ids.add(question.id)
+        seen_text.add(text)
+        appended += 1
+
+    logger.info(
+        "Набор дополнен: было %s, добавлено %s, повторов отброшено %s",
+        len(existing),
+        appended,
+        len(added) - appended,
+    )
+    return merged, appended
+
+
 def save_goldset(questions: Sequence[GoldQuestion], path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

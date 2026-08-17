@@ -476,14 +476,34 @@ class IndexingPipeline:
         for doc_id in list(alive):
             source, state, doc_report = paths[doc_id], states[doc_id], reports[doc_id]
             blocks = blocks_by_doc.get(doc_id) or []
-            # Загрузка готовых чанков выполняется всегда, даже если стадия
-            # не выбрана: последующим стадиям они нужны на входе.
+            # Если стадия не выбрана, чанки всё равно нужны следующим стадиям.
+            # `force` здесь ни при чём: он означает «переделать выбранные
+            # стадии», а не «остаться без входных данных». Пока эта проверка
+            # стояла после проверки на force, команда
+            # `ingest --stages graph --force` собирала граф из нуля чанков —
+            # молча, с нулями во всех счётчиках и правдоподобными метриками
+            # прогона, совпадающими с прогоном без графа.
+            if "chunk" not in stages:
+                if state.is_done("chunked"):
+                    chunks_by_doc[doc_id] = self._load_chunks(doc_id)
+                    doc_report.chunks = len(chunks_by_doc[doc_id])
+                    logger.info(
+                        "Стадия «чанкинг» пропущена по выбору стадий, взяты готовые "
+                        "чанки: %s, %s шт.",
+                        doc_report.doc_name,
+                        doc_report.chunks,
+                    )
+                else:
+                    logger.warning(
+                        "Стадия «чанкинг» пропущена по выбору стадий, но готовых "
+                        "чанков нет: %s. Последующие стадии останутся без входных "
+                        "данных.",
+                        doc_report.doc_name,
+                    )
+                continue
             if not force and state.is_done("chunked"):
                 chunks_by_doc[doc_id] = self._load_chunks(doc_id)
                 doc_report.chunks = len(chunks_by_doc[doc_id])
-                continue
-            if "chunk" not in stages:
-                logger.info("Стадия «чанкинг» пропущена по выбору стадий: %s", doc_report.doc_name)
                 continue
             started = time.perf_counter()
             images_dir = self.parser.images_dir_for(source)
@@ -550,6 +570,27 @@ class IndexingPipeline:
             if "graph" in stages
             else []
         )
+        # Документ, попавший под стадию, но оставшийся без чанков, — это почти
+        # всегда ошибка вызова, а не пустой документ. Молчать тут нельзя:
+        # граф соберётся из нуля фрагментов, прогон отработает без ошибок,
+        # а метрики выйдут правдоподобными — просто такими, как будто графа нет.
+        if "graph" in stages:
+            starved = [
+                doc_id
+                for doc_id in alive
+                if (force or not states[doc_id].is_done("graphed"))
+                and not chunks_by_doc.get(doc_id)
+            ]
+            for doc_id in starved:
+                logger.warning(
+                    "Стадия «граф» пропущена: у документа %s нет чанков на входе. "
+                    "Обычная причина — запуск с --force при невыбранной стадии "
+                    "чанкинга: тогда готовые чанки не читаются с диска. "
+                    "Снимите отметку стадии (deploy/reset-stages.sh) и запустите "
+                    "без --force.",
+                    reports[doc_id].doc_name,
+                )
+
         if pending_graph:
             logger.info("Стадия «граф»: документов %s", len(pending_graph))
             for doc_id in pending_graph:

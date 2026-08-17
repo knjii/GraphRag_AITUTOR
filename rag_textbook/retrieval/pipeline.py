@@ -290,16 +290,31 @@ class RetrievalPipeline:
 
     # ---------------------------------------------------------- реранкинг
 
+    def _rerank_width(self, top_k: int | None = None) -> int:
+        """Сколько кандидатов должно остаться после реранкера.
+
+        Не просто размер выдачи. За ним нужен запас: обязательная квота мест
+        за графом (``min_graph_docs``) берёт замену именно из хвоста
+        отранжированного списка. Пока реранкер возвращал ровно ``top_k``,
+        хвост был пуст, и настройка не могла сделать ничего — при её включении
+        не менялся ни один вопрос из 163. Дефект был незаметен: настройка
+        существовала, документировалась и участвовала в A/B, честно показывая
+        нулевой эффект.
+
+        Запас ничего не стоит: реранкер всё равно оценивает всех кандидатов,
+        ``top_n`` лишь ограничивает длину ответа. И он ничего не меняет при
+        выключенной квоте — первые ``top_k`` элементов те же самые.
+        """
+        width = max(self.settings.reranker.top_n, top_k or self.settings.retrieval.top_k)
+        return width + self.settings.retrieval.min_graph_docs
+
     def _rerank(
         self, query: str, items: list[ScoredChunk], top_k: int | None = None
     ) -> list[ScoredChunk]:
         if not self.settings.reranker.enabled or not items:
             return items
         documents = [item.chunk.text for item in items]
-        top_n = min(
-            len(items),
-            max(self.settings.reranker.top_n, top_k or self.settings.retrieval.top_k),
-        )
+        top_n = min(len(items), self._rerank_width(top_k))
         pairs = self.reranker.rerank(query, documents, top_n)
         reranked: list[ScoredChunk] = []
         for index, score in pairs:
@@ -341,7 +356,9 @@ class RetrievalPipeline:
         if not rankings:
             return items
 
-        top_n = max(self.settings.reranker.top_n, top_k or self.settings.retrieval.top_k)
+        # Запас на обязательную квоту нужен и здесь: дальше по конвейеру
+        # у списка отрезают хвост, а квота именно из хвоста и берёт замену.
+        top_n = self._rerank_width(top_k)
         result: list[ScoredChunk] = []
         seen: set[str] = set()
         for position in range(max(len(ranked) for ranked in rankings)):

@@ -16,8 +16,10 @@
 from __future__ import annotations
 
 import json
+import statistics
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -25,8 +27,16 @@ from rich.table import Table
 
 from rag_textbook.config import Settings
 from rag_textbook.context import build_context
-from rag_textbook.evaluation.goldset import GoldsetBuilder, load_goldset, save_goldset
+from rag_textbook.evaluation import graph_offline as graph_offline_eval
+from rag_textbook.evaluation.goldset import (
+    GoldsetBuilder,
+    load_goldset,
+    merge_goldsets,
+    save_goldset,
+)
+from rag_textbook.evaluation.metrics import compare_paired, paired_bootstrap
 from rag_textbook.evaluation.runner import (
+    load_outcomes,
     run_ab_comparison,
     run_retrieval_evaluation,
     save_evaluation,
@@ -43,6 +53,116 @@ app.add_typer(goldset_app, name="goldset")
 app.add_typer(graph_app, name="graph")
 
 console = Console()
+
+
+# Реестр A/B-экспериментов вынесен на уровень модуля намеренно: тест проверяет,
+# что каждый путь настройки существует. Опечатка в пути означала бы сравнение
+# конфигурации с самой собой — молча и совершенно правдоподобно.
+AB_EXPERIMENTS: dict[str, tuple[dict[str, Any], dict[str, Any], tuple[str, str]]] = {
+    # Главный вопрос проекта: даёт ли графовый канал прирост.
+    "graph": (
+        {"graph.retrieval_enabled": False},
+        {"graph.retrieval_enabled": True},
+        ("без графа", "с графом"),
+    ),
+    # От чего отталкивается обход графа. Замер показал, что старт от
+    # терминов вопроса вырождает канал в ослабленный лексический поиск:
+    # он ищет по тому же сигналу, что и BM25. Старт от найденных
+    # фрагментов — другой сигнал, и проверять надо именно его.
+    "graph_seed": (
+        {"graph.retrieval_enabled": True, "graph.seed_mode": "query"},
+        {"graph.retrieval_enabled": True, "graph.seed_mode": "passages"},
+        ("граф от вопроса", "граф от найденного"),
+    ),
+    "graph_seed_both": (
+        {"graph.retrieval_enabled": True, "graph.seed_mode": "query"},
+        {"graph.retrieval_enabled": True, "graph.seed_mode": "both"},
+        ("граф от вопроса", "граф от обоих"),
+    ),
+    # Реранкер доказал крупный прирост, поэтому осмысленно проверить,
+    # не упирается ли он в число кандидатов, которые ему подают.
+    "candidates": (
+        {"reranker.enabled": True, "reranker.candidates": 30},
+        {"reranker.enabled": True, "reranker.candidates": 60},
+        ("30 кандидатов", "60 кандидатов"),
+    ),
+    # Резерв мест в пуле кандидатов за находками одного лишь графа.
+    # Целится в измеренный разрыв: канал находит 10-12 процентных пунктов
+    # эталонного материала вне векторной выдачи, а до контекста доходит ноль.
+    "graph_quota": (
+        {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 0},
+        {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 6},
+        ("без резерва", "резерв 6 мест"),
+    ),
+    # Разложение связывающего вопроса на подвопросы. Целится в самую
+    # крупную измеренную потерю: из 118 эталонных фрагментов многошаговых
+    # вопросов в пул кандидатов попадают 103, а в выдачу — 68.
+    "decompose": (
+        {"retrieval.decompose_enabled": False},
+        {"retrieval.decompose_enabled": True},
+        ("без разложения", "с разложением"),
+    ),
+    # Схлопывание похожих фрагментов. На многошаговых вопросах эталонных
+    # фрагментов два, и они по построению об одном и том же — есть риск,
+    # что дедупликация выбрасывает второй как дубликат первого.
+    "dedup": (
+        {"retrieval.dedup_enabled": True},
+        {"retrieval.dedup_enabled": False},
+        ("со схлопыванием", "без схлопывания"),
+    ),
+    "reranker": (
+        {"reranker.enabled": False},
+        {"reranker.enabled": True},
+        ("без реранкера", "с реранкером"),
+    ),
+    # Гипотеза о реранкере как узком месте многошаговых вопросов.
+    # Измерено на полном корпусе: реранкер поднимает вопросы с формулами
+    # (0.915 → 0.966) и роняет многошаговые (0.703 → 0.576). Кросс-энкодер
+    # оценивает каждый фрагмент против вопроса поодиночке, а второй фрагмент
+    # пары сам по себе на вопрос не отвечает — он нужен вместе с первым.
+    # Обязательная квота мест в итоговом контексте защищает находки графа
+    # от такой оценки, не отменяя реранкер для остальных.
+    "min_graph_docs": (
+        {"graph.retrieval_enabled": True, "retrieval.min_graph_docs": 0},
+        {"graph.retrieval_enabled": True, "retrieval.min_graph_docs": 3},
+        ("без обязательной квоты", "три места за графом"),
+    ),
+    # Резерв в пуле кандидатов принят равным 6, но граф держит нужный
+    # фрагмент в первых тридцати в 81% случаев — шести мест мало.
+    "graph_quota_wide": (
+        {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 6},
+        {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 16},
+        ("резерв 6 мест", "резерв 16 мест"),
+    ),
+    # Маршрутизатор — эвристика по ключевым словам со значением по умолчанию
+    # «графа не нужно». Измерено: в граф уходят лишь 66.7% вопросов типа
+    # graph_linked, и те же 33% заодно теряют расширенную выдачу
+    # (top_k_linking применяется только при маршруте в граф).
+    "router": (
+        {"retrieval.router_mode": "heuristic"},
+        {"retrieval.router_mode": "llm"},
+        ("маршрут по эвристике", "маршрут моделью"),
+    ),
+    # Затухание веса соседа при обходе. Подобрано офлайн на локальном кэше:
+    # MRR второго шага 0.225 → 0.253. Здесь проверяется на продукте.
+    "hop_decay": (
+        {"graph.retrieval_enabled": True, "graph.hop_decay": 0.5},
+        {"graph.retrieval_enabled": True, "graph.hop_decay": 0.8},
+        ("затухание 0.5", "затухание 0.8"),
+    ),
+    # Вклад сущности, взвешенный её редкостью. Офлайн: доля попаданий
+    # второго фрагмента в первую восьмёрку 0.404 → 0.449.
+    "graph_idf": (
+        {"graph.retrieval_enabled": True, "graph.passage_idf_enabled": False},
+        {"graph.retrieval_enabled": True, "graph.passage_idf_enabled": True},
+        ("без веса редкости", "с весом редкости"),
+    ),
+    "fusion": (
+        {"retrieval.fusion": "rrf"},
+        {"retrieval.fusion": "dbsf"},
+        ("rrf", "dbsf"),
+    ),
+}
 
 
 def _settings() -> Settings:
@@ -281,9 +401,39 @@ def goldset_build(
     single: Annotated[int, typer.Option(help="Сколько одношаговых вопросов")] = 100,
     multihop: Annotated[int, typer.Option(help="Сколько многошаговых вопросов")] = 50,
     output: Annotated[Path | None, typer.Option(help="Куда сохранить")] = None,
+    append: Annotated[
+        bool,
+        typer.Option(
+            "--append",
+            help=(
+                "Дописать к существующему набору, а не перезаписать его. "
+                "Сохраняет сравнимость с прежними прогонами и отметки verified"
+            ),
+        ),
+    ] = False,
+    seed: Annotated[
+        int,
+        typer.Option(
+            help=(
+                "Зерно отбора фрагментов. При дозаписи задавайте другое, "
+                "иначе отберутся те же фрагменты и вопросы повторятся"
+            )
+        ),
+    ] = 20260814,
 ) -> None:
     """Собирает эталонный набор из проиндексированных чанков."""
     settings = _settings()
+    target = output or settings.evaluation.goldset_path
+
+    existing: list = []
+    if append:
+        try:
+            existing = load_goldset(target)
+        except FileNotFoundError:
+            console.print(f"[yellow]Набора {target} нет, создаю новый[/yellow]")
+        else:
+            console.print(f"Существующий набор: {len(existing)} вопросов")
+
     context = build_context(settings)
     try:
         chunks = list(context.vector_store.iter_chunks())
@@ -294,9 +444,17 @@ def goldset_build(
         # Граф передаётся, чтобы часть многошаговых пар отбиралась по связям,
         # а не по общим словам: на лексически похожих парах вклад графа
         # принципиально неизмерим.
-        builder = GoldsetBuilder(context.llm, graph_store=context.graph_store)
-        questions = builder.build(chunks, single_count=single, multihop_count=multihop)
-        path = save_goldset(questions, output or settings.evaluation.goldset_path)
+        builder = GoldsetBuilder(context.llm, seed=seed, graph_store=context.graph_store)
+        produced = builder.build(chunks, single_count=single, multihop_count=multihop)
+        if append:
+            questions, appended = merge_goldsets(existing, produced)
+            console.print(
+                f"Сгенерировано {len(produced)}, добавлено новых {appended}, "
+                f"повторов отброшено {len(produced) - appended}"
+            )
+        else:
+            questions = produced
+        path = save_goldset(questions, target)
     finally:
         context.close()
 
@@ -414,7 +572,9 @@ def eval_ab(
         typer.Option(
             help=(
                 "Что сравниваем: graph | graph_seed | graph_seed_both | "
-                "reranker | candidates | fusion"
+                "graph_quota | graph_quota_wide | min_graph_docs | router | "
+                "hop_decay | graph_idf | reranker | candidates | dedup | "
+                "decompose | fusion"
             )
         ),
     ] = "graph",
@@ -423,69 +583,8 @@ def eval_ab(
     settings = _settings()
     questions = load_goldset(goldset or settings.evaluation.goldset_path)
 
-    experiments = {
-        # Главный вопрос проекта: даёт ли графовый канал прирост.
-        "graph": (
-            {"graph.retrieval_enabled": False},
-            {"graph.retrieval_enabled": True},
-            ("без графа", "с графом"),
-        ),
-        # От чего отталкивается обход графа. Замер показал, что старт от
-        # терминов вопроса вырождает канал в ослабленный лексический поиск:
-        # он ищет по тому же сигналу, что и BM25. Старт от найденных
-        # фрагментов — другой сигнал, и проверять надо именно его.
-        "graph_seed": (
-            {"graph.retrieval_enabled": True, "graph.seed_mode": "query"},
-            {"graph.retrieval_enabled": True, "graph.seed_mode": "passages"},
-            ("граф от вопроса", "граф от найденного"),
-        ),
-        "graph_seed_both": (
-            {"graph.retrieval_enabled": True, "graph.seed_mode": "query"},
-            {"graph.retrieval_enabled": True, "graph.seed_mode": "both"},
-            ("граф от вопроса", "граф от обоих"),
-        ),
-        # Реранкер доказал крупный прирост, поэтому осмысленно проверить,
-        # не упирается ли он в число кандидатов, которые ему подают.
-        "candidates": (
-            {"reranker.enabled": True, "reranker.candidates": 30},
-            {"reranker.enabled": True, "reranker.candidates": 60},
-            ("30 кандидатов", "60 кандидатов"),
-        ),
-        # Резерв мест в пуле кандидатов за находками одного лишь графа.
-        # Целится в измеренный разрыв: канал находит 10-12 процентных пунктов
-        # эталонного материала вне векторной выдачи, а до контекста доходит ноль.
-        "graph_quota": (
-            {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 0},
-            {"graph.retrieval_enabled": True, "retrieval.graph_candidate_quota": 6},
-            ("без резерва", "резерв 6 мест"),
-        ),
-        # Разложение связывающего вопроса на подвопросы. Целится в самую
-        # крупную измеренную потерю: из 118 эталонных фрагментов многошаговых
-        # вопросов в пул кандидатов попадают 103, а в выдачу — 68.
-        "decompose": (
-            {"retrieval.decompose_enabled": False},
-            {"retrieval.decompose_enabled": True},
-            ("без разложения", "с разложением"),
-        ),
-        # Схлопывание похожих фрагментов. На многошаговых вопросах эталонных
-        # фрагментов два, и они по построению об одном и том же — есть риск,
-        # что дедупликация выбрасывает второй как дубликат первого.
-        "dedup": (
-            {"retrieval.dedup_enabled": True},
-            {"retrieval.dedup_enabled": False},
-            ("со схлопыванием", "без схлопывания"),
-        ),
-        "reranker": (
-            {"reranker.enabled": False},
-            {"reranker.enabled": True},
-            ("без реранкера", "с реранкером"),
-        ),
-        "fusion": (
-            {"retrieval.fusion": "rrf"},
-            {"retrieval.fusion": "dbsf"},
-            ("rrf", "dbsf"),
-        ),
-    }
+    experiments = AB_EXPERIMENTS
+
     if experiment not in experiments:
         console.print(f"[red]Неизвестный эксперимент: {experiment}[/red]")
         raise typer.Exit(code=1)
@@ -495,7 +594,16 @@ def eval_ab(
         questions, baseline, candidate, base_settings=settings, labels=labels
     )
 
-    paired = result["paired"]
+    _render_paired(result["paired"], labels)
+
+
+def _render_paired(paired: dict[str, Any], labels: tuple[str, str]) -> None:
+    """Печатает парное сравнение: средние, разбор по типам, предупреждения.
+
+    Вынесено из ``eval ab``, потому что ровно то же нужно при сравнении
+    двух сохранённых прогонов — там, где конфигурации нельзя переключить
+    на лету и приходится снимать два индекса подряд.
+    """
     table = Table(
         title=(
             f"A/B: {labels[0]} против {labels[1]} "
@@ -523,6 +631,46 @@ def eval_ab(
             "[bold]да[/bold]" if row["significant"] else "нет",
         )
     console.print(table)
+
+    # Среднее по набору скрывает размен между типами вопросов. Реранкер поднял
+    # вопросы с формулами на 5 пунктов и уронил многошаговые на 13 — по среднему
+    # это выглядело чистым выигрышем. Разбор по типам печатается всегда.
+    by_type = paired.get("by_type") or {}
+    if len(by_type) > 1:
+        breakdown = Table(title="Тот же результат по типам вопросов (recall)")
+        breakdown.add_column("Тип")
+        breakdown.add_column("Вопросов", justify="right")
+        breakdown.add_column(labels[0], justify="right")
+        breakdown.add_column(labels[1], justify="right")
+        breakdown.add_column("Δ", justify="right")
+        breakdown.add_column("95% интервал", justify="center")
+        breakdown.add_column("Лучше/хуже", justify="center")
+        opposite = False
+        signs = set()
+        for name, payload in by_type.items():
+            row = payload["metrics"]["recall"]
+            delta = row["delta"]
+            colour = "green" if delta > 0 else ("red" if delta < 0 else "white")
+            if abs(delta) > 1e-9:
+                signs.add(delta > 0)
+            breakdown.add_row(
+                name,
+                str(payload["questions"]),
+                f"{row['baseline']:.3f}",
+                f"{row['candidate']:.3f}",
+                f"[{colour}]{delta:+.3f}[/{colour}]",
+                f"[{row['ci_low']:+.3f}; {row['ci_high']:+.3f}]",
+                f"{row['improved']}/{row['worsened']}",
+            )
+        opposite = len(signs) > 1
+        console.print(breakdown)
+        if opposite:
+            console.print(
+                "[yellow]Изменение помогает одним типам вопросов и вредит другим. "
+                "Решение по среднему здесь будет неверным: нужна либо настройка "
+                "по типу вопроса, либо явный выбор, чем жертвуем.[/yellow]"
+            )
+
     console.print(
         "Значимость — доверительный интервал среднего различия по парному "
         "бутстрэпу не покрывает ноль. «Лучше/хуже» — на скольких вопросах "
@@ -533,6 +681,51 @@ def eval_ab(
             "[yellow]Выборка меньше 100 вопросов: интервалы широкие, "
             "отсутствие значимости здесь не означает отсутствия эффекта.[/yellow]"
         )
+
+
+@eval_app.command("compare")
+def eval_compare(
+    baseline: Annotated[Path, typer.Argument(help="Файл прогона, взятого за точку отсчёта")],
+    candidate: Annotated[Path, typer.Argument(help="Файл прогона, который проверяем")],
+) -> None:
+    """Парно сравнивает два сохранённых прогона по одним и тем же вопросам.
+
+    Нужно там, где ``eval ab`` не работает. Он переключает настройки на лету
+    и потому умеет сравнивать только то, что влияет на запрос. Настройки,
+    влияющие на индекс — например, порог отсечения хабов, — требуют пересборки
+    графа: две конфигурации не могут существовать одновременно. Остаётся снять
+    два прогона подряд и сравнить их по файлам.
+    """
+    settings = _settings()
+    for path in (baseline, candidate):
+        if not path.exists():
+            console.print(f"[red]Файл не найден: {path}[/red]")
+            raise typer.Exit(code=1)
+
+    base_label, base_outcomes = load_outcomes(baseline)
+    cand_label, cand_outcomes = load_outcomes(candidate)
+    if not base_outcomes or not cand_outcomes:
+        console.print("[red]В одном из файлов нет результатов по вопросам[/red]")
+        raise typer.Exit(code=1)
+
+    retrieval = settings.retrieval
+    k = max(retrieval.top_k, retrieval.top_k_linking)
+    paired = compare_paired(base_outcomes, cand_outcomes, k)
+
+    if paired["questions"] == 0:
+        console.print(
+            "[red]У прогонов нет общих вопросов: они сняты на разных наборах, "
+            "сравнивать их нельзя[/red]"
+        )
+        raise typer.Exit(code=1)
+    missing = len(base_outcomes) - paired["questions"]
+    if missing:
+        console.print(
+            f"[yellow]Общих вопросов {paired['questions']}, в точке отсчёта было "
+            f"{len(base_outcomes)}: сравнение идёт только по пересечению[/yellow]"
+        )
+
+    _render_paired(paired, (base_label, cand_label))
 
 
 @graph_app.command("stats")
@@ -565,6 +758,147 @@ def graph_stats() -> None:
                 "[yellow]Граф всё ещё состоит преимущественно из co-occurrence. "
                 "Повысьте GRAPH_COOCCURRENCE_MIN_PMI или отключите канал.[/yellow]"
             )
+
+
+@graph_app.command("offline")
+def graph_offline(
+    degrees: Annotated[
+        str, typer.Option(help="Пороги отсечения хабов через запятую")
+    ] = "64,48,40,32,24",
+    hops: Annotated[str, typer.Option(help="Затухание веса соседа через запятую")] = "0.0,0.5,0.8",
+    model: Annotated[
+        str, typer.Option(help="Модель, которой собран кэш (иначе берётся из настроек)")
+    ] = "",
+    reasoning_effort: Annotated[
+        str, typer.Option(help="Режим размышления, которым собран кэш")
+    ] = "",
+    save: Annotated[bool, typer.Option(help="Сохранить результат в artifacts/metrics")] = True,
+) -> None:
+    """Перебирает настройки графового канала по локальному кэшу, без сервера.
+
+    Мера — место второго фрагмента пары при известном первом. Разбор промахов
+    показал, что все неудачи на многошаговых вопросах устроены одинаково:
+    один фрагмент найден, второй нет. Здесь меряется ровно этот переход,
+    поэтому перебор стоит секунды и не требует ни Neo4j, ни видеокарты.
+    """
+    settings = _settings()
+    overrides = {
+        "model": model or None,
+        "reasoning_effort": reasoning_effort or None,
+    }
+    try:
+        probe = graph_offline_eval.reconstruct(settings, max_entity_degree=0, **overrides)
+    except (FileNotFoundError, RuntimeError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    pairs = graph_offline_eval.linked_pairs(settings, probe)
+    if not pairs:
+        console.print(
+            "[yellow]В эталонном наборе нет вопросов с двумя фрагментами — "
+            "мерить переход не на чем[/yellow]"
+        )
+        raise typer.Exit(code=0)
+
+    console.print(
+        f"Фрагментов {probe.passages}, найдено в кэше {probe.cache_hits}, "
+        f"пар для замера {len(pairs)} (по два измерения на пару)"
+    )
+
+    degree_values = [int(value) for value in degrees.split(",") if value.strip()]
+    hop_values = [float(value) for value in hops.split(",") if value.strip()]
+
+    baseline_ranks: list[int] | None = None
+    rows: list[dict[str, Any]] = []
+    table = Table(title="Графовый канал: поиск второго фрагмента пары")
+    for column in ("порог", "затухание", "IDF", "сущностей", "рёбер", "MRR", "hit@8", "hit@30"):
+        table.add_column(column, justify="right" if column != "IDF" else "center")
+
+    for degree in degree_values:
+        graph = graph_offline_eval.reconstruct(
+            settings, max_entity_degree=degree, **overrides
+        )
+        for hop_decay in hop_values:
+            for use_idf in (False, True):
+                ranks = graph_offline_eval.second_hop_ranks(
+                    graph, pairs, hop_decay=hop_decay, use_idf=use_idf
+                )
+                summary = graph_offline_eval.summarize(ranks)
+                # Точка отсчёта — то, что стояло до замеров: порог 64,
+                # затухание 0.5, без IDF. Всё остальное сравнивается с ней.
+                if degree == 64 and hop_decay == 0.5 and not use_idf:
+                    baseline_ranks = ranks
+                rows.append({"degree": degree, "hop_decay": hop_decay, "idf": use_idf,
+                             "entities": graph.entities, "edges": graph.edges, **summary})
+                table.add_row(
+                    str(degree), f"{hop_decay:.2f}", "да" if use_idf else "нет",
+                    str(graph.entities), str(graph.edges),
+                    f"{summary['mrr']:.3f}", f"{summary['hit@8']:.3f}",
+                    f"{summary['hit@30']:.3f}",
+                )
+    console.print(table)
+
+    best = max(rows, key=lambda row: row["mrr"])
+    console.print(
+        f"Лучшее: порог [bold]{best['degree']}[/bold], затухание "
+        f"[bold]{best['hop_decay']}[/bold], IDF [bold]{'да' if best['idf'] else 'нет'}[/bold]"
+    )
+    if baseline_ranks is not None:
+        best_ranks = graph_offline_eval.second_hop_ranks(
+            graph_offline_eval.reconstruct(
+                settings, max_entity_degree=best["degree"], **overrides
+            ),
+            pairs,
+            hop_decay=best["hop_decay"],
+            use_idf=best["idf"],
+        )
+        console.print(_offline_comparison(baseline_ranks, best_ranks))
+
+    console.print(
+        "[yellow]Это оценка одной подсистемы. Стартовые сущности по тексту вопроса, "
+        "реранкер и слияние каналов сюда не входят: итоговый recall меряется "
+        "прогоном eval на сервере.[/yellow]"
+    )
+
+    if save:
+        path = settings.paths.metrics_dir / "graph_offline.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"pairs": len(pairs), "rows": rows}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        console.print(f"Сохранено: {path}")
+
+
+def _offline_comparison(baseline: Sequence[int], candidate: Sequence[int]) -> Table:
+    """Парное сравнение двух настроек обхода на одних и тех же парах."""
+    table = Table(title="Против нынешней настройки (порог 64, затухание 0.5, без IDF)")
+    for column in ("метрика", "было", "стало", "Δ", "95% интервал", "лучше/хуже", "значимо"):
+        table.add_column(column, justify="right" if column != "метрика" else "left")
+
+    scorers = {
+        "MRR": lambda rank: 1.0 / rank,
+        "hit@8": lambda rank: float(rank <= 8),
+        "hit@30": lambda rank: float(rank <= 30),
+    }
+    for name, score in scorers.items():
+        base_values = [score(rank) for rank in baseline]
+        cand_values = [score(rank) for rank in candidate]
+        differences = [c - b for b, c in zip(base_values, cand_values, strict=True)]
+        stats = paired_bootstrap(differences)
+        better = sum(1 for value in differences if value > 0)
+        worse = sum(1 for value in differences if value < 0)
+        significant = stats["low"] > 0 or stats["high"] < 0
+        table.add_row(
+            name,
+            f"{statistics.fmean(base_values):.3f}",
+            f"{statistics.fmean(cand_values):.3f}",
+            f"{stats['mean']:+.3f}",
+            f"[{stats['low']:+.3f}; {stats['high']:+.3f}]",
+            f"{better}/{worse}",
+            "[green]да[/green]" if significant else "нет",
+        )
+    return table
 
 
 @app.command("bench")

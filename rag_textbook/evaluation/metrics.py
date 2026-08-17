@@ -195,7 +195,7 @@ def _per_question(outcomes: Sequence[QueryOutcome], name: str, k: int) -> dict[s
     return {item.question_id: func(item.retrieved, item.relevant, k) for item in outcomes}
 
 
-def _paired_bootstrap(
+def paired_bootstrap(
     differences: Sequence[float], *, resamples: int = 10000, seed: int = 20260815
 ) -> dict[str, float]:
     """Доверительный интервал среднего различия по парному бутстрэпу.
@@ -254,28 +254,48 @@ def compare_paired(
     base_shared = [base_by_id[qid] for qid in shared]
     cand_shared = [cand_by_id[qid] for qid in shared]
 
-    metrics: dict[str, Any] = {}
-    for name in ("recall", "precision", "ndcg", "hit_rate", "mrr"):
-        base_values = _per_question(base_shared, name, k)
-        cand_values = _per_question(cand_shared, name, k)
-        differences = [cand_values[qid] - base_values[qid] for qid in shared]
-        stats = _paired_bootstrap(differences)
-        metrics[name] = {
-            "baseline": round(statistics.fmean(base_values.values()) if shared else 0.0, 4),
-            "candidate": round(statistics.fmean(cand_values.values()) if shared else 0.0, 4),
-            "delta": round(stats["mean"], 4),
-            "ci_low": round(stats["low"], 4),
-            "ci_high": round(stats["high"], 4),
-            "p_value": round(stats["p_value"], 4),
-            # Значимость — это интервал, не покрывающий ноль. Формулировка
-            # «доверительный интервал» честнее, чем голое «да/нет».
-            "significant": stats["low"] > 0.0 or stats["high"] < 0.0,
-            "improved": sum(1 for value in differences if value > 1e-9),
-            "worsened": sum(1 for value in differences if value < -1e-9),
-            "unchanged": sum(1 for value in differences if abs(value) <= 1e-9),
-        }
+    def _block(ids: Sequence[str]) -> dict[str, Any]:
+        base_items = [base_by_id[qid] for qid in ids]
+        cand_items = [cand_by_id[qid] for qid in ids]
+        block: dict[str, Any] = {}
+        for name in ("recall", "precision", "ndcg", "hit_rate", "mrr"):
+            base_values = _per_question(base_items, name, k)
+            cand_values = _per_question(cand_items, name, k)
+            differences = [cand_values[qid] - base_values[qid] for qid in ids]
+            stats = paired_bootstrap(differences)
+            block[name] = {
+                "baseline": round(statistics.fmean(base_values.values()) if ids else 0.0, 4),
+                "candidate": round(statistics.fmean(cand_values.values()) if ids else 0.0, 4),
+                "delta": round(stats["mean"], 4),
+                "ci_low": round(stats["low"], 4),
+                "ci_high": round(stats["high"], 4),
+                "p_value": round(stats["p_value"], 4),
+                # Значимость — это интервал, не покрывающий ноль. Формулировка
+                # «доверительный интервал» честнее, чем голое «да/нет».
+                "significant": stats["low"] > 0.0 or stats["high"] < 0.0,
+                "improved": sum(1 for value in differences if value > 1e-9),
+                "worsened": sum(1 for value in differences if value < -1e-9),
+                "unchanged": sum(1 for value in differences if abs(value) <= 1e-9),
+            }
+        return block
 
-    return {"k": k, "questions": len(shared), "metrics": metrics}
+    # Разбор по типам обязателен, а не приятен. Реранкер на полном корпусе
+    # поднял recall вопросов с формулами на 5 пунктов и уронил многошаговые
+    # на 13 — в среднем по набору это выглядело как чистый выигрыш, и решение
+    # «принято» было принято по среднему. Такое больше не должно проходить молча.
+    by_type: dict[str, Any] = {}
+    types: dict[str, list[str]] = {}
+    for qid in shared:
+        types.setdefault(base_by_id[qid].question_type, []).append(qid)
+    for name, ids in sorted(types.items()):
+        by_type[name] = {"questions": len(ids), "metrics": _block(ids)}
+
+    return {
+        "k": k,
+        "questions": len(shared),
+        "metrics": _block(shared),
+        "by_type": by_type,
+    }
 
 
 def compare(baseline: RetrievalMetrics, candidate: RetrievalMetrics, k: int) -> dict[str, Any]:

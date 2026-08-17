@@ -58,7 +58,19 @@ up)
     LLM_MODEL_NAME="${LLM_MODEL_NAME:-qwen3.5:4b}"
     VISION_MODEL_NAME="$(env_get LLM_VISION_MODEL)"
     VISION_MODEL_NAME="${VISION_MODEL_NAME:-qwen2.5vl:3b}"
-    for model in "$LLM_MODEL_NAME" "$VISION_MODEL_NAME"; do
+
+    # Основная модель живёт в Ollama не всегда. При стеке с SGLang она
+    # обслуживается на порту 8001 и называется по-хаггингфейсовски
+    # (Qwen/Qwen3.5-4B); `ollama pull` с таким именем падает, а вместе с ним
+    # из-за set -e падает весь запуск сервисов. Модель зрения при этом
+    # остаётся на Ollama в любом случае — её и качаем.
+    MODELS_TO_PULL="$VISION_MODEL_NAME"
+    case "$(env_get LLM_BASE_URL)" in
+        *11434*) MODELS_TO_PULL="$LLM_MODEL_NAME $VISION_MODEL_NAME" ;;
+        *)       ok "основная модель обслуживается вне Ollama, пропускаю $LLM_MODEL_NAME" ;;
+    esac
+
+    for model in $MODELS_TO_PULL; do
         if $COMPOSE exec -T ollama ollama list | grep -q "^${model%%:*}"; then
             ok "$model уже загружена"
         else
