@@ -1,0 +1,55 @@
+{
+  "started_at": "2026-08-17T13:43:51.283173+00:00",
+  "finished_at": "2026-08-17T13:46:43.336920+00:00",
+  "total_chunks": 1151,
+  "failed": 0,
+  "skipped": 0,
+  "config": {
+    "parsing_backend": "pipeline",
+    "chunk_size": 1200,
+    "chunk_overlap": 180,
+    "enrich_types": [
+      "image",
+      "chart"
+    ],
+    "embedding_model": "BAAI/bge-m3",
+    "graph_enabled": true,
+    "graph_extractor": "llm",
+    "cooccurrence_min_pmi": 1.0,
+    "indexing_mode": "stage",
+    "stages": [
+      "graph"
+    ],
+    "oom_events": 0
+  },
+  "documents": [
+    {
+      "doc_id": "0690bb81b7e3c831",
+      "doc_name": "Dayzenrot_Feyzal_On_Matematika_v_mashinnom_obuchen_241126_230954",
+      "status": "ok",
+      "chunks": 1151,
+      "blocks": 0,
+      "error": "",
+      "stage_seconds": {
+        "graph": 172.01
+      },
+      "enrichment": {},
+      "graph": {
+        "passages": 1151,
+        "entities": 4032,
+        "mentions": 12396,
+        "relations": 10609,
+        "cross_chunk_relations": 992,
+        "cooccurrences": 5598,
+        "cooccurrence_candidates": 49270,
+        "cooccurrence_kept_ratio": 0.1136,
+        "pruned_hubs": 170,
+        "extraction_status": {
+          "ok": 1110,
+          "rule_fallback": 40,
+          "empty": 1
+        }
+      }
+    }
+  ]
+}

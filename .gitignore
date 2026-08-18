@@ -1,92 +1,81 @@
+
+!.env.example
+!deepeval_artifacts/.gitkeep
+!deepeval_artifacts/rag_eval_inputs.json
+!documents/markdown_docs/
+!documents/markdown_docs/.gitkeep
+!documents/pdf_docs/
+!documents/pdf_docs/.gitkeep
+!graph_indexing/metrics/.gitkeep
+# DeepEval
+# IDE и ОС
+# legacy
+# Артефакты прогонов: разбор, кэши, манифесты, метрики, состояние
+# Архив прежних экспериментов и временные каталоги
+# ВАЖНО: рабочий код больше НЕ исключается.
+# Виртуальные окружения
+# Данные и модели
 # Кэши Python и артефакты сборки
-__pycache__/
+# Локальные заметки и выгрузки логов прогонов
+# Локальные секреты
+# Прежде здесь были src/app.py, src/preflight.py, src/backfill_graph_from_chroma.py —
+# Черновые ноутбуки: экспериментальный код, версионировать шумно
+# Эталонные наборы: сами файлы версионируем, промежуточные прогоны — нет
+# существовали только на одной машине и не версионировались.
+# то есть интерфейс, health-check и главный инструмент бэкфилла графа
+*.egg-info/
+*.ipynb
 *.py[cod]
 *.so
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-dist/
-build/
-*.egg-info/
-.ipynb_checkpoints/
-
-# Виртуальные окружения
-.venv/
-venv/
-env/
-ENV/
-
-# IDE и ОС
-.idea/
-.vscode/
+*.tmp
 .DS_Store
-Thumbs.db
-
-# Локальные секреты
+.coverage
+.deepeval/
 .env
 .env.*
-!.env.example
-
-# Данные и модели
-models/
-documents/*
-!documents/pdf_docs/
-!documents/markdown_docs/
-documents/pdf_docs/*
-documents/markdown_docs/*
-!documents/pdf_docs/.gitkeep
-!documents/markdown_docs/.gitkeep
-учебники_для_оценки/
-
-# Черновые ноутбуки: экспериментальный код, версионировать шумно
-*.ipynb
-
-# Артефакты прогонов: разбор, кэши, манифесты, метрики, состояние
+.idea/
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.vscode/
+C:\python\rag_textbook\deploy\*
+ENV/
+Thumbs.db
+__pycache__/
+__root_test.tmp
+_tmp_agentic_graph_rag/
+archive/
 artifacts/
+build/
+chat_history/
 chroma_db/
 chroma_db_stress/
+converted_for_rag/
+deepeval_artifacts/*
+dist/
+documents/*
+documents/markdown_docs/*
+documents/pdf_docs/*
+env/
+evaluation/goldsets/*_draft.json
+graph_indexing/metrics/*
+htmlcov/
+hypotheses_and_experiments.md
+ket_query_test.txt
+last_ket_indexing_logs.txt
+last_prompt.txt
+logs/
+models/
 output/
 output_docling/
-converted_for_rag/
-chat_history/
-graph_indexing/metrics/*
-!graph_indexing/metrics/.gitkeep
-
-# Эталонные наборы: сами файлы версионируем, промежуточные прогоны — нет
-evaluation/goldsets/*_draft.json
-
-# DeepEval
-.deepeval/
-deepeval_artifacts/*
-!deepeval_artifacts/rag_eval_inputs.json
-!deepeval_artifacts/.gitkeep
-
-# Архив прежних экспериментов и временные каталоги
-archive/
-_tmp_agentic_graph_rag/
-logs/
-*.tmp
-__root_test.tmp
-
-# Локальные заметки и выгрузки логов прогонов
-last_prompt.txt
-ket_query_test.txt
 rag_eval_inputs_2.txt
-successful_indexing.txt
-last_ket_indexing_logs.txt
-
-Отчет_1курс_ссылки.tex
 sprints.md
-hypotheses_and_experiments.md
-
-C:\python\rag_textbook\deploy\*
-# legacy
 src/app.py
-src/preflight.py
 src/backfill_graph_from_chroma.py
-# ВАЖНО: рабочий код больше НЕ исключается.
-# Прежде здесь были src/app.py, src/preflight.py, src/backfill_graph_from_chroma.py —
-# то есть интерфейс, health-check и главный инструмент бэкфилла графа
-# существовали только на одной машине и не версионировались.
+src/preflight.py
+successful_indexing.txt
+venv/
+Отчет_1курс_ссылки.tex
+учебники_для_оценки/

@@ -27,6 +27,7 @@ from rich.table import Table
 
 from rag_textbook.config import Settings
 from rag_textbook.context import build_context
+from rag_textbook.models import Chunk
 from rag_textbook.evaluation import graph_offline as graph_offline_eval
 from rag_textbook.evaluation.goldset import (
     GoldsetBuilder,
@@ -34,7 +35,10 @@ from rag_textbook.evaluation.goldset import (
     merge_goldsets,
     save_goldset,
 )
-from rag_textbook.evaluation.metrics import compare_paired, paired_bootstrap
+from rag_textbook.evaluation.metrics import compare_paired, evaluate_retrieval, paired_bootstrap
+from rag_textbook.evaluation.replay import fidelity_report, replay
+from rag_textbook.evaluation.trace import NotReplayable, TraceSet, align_to_snapshot
+from rag_textbook.evaluation.verdicts import VerdictSet, apply_verdicts, summarize
 from rag_textbook.evaluation.runner import (
     load_outcomes,
     run_ab_comparison,
@@ -490,22 +494,103 @@ def goldset_stats(
         )
 
 
+@goldset_app.command("verdicts")
+def goldset_verdicts(
+    path: Annotated[Path | None, typer.Option(help="Путь к набору")] = None,
+    verdicts: Annotated[
+        Path, typer.Option(help="Файл вердиктов ручной проверки")
+    ] = Path("evaluation/goldsets/verdicts.json"),
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Записать отметки в набор")
+    ] = False,
+) -> None:
+    """Применяет вердикты ручной проверки к эталонному набору.
+
+    Вердикты живут отдельным файлом и применяются по идентификатору вопроса,
+    поэтому переживают расширение набора: проверка идёт по локальной копии,
+    а набор растёт на сервере.
+
+    Без ``--apply`` только показывает, что получится.
+    """
+    settings = _settings()
+    target = path or settings.evaluation.goldset_path
+    questions = load_goldset(target)
+    verdict_set = VerdictSet.load(verdicts)
+    if not len(verdict_set):
+        console.print(f"[yellow]В {verdicts} нет вердиктов.[/yellow]")
+        raise typer.Exit(code=1)
+
+    updated, counts = apply_verdicts(questions, verdict_set)
+    summary = summarize(questions, verdict_set)
+
+    table = Table(title=f"Вердикты: {sum(counts.values())} из {len(questions)} вопросов")
+    table.add_column("Тип вопроса")
+    table.add_column("Вердикт")
+    table.add_column("Количество", justify="right")
+    for question_type, bucket in sorted(summary.items()):
+        for verdict, count in sorted(bucket.items(), key=lambda pair: -pair[1]):
+            table.add_row(question_type, verdict, str(count))
+    console.print(table)
+
+    linked = summary.get("graph_linked", {})
+    checked = sum(linked.values())
+    if checked:
+        share = linked.get("single_hop_enough", 0) / checked
+        console.print(
+            f"Связывающих вопросов, которым хватает одного фрагмента: "
+            f"[bold]{share:.0%}[/bold] из {checked} проверенных"
+        )
+
+    if not apply:
+        console.print("[dim]Показан предпросмотр. Для записи добавьте --apply.[/dim]")
+        return
+
+    save_goldset(updated, target)
+    verified = sum(1 for item in updated if item.verified)
+    console.print(f"Записано в {target}: проверенными помечены {verified} вопросов.")
+
+
 @eval_app.command("run")
 def eval_run(
     goldset: Annotated[Path | None, typer.Option(help="Путь к эталонному набору")] = None,
     label: Annotated[str, typer.Option(help="Метка прогона")] = "current",
+    trace: Annotated[
+        Path | None,
+        typer.Option(help="Куда сохранить слепок поиска для офлайн-перебора"),
+    ] = None,
 ) -> None:
-    """Измеряет качество поиска на эталонном наборе."""
+    """Измеряет качество поиска на эталонном наборе.
+
+    С ``--trace`` дополнительно снимает слепок: кандидаты каналов, баллы
+    реранкера и итоговый отбор по каждому вопросу. По слепку весь порядок
+    и отбор пересчитываются офлайн бесплатно, без аренды сервера.
+    """
     settings = _settings()
     questions = load_goldset(goldset or settings.evaluation.goldset_path)
+    trace_set = TraceSet() if trace else None
+    if trace and not settings.evaluation.trace_rerank_all:
+        console.print(
+            "[yellow]EVAL_TRACE_RERANK_ALL выключен: баллы реранкера сохранятся "
+            "только по выдаче, и гипотезу о ширине окна проверить не выйдет.[/yellow]"
+        )
     context = build_context(settings)
     try:
         metrics, outcomes = run_retrieval_evaluation(
-            context, questions, max_workers=settings.evaluation.max_concurrency
+            context,
+            questions,
+            max_workers=settings.evaluation.max_concurrency,
+            trace=trace_set,
         )
         save_evaluation(metrics, outcomes, settings, label=label)
     finally:
         context.close()
+
+    if trace and trace_set is not None:
+        trace_set.save(trace)
+        console.print(
+            f"Слепок сохранён: {trace} ({len(trace_set.traces)} вопросов, "
+            f"окно {trace_set.rerank_window})"
+        )
 
     table = Table(title=f"Качество поиска ({label})")
     table.add_column("k", justify="right")
@@ -562,6 +647,172 @@ def eval_run(
             "ни одного фрагмента. Это отказ канала, а не отсутствие эффекта — "
             "результаты сравнения с графом недействительны.[/red]"
         )
+
+
+# Сетка офлайн-перебора. Держится в одном месте намеренно: перебор «по месту»
+# не оставляет следа, и потом невозможно сказать, что именно проверялось.
+REPLAY_GRID: dict[str, list[dict[str, dict]]] = {
+    "П1-разнообразие": [
+        {"retrieval": {"diversity_mode": "reserve", "diversity_reserve_slots": 1}},
+        {"retrieval": {"diversity_mode": "reserve", "diversity_reserve_slots": 2}},
+        {"retrieval": {"diversity_mode": "reserve", "diversity_reserve_slots": 3}},
+        {"retrieval": {"diversity_mode": "mmr", "diversity_lambda": 0.5}},
+        {"retrieval": {"diversity_mode": "mmr", "diversity_lambda": 0.7}},
+        {"retrieval": {"diversity_mode": "mmr", "diversity_lambda": 0.9}},
+    ],
+    "П2-реранкер": [
+        {"reranker": {"mode": "by_route"}},
+        {"reranker": {"mode": "blend", "blend_alpha": 0.3}},
+        {"reranker": {"mode": "blend", "blend_alpha": 0.5}},
+        {"reranker": {"mode": "blend", "blend_alpha": 0.7}},
+        {"reranker": {"mode": "off"}},
+    ],
+    "П3-окно": [
+        {"reranker": {"candidates": 45}},
+        {"reranker": {"candidates": 60}},
+        {"reranker": {"candidates": 100}},
+    ],
+    "П4-слияние": [
+        {"retrieval": {"rrf_k": 20}},
+        {"retrieval": {"rrf_k": 100}},
+        {"graph": {"weight": 0.2}},
+        {"graph": {"weight": 0.6}},
+        {"retrieval": {"dedup_similarity": 0.85}},
+    ],
+}
+
+
+def _apply_overrides(settings: Settings, overrides: dict[str, dict]) -> Settings:
+    updated = settings.model_copy(deep=True)
+    for section, values in overrides.items():
+        current = getattr(updated, section)
+        setattr(updated, section, current.model_copy(update=values))
+    return updated
+
+
+def _describe(overrides: dict[str, dict]) -> str:
+    parts = [
+        f"{key}={value}"
+        for section in overrides.values()
+        for key, value in section.items()
+    ]
+    return ", ".join(parts) or "как есть"
+
+
+@eval_app.command("replay")
+def eval_replay(
+    trace: Annotated[Path, typer.Argument(help="Слепок, снятый на сервере")],
+    goldset: Annotated[Path | None, typer.Option(help="Путь к эталонному набору")] = None,
+    chunks: Annotated[
+        Path | None, typer.Option(help="Файл фрагментов; по умолчанию ищется в artifacts/parsed")
+    ] = None,
+    group: Annotated[str, typer.Option(help="Какую группу гипотез перебрать")] = "",
+) -> None:
+    """Пересчитывает отбор по слепку и перебирает настройки офлайн.
+
+    Первое, что делается, — сверка честности: воспроизведение с рабочими
+    настройками обязано повторить серверную выдачу. Если не повторяет, слепок
+    неполон, и все выводы по нему недействительны — перебор не запускается.
+
+    Проверяются только настройки, меняющие порядок и отбор. Попытка тронуть
+    состав кандидатов прерывается с объяснением: такие гипотезы проверяются
+    прогоном на сервере.
+    """
+    settings = _settings()
+    traces = TraceSet.load(trace)
+    if not traces.traces:
+        console.print("[red]Слепок пуст.[/red]")
+        raise typer.Exit(code=1)
+
+    chunks_path = chunks or next(Path("artifacts/parsed").glob("*_chunks.json"), None)
+    if chunks_path is None:
+        console.print("[red]Не найден файл фрагментов.[/red]")
+        raise typer.Exit(code=1)
+    corpus = {
+        item.id: item
+        for item in (
+            Chunk.model_validate(raw)
+            for raw in json.loads(Path(chunks_path).read_text(encoding="utf-8"))
+        )
+    }
+
+    questions = load_goldset(goldset or settings.evaluation.goldset_path)
+    gold = {item.id: item.gold_chunk_ids for item in questions}
+    types = {item.id: item.question_type for item in questions}
+    for item in traces.traces:
+        item.question_type = item.question_type or types.get(item.question_id, "")
+
+    # Поля состава кандидатов берутся из слепка: он и есть истина о том,
+    # как эти кандидаты получены. Локальный .env знать этого не может —
+    # на сервере значения могут отличаться от значений по умолчанию.
+    # Выравнивание идёт по обоим снимкам: состав кандидатов задаёт, ЧТО
+    # в слепке, а порядок — от какой точки отсчёта считать улучшения.
+    # Без второго точкой отсчёта стала бы локальная конфигурация, а не та,
+    # что дала измеренные на сервере числа.
+    settings, aligned = align_to_snapshot(
+        settings, {**traces.settings_snapshot, **traces.ordering_snapshot}
+    )
+    if aligned:
+        console.print("[dim]Настройки приведены к слепку:[/dim]")
+        for line in aligned:
+            console.print(f"[dim]  {line}[/dim]")
+
+    baseline = replay(traces, settings, corpus, gold)
+    report = fidelity_report(traces, baseline)
+    console.print(
+        f"Сверка честности: точных совпадений "
+        f"[bold]{report['доля точных совпадений']:.3f}[/bold], "
+        f"среднее пересечение {report['среднее пересечение']:.3f} "
+        f"на {int(report['вопросов сверено'])} вопросах"
+    )
+    if report["вопросов сверено"] and report["среднее пересечение"] < 0.99:
+        console.print(
+            "[red]Воспроизведение расходится с серверной выдачей. Слепок неполон: "
+            "выводы по нему были бы недействительны. Перебор не запускается.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    base_metrics = evaluate_retrieval(baseline, settings.evaluation.k_values)
+    top_k = settings.retrieval.top_k
+    console.print(f"Точка отсчёта: recall@{top_k} = {base_metrics.per_k[top_k]['recall']:.3f}")
+
+    groups = {group: REPLAY_GRID[group]} if group else REPLAY_GRID
+    for name, variants in groups.items():
+        table = Table(title=name)
+        table.add_column("Настройка")
+        table.add_column(f"recall@{top_k}", justify="right")
+        table.add_column("Δ", justify="right")
+        table.add_column("связывающие", justify="right")
+        # Счёт «лучше/хуже» важен сам по себе: прирост из +12 и −9 вопросов
+        # требует другого решения, чем прирост из +3 и −0.
+        table.add_column("лучше/хуже", justify="right")
+        table.add_column("значимо", justify="right")
+        for overrides in variants:
+            try:
+                candidate = _apply_overrides(settings, overrides)
+                outcomes = replay(traces, candidate, corpus, gold)
+            except (NotReplayable, ValueError) as error:
+                table.add_row(_describe(overrides), "—", "—", "—", "—", str(error)[:40])
+                continue
+            metrics = evaluate_retrieval(outcomes, settings.evaluation.k_values)
+            delta = metrics.per_k[top_k]["recall"] - base_metrics.per_k[top_k]["recall"]
+            comparison = compare_paired(baseline, outcomes, k=top_k)
+            recall_block = comparison["metrics"]["recall"]
+            linked = metrics.by_type.get("graph_linked", {}).get("recall", 0.0)
+            table.add_row(
+                _describe(overrides),
+                f"{metrics.per_k[top_k]['recall']:.3f}",
+                f"{delta:+.3f}",
+                f"{linked:.3f}",
+                f"{recall_block['improved']}/{recall_block['worsened']}",
+                "да" if recall_block["significant"] else "нет",
+            )
+        console.print(table)
+
+    console.print(
+        "[dim]Офлайн годится, чтобы отбрасывать. Выжившее подтверждается "
+        "прогоном на сервере — порядок обратный уже стоил одной ошибки.[/dim]"
+    )
 
 
 @eval_app.command("ab")

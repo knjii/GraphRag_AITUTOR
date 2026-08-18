@@ -18,6 +18,13 @@ from typing import Any
 
 from rag_textbook.config import Settings
 from rag_textbook.context import AppContext, build_context
+from rag_textbook.evaluation.trace import (
+    QueryTrace,
+    TraceSet,
+    TracedCandidate,
+    snapshot_ordering,
+    snapshot_settings,
+)
 from rag_textbook.evaluation.metrics import (
     QueryOutcome,
     RetrievalMetrics,
@@ -36,7 +43,14 @@ def run_retrieval_evaluation(
     questions: Sequence[GoldQuestion],
     *,
     max_workers: int = 4,
+    trace: TraceSet | None = None,
 ) -> tuple[RetrievalMetrics, list[QueryOutcome]]:
+    """Прогоняет набор через поиск и считает метрики.
+
+    ``trace`` — куда складывать слепок. Слепок снимается за одну серверную
+    сессию и позволяет пересчитывать порядок и отбор офлайн бесплатно:
+    аренда уходит на вычисления, а не на перебор настроек.
+    """
     settings = context.settings
     k_values = settings.evaluation.k_values
     max_k = max(k_values)
@@ -44,6 +58,27 @@ def run_retrieval_evaluation(
     def evaluate_one(question: GoldQuestion) -> QueryOutcome:
         result = context.retrieval.retrieve(question.question, history=[])
         retrieved = [item.chunk.id for item in result.chunks][:max_k]
+        if trace is not None:
+            trace.traces.append(
+                QueryTrace(
+                    question_id=question.id,
+                    question=question.question,
+                    rewritten_question=result.rewritten_question,
+                    question_type=question.question_type,
+                    used_graph=bool(result.route and result.route.use_graph),
+                    route_reason=(result.route.reason if result.route else ""),
+                    sub_questions=list(result.sub_questions),
+                    channels={
+                        name: [
+                            TracedCandidate(chunk_id=chunk_id, rank=rank, score=score)
+                            for chunk_id, rank, score in items
+                        ]
+                        for name, items in result.channel_candidates.items()
+                    },
+                    rerank_scores=dict(result.rerank_scores),
+                    final=[item.chunk.id for item in result.chunks],
+                )
+            )
         return QueryOutcome(
             question_id=question.id,
             question_type=question.question_type,
@@ -63,6 +98,15 @@ def run_retrieval_evaluation(
             outcomes = list(pool.map(evaluate_one, questions))
 
     metrics = evaluate_retrieval(outcomes, k_values)
+    if trace is not None:
+        trace.settings_snapshot = snapshot_settings(settings)
+        trace.ordering_snapshot = snapshot_ordering(settings)
+        # Окно — это ширина ОЦЕНИВАНИЯ, а не отбора: баллы снимаются шире,
+        # чтобы гипотезу о ширине окна можно было проверить офлайн.
+        trace.rerank_window = max(
+            settings.reranker.candidates, settings.evaluation.trace_pool
+        )
+        logger.info("Снят слепок: %s вопросов", len(trace.traces))
     logger.info("Результат: %s", metrics.summary_line(settings.retrieval.top_k))
     return metrics, outcomes
 

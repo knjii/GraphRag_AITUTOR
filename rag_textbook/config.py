@@ -257,6 +257,17 @@ class RerankerSettings(_Base):
     )
     base_url: str = Field(default="http://127.0.0.1:7997", alias="RERANKER_BASE_URL")
     model: str = Field(default="BAAI/bge-reranker-v2-m3", alias="RERANKER_MODEL")
+    # Реранкер помогает не всем одинаково: измерено +5 формульных вопросов
+    # и −13 многошаговых. Кросс-энкодер судит пару «вопрос — фрагмент» целиком,
+    # и фрагмент, отвечающий на половину связывающего вопроса, получает
+    # средний балл. Режимы позволяют проверить, можно ли сохранить выигрыш,
+    # убрав проигрыш, — но по умолчанию поведение прежнее.
+    mode: Literal["always", "by_route", "blend", "off"] = Field(
+        default="always", alias="RERANKER_MODE"
+    )
+    # Вес балла реранкера против ранга слияния в режиме blend. Единица —
+    # нынешнее поведение, ноль — порядок слияния без реранкера.
+    blend_alpha: float = Field(default=1.0, ge=0.0, le=1.0, alias="RERANKER_BLEND_ALPHA")
     top_n: int = Field(default=8, ge=1, alias="RERANKER_TOP_N")
     candidates: int = Field(default=30, ge=1, alias="RERANKER_CANDIDATES")
     timeout_seconds: float = Field(default=60.0, gt=0, alias="RERANKER_TIMEOUT_SECONDS")
@@ -377,6 +388,13 @@ class GraphSettings(_Base):
     # Цена мала: повтор приходится на несколько процентов фрагментов. Цена
     # отказа заметна — пассаж попадает в граф с сущностями от правил.
     extraction_retries: int = Field(default=2, ge=0, le=5, alias="GRAPH_EXTRACTION_RETRIES")
+    # Предел на ответ извлечения. Прежнее зашитое значение 768 совпадало
+    # с размером «красивого» JSON на 12 сущностей и 12 связей — ответ
+    # обрывался на середине, и все 28 отказов оказались обрезанным JSON
+    # с корректным началом. Повторы тут бессильны: обрежется и повтор.
+    extraction_max_tokens: int = Field(
+        default=2048, ge=256, le=8192, alias="GRAPH_EXTRACTION_MAX_TOKENS"
+    )
     max_entities_per_chunk: int = Field(default=12, ge=1, alias="GRAPH_MAX_ENTITIES_PER_CHUNK")
     max_relations_per_chunk: int = Field(default=12, ge=1, alias="GRAPH_MAX_RELATIONS_PER_CHUNK")
     lemmatize_entities: bool = Field(default=True, alias="GRAPH_LEMMATIZE_ENTITIES")
@@ -500,6 +518,23 @@ class RetrievalSettings(_Base):
     sparse_candidates: int = Field(default=40, ge=1, alias="RETRIEVAL_SPARSE_CANDIDATES")
     fusion: Literal["rrf", "dbsf"] = Field(default="rrf", alias="RETRIEVAL_FUSION")
     rrf_k: int = Field(default=60, ge=1, alias="RETRIEVAL_RRF_K")
+    # Разнообразие выдачи. Основание: все 34 промаха многошаговых вопросов —
+    # «нашёл один фрагмент из двух». Отбор по одной релевантности не отличает
+    # «ещё один фрагмент про то же» от «фрагмент про вторую половину вопроса».
+    # Выключено по умолчанию: порядок «сначала замер на сервере, потом значение
+    # по умолчанию» установлен после истории с порогом хабов 40.
+    diversity_mode: Literal["off", "mmr", "reserve"] = Field(
+        default="off", alias="RETRIEVAL_DIVERSITY_MODE"
+    )
+    # Баланс релевантности и новизны: единица — обычный порядок, ноль — только
+    # новизна.
+    diversity_lambda: float = Field(
+        default=0.7, ge=0.0, le=1.0, alias="RETRIEVAL_DIVERSITY_LAMBDA"
+    )
+    # Сколько последних мест выдачи отдать непохожим фрагментам в режиме reserve.
+    diversity_reserve_slots: int = Field(
+        default=2, ge=0, le=16, alias="RETRIEVAL_DIVERSITY_RESERVE_SLOTS"
+    )
     dedup_enabled: bool = Field(default=True, alias="RETRIEVAL_DEDUP_ENABLED")
     dedup_similarity: float = Field(
         default=0.92, ge=0.0, le=1.0, alias="RETRIEVAL_DEDUP_SIMILARITY"
@@ -600,6 +635,16 @@ class EvalSettings(_Base):
     goldset_path: Path = Field(
         default=Path("evaluation/goldsets/goldset.json"), alias="EVAL_GOLDSET_PATH"
     )
+    # При снятии слепка реранкер оценивает всё окно кандидатов, а не только
+    # выдачу. Дороже по времени, но снимается один раз за серверную сессию,
+    # зато потом окно можно перебирать офлайн бесплатно.
+    trace_rerank_all: bool = Field(default=False, alias="EVAL_TRACE_RERANK_ALL")
+    # Ширина пула, по которому снимаются баллы реранкера. Расширять сам пул
+    # отбора нельзя: слепок описывал бы не ту конфигурацию, что дала точку
+    # отсчёта, и сверка честности не сошлась бы — уже проверено на практике.
+    # Баллы кросс-энкодера считаются попарно и от состава пакета не зависят,
+    # поэтому оценить можно шире, чем отобрать.
+    trace_pool: int = Field(default=0, ge=0, le=500, alias="EVAL_TRACE_POOL")
     max_concurrency: int = Field(default=4, ge=1, alias="EVAL_MAX_CONCURRENCY")
     questions_per_chunk: int = Field(default=1, ge=1, le=5, alias="EVAL_QUESTIONS_PER_CHUNK")
 

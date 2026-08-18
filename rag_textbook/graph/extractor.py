@@ -25,6 +25,7 @@ from rag_textbook.clients.llm import ChatMessage, LLMClient
 from rag_textbook.config import GraphSettings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, Entity, ExtractionResult, Relation, content_hash
+from rag_textbook.graph.failure_journal import FailureJournal, NullJournal, build_entry
 from rag_textbook.utils.cache import ArtifactCache
 from rag_textbook.utils.text import canonicalize_entity, content_terms, truncate
 
@@ -165,10 +166,14 @@ class EntityExtractor:
         settings: GraphSettings,
         llm: LLMClient | None = None,
         cache: ArtifactCache | None = None,
+        journal: FailureJournal | None = None,
     ) -> None:
         self.settings = settings
         self.llm = llm
         self.cache = cache
+        # Журнал отказов пишется в стороне от кэша: кэш хранит удачные
+        # результаты, журнал — причины неудач, и смешивать их нельзя.
+        self.journal: FailureJournal = journal or NullJournal()
 
     # ------------------------------------------------------------------- ключи
 
@@ -407,7 +412,7 @@ class EntityExtractor:
                 purpose="extraction",
                 json_schema=EXTRACTION_SCHEMA,
                 temperature=0.0,
-                max_tokens=768,
+                max_tokens=self.settings.extraction_max_tokens,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Экстракция не удалась для %s: %s", chunk.id, exc)
@@ -470,6 +475,17 @@ class EntityExtractor:
                     chunk.id,
                     result.status,
                     attempts + 1,
+                )
+                self.journal.record(
+                    build_entry(
+                        chunk_id=chunk.id,
+                        status=result.status,
+                        attempts=attempts + 1,
+                        raw_preview=str(getattr(result, "raw_preview", "")),
+                        text=chunk.text,
+                        pages=getattr(chunk, "pages", None),
+                        headers=getattr(chunk, "headers", None),
+                    )
                 )
                 result = self.extract_rule_based(chunk)
                 result.status = "rule_fallback"

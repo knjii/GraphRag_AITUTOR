@@ -1,0 +1,4146 @@
+{
+  "label": "без веса редкости",
+  "created_at": "20260817_132929",
+  "config": {
+    "top_k": 8,
+    "fusion": "rrf",
+    "router_mode": "heuristic",
+    "reranker_enabled": true,
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "graph_enabled": true,
+    "graph_weight": 0.4,
+    "graph_hops": 1,
+    "graph_rel_types": [
+      "RELATES"
+    ],
+    "embedding_model": "BAAI/bge-m3",
+    "min_graph_docs": 0
+  },
+  "metrics": {
+    "questions": 163,
+    "mrr": 0.7896,
+    "per_k": {
+      "1": {
+        "recall": 0.5399,
+        "precision": 0.681,
+        "ndcg": 0.681,
+        "hit_rate": 0.681
+      },
+      "3": {
+        "recall": 0.7423,
+        "precision": 0.319,
+        "ndcg": 0.7037,
+        "hit_rate": 0.8834
+      },
+      "5": {
+        "recall": 0.7914,
+        "precision": 0.2086,
+        "ndcg": 0.7269,
+        "hit_rate": 0.9325
+      },
+      "8": {
+        "recall": 0.819,
+        "precision": 0.1373,
+        "ndcg": 0.7384,
+        "hit_rate": 0.9448
+      },
+      "12": {
+        "recall": 0.8405,
+        "precision": 0.1204,
+        "ndcg": 0.7461,
+        "hit_rate": 0.9571
+      },
+      "16": {
+        "recall": 0.8589,
+        "precision": 0.1116,
+        "ndcg": 0.7519,
+        "hit_rate": 0.9632
+      }
+    },
+    "by_type": {
+      "formula_table": {
+        "questions": 48.0,
+        "recall": 0.9583,
+        "ndcg": 0.8659,
+        "mrr": 0.834
+      },
+      "graph_linked": {
+        "questions": 69.0,
+        "recall": 0.7536,
+        "ndcg": 0.6366,
+        "mrr": 0.7725
+      },
+      "single_chunk": {
+        "questions": 46.0,
+        "recall": 0.913,
+        "ndcg": 0.8058,
+        "mrr": 0.7688
+      }
+    },
+    "graph_usage": {
+      "routed_to_graph": 0.4294,
+      "avg_graph_share_in_context": 0.1898,
+      "avg_graph_only_share": 0.0238
+    },
+    "latency_ms": {
+      "mean": 699.3,
+      "p50": 654.5,
+      "p95": 727.5,
+      "max": 2784.0
+    }
+  },
+  "outcomes": [
+    {
+      "question_id": "1c410c5463c96476",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00781",
+        "0690bb81b7e3c831:00785",
+        "0690bb81b7e3c831:00795",
+        "0690bb81b7e3c831:00784",
+        "0690bb81b7e3c831:00775",
+        "0690bb81b7e3c831:00783",
+        "0690bb81b7e3c831:00750",
+        "0690bb81b7e3c831:00809"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00781"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 2457.1
+    },
+    {
+      "question_id": "1adfeb0060d2fb8d",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:01088",
+        "0690bb81b7e3c831:01094",
+        "0690bb81b7e3c831:01083",
+        "0690bb81b7e3c831:01084",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01085",
+        "0690bb81b7e3c831:01086",
+        "0690bb81b7e3c831:01122",
+        "0690bb81b7e3c831:01080",
+        "0690bb81b7e3c831:01093",
+        "0690bb81b7e3c831:00217",
+        "0690bb81b7e3c831:01096",
+        "0690bb81b7e3c831:01123",
+        "0690bb81b7e3c831:01087",
+        "0690bb81b7e3c831:01102",
+        "0690bb81b7e3c831:00180"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01088"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.062,
+      "latency_ms": 2620.3
+    },
+    {
+      "question_id": "c8e2e79865aedbdf",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00093",
+        "0690bb81b7e3c831:00087",
+        "0690bb81b7e3c831:00856",
+        "0690bb81b7e3c831:00589",
+        "0690bb81b7e3c831:00855",
+        "0690bb81b7e3c831:00892",
+        "0690bb81b7e3c831:00694",
+        "0690bb81b7e3c831:00379"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00652"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 2318.3
+    },
+    {
+      "question_id": "4118731d44d58b53",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:01024",
+        "0690bb81b7e3c831:01022",
+        "0690bb81b7e3c831:01023",
+        "0690bb81b7e3c831:01063",
+        "0690bb81b7e3c831:01066",
+        "0690bb81b7e3c831:01028",
+        "0690bb81b7e3c831:01044",
+        "0690bb81b7e3c831:01065"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01022"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 2784.0
+    },
+    {
+      "question_id": "bd33b36bd5d4fda8",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00294",
+        "0690bb81b7e3c831:00287",
+        "0690bb81b7e3c831:00285",
+        "0690bb81b7e3c831:00296",
+        "0690bb81b7e3c831:00293",
+        "0690bb81b7e3c831:00072",
+        "0690bb81b7e3c831:00292",
+        "0690bb81b7e3c831:00314",
+        "0690bb81b7e3c831:00286",
+        "0690bb81b7e3c831:00288",
+        "0690bb81b7e3c831:00324",
+        "0690bb81b7e3c831:00398",
+        "0690bb81b7e3c831:00624",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:00295",
+        "0690bb81b7e3c831:00306"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00294"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.0,
+      "latency_ms": 631.5
+    },
+    {
+      "question_id": "b7cb04c089f8dd75",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00242",
+        "0690bb81b7e3c831:00238",
+        "0690bb81b7e3c831:00248",
+        "0690bb81b7e3c831:00241",
+        "0690bb81b7e3c831:00255",
+        "0690bb81b7e3c831:00243",
+        "0690bb81b7e3c831:00244",
+        "0690bb81b7e3c831:00247"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00242"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 675.6
+    },
+    {
+      "question_id": "75a413551072357e",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00888",
+        "0690bb81b7e3c831:00872",
+        "0690bb81b7e3c831:00890",
+        "0690bb81b7e3c831:00825",
+        "0690bb81b7e3c831:00874",
+        "0690bb81b7e3c831:00517",
+        "0690bb81b7e3c831:00826",
+        "0690bb81b7e3c831:00518",
+        "0690bb81b7e3c831:00611",
+        "0690bb81b7e3c831:00820",
+        "0690bb81b7e3c831:00818",
+        "0690bb81b7e3c831:00465",
+        "0690bb81b7e3c831:00573",
+        "0690bb81b7e3c831:00873",
+        "0690bb81b7e3c831:00719",
+        "0690bb81b7e3c831:00821"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00872"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.0,
+      "latency_ms": 667.0
+    },
+    {
+      "question_id": "105bf4a1906610e7",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00415",
+        "0690bb81b7e3c831:00414",
+        "0690bb81b7e3c831:00428",
+        "0690bb81b7e3c831:00622",
+        "0690bb81b7e3c831:00468",
+        "0690bb81b7e3c831:00406",
+        "0690bb81b7e3c831:00619",
+        "0690bb81b7e3c831:00420"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00428"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 684.6
+    },
+    {
+      "question_id": "0d7858c79521e00e",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00541",
+        "0690bb81b7e3c831:00540",
+        "0690bb81b7e3c831:00558",
+        "0690bb81b7e3c831:00544",
+        "0690bb81b7e3c831:00554",
+        "0690bb81b7e3c831:00900",
+        "0690bb81b7e3c831:00543",
+        "0690bb81b7e3c831:00559",
+        "0690bb81b7e3c831:00579",
+        "0690bb81b7e3c831:00555",
+        "0690bb81b7e3c831:00578",
+        "0690bb81b7e3c831:00899",
+        "0690bb81b7e3c831:00546",
+        "0690bb81b7e3c831:00622",
+        "0690bb81b7e3c831:00562",
+        "0690bb81b7e3c831:00510"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00541"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.0,
+      "latency_ms": 682.5
+    },
+    {
+      "question_id": "688662a51bd58e10",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00792",
+        "0690bb81b7e3c831:00526",
+        "0690bb81b7e3c831:00793",
+        "0690bb81b7e3c831:01058",
+        "0690bb81b7e3c831:00791",
+        "0690bb81b7e3c831:00992",
+        "0690bb81b7e3c831:00524",
+        "0690bb81b7e3c831:00788"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00792"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 651.7
+    },
+    {
+      "question_id": "1fc11d2941761e92",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00281",
+        "0690bb81b7e3c831:00676",
+        "0690bb81b7e3c831:01038",
+        "0690bb81b7e3c831:00833",
+        "0690bb81b7e3c831:00212",
+        "0690bb81b7e3c831:00329",
+        "0690bb81b7e3c831:00204",
+        "0690bb81b7e3c831:00217"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00281"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 675.7
+    },
+    {
+      "question_id": "4fb51a69e0f6bf92",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00383",
+        "0690bb81b7e3c831:00382",
+        "0690bb81b7e3c831:00386",
+        "0690bb81b7e3c831:00385",
+        "0690bb81b7e3c831:00384",
+        "0690bb81b7e3c831:00967",
+        "0690bb81b7e3c831:00304",
+        "0690bb81b7e3c831:00320"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00382"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 657.3
+    },
+    {
+      "question_id": "6e53d3b482de5214",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00365",
+        "0690bb81b7e3c831:00363",
+        "0690bb81b7e3c831:00358",
+        "0690bb81b7e3c831:00357",
+        "0690bb81b7e3c831:00364",
+        "0690bb81b7e3c831:00362",
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:00376",
+        "0690bb81b7e3c831:00360",
+        "0690bb81b7e3c831:00355",
+        "0690bb81b7e3c831:00965",
+        "0690bb81b7e3c831:00359",
+        "0690bb81b7e3c831:00370",
+        "0690bb81b7e3c831:00367",
+        "0690bb81b7e3c831:00361",
+        "0690bb81b7e3c831:00369"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00365"
+      ],
+      "used_graph": true,
+      "graph_share": 0.688,
+      "graph_only_share": 0.0,
+      "latency_ms": 675.2
+    },
+    {
+      "question_id": "5d527b9c1bce70ad",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00093",
+        "0690bb81b7e3c831:00095",
+        "0690bb81b7e3c831:00094",
+        "0690bb81b7e3c831:00304",
+        "0690bb81b7e3c831:00172",
+        "0690bb81b7e3c831:00096",
+        "0690bb81b7e3c831:00078",
+        "0690bb81b7e3c831:00099"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00093"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 705.7
+    },
+    {
+      "question_id": "f107401dfed550d2",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00231",
+        "0690bb81b7e3c831:00230",
+        "0690bb81b7e3c831:00218",
+        "0690bb81b7e3c831:00210",
+        "0690bb81b7e3c831:00212",
+        "0690bb81b7e3c831:00216",
+        "0690bb81b7e3c831:00279",
+        "0690bb81b7e3c831:00208"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00230"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 704.5
+    },
+    {
+      "question_id": "ca16e14610259bc3",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:01063",
+        "0690bb81b7e3c831:01064",
+        "0690bb81b7e3c831:01062",
+        "0690bb81b7e3c831:00988",
+        "0690bb81b7e3c831:00956",
+        "0690bb81b7e3c831:00713",
+        "0690bb81b7e3c831:00987",
+        "0690bb81b7e3c831:01057"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01063"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 720.3
+    },
+    {
+      "question_id": "e7ae7adb036da6ca",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00083",
+        "0690bb81b7e3c831:00084",
+        "0690bb81b7e3c831:00078",
+        "0690bb81b7e3c831:00100",
+        "0690bb81b7e3c831:00062",
+        "0690bb81b7e3c831:00060",
+        "0690bb81b7e3c831:00088",
+        "0690bb81b7e3c831:00079"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00083"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 703.1
+    },
+    {
+      "question_id": "4749efb7ebe400fa",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00383",
+        "0690bb81b7e3c831:00401",
+        "0690bb81b7e3c831:00363",
+        "0690bb81b7e3c831:00388",
+        "0690bb81b7e3c831:00376",
+        "0690bb81b7e3c831:00357",
+        "0690bb81b7e3c831:00364",
+        "0690bb81b7e3c831:00400"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00401"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 703.4
+    },
+    {
+      "question_id": "287a5d0f14bc24f9",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:01016",
+        "0690bb81b7e3c831:01015",
+        "0690bb81b7e3c831:01014",
+        "0690bb81b7e3c831:01012",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01056",
+        "0690bb81b7e3c831:01045",
+        "0690bb81b7e3c831:01040"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01016"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 687.0
+    },
+    {
+      "question_id": "5bea14166ae441c2",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00842",
+        "0690bb81b7e3c831:00971",
+        "0690bb81b7e3c831:00543",
+        "0690bb81b7e3c831:00972",
+        "0690bb81b7e3c831:00834",
+        "0690bb81b7e3c831:00932",
+        "0690bb81b7e3c831:00843",
+        "0690bb81b7e3c831:00713",
+        "0690bb81b7e3c831:00917",
+        "0690bb81b7e3c831:01128",
+        "0690bb81b7e3c831:01063",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01121",
+        "0690bb81b7e3c831:00850",
+        "0690bb81b7e3c831:01078",
+        "0690bb81b7e3c831:00048"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00834"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.125,
+      "latency_ms": 662.1
+    },
+    {
+      "question_id": "9ee515233c4bf86e",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00870",
+        "0690bb81b7e3c831:00887",
+        "0690bb81b7e3c831:00869",
+        "0690bb81b7e3c831:00871",
+        "0690bb81b7e3c831:00872",
+        "0690bb81b7e3c831:00827",
+        "0690bb81b7e3c831:00834",
+        "0690bb81b7e3c831:00876"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00870"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 661.4
+    },
+    {
+      "question_id": "534adbafc546dde2",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00332",
+        "0690bb81b7e3c831:00329",
+        "0690bb81b7e3c831:00330",
+        "0690bb81b7e3c831:00283",
+        "0690bb81b7e3c831:00209",
+        "0690bb81b7e3c831:00393",
+        "0690bb81b7e3c831:00394",
+        "0690bb81b7e3c831:00395"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00332"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 620.3
+    },
+    {
+      "question_id": "5a265bf3ab93edbc",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00241",
+        "0690bb81b7e3c831:00239",
+        "0690bb81b7e3c831:00257",
+        "0690bb81b7e3c831:00240",
+        "0690bb81b7e3c831:00253",
+        "0690bb81b7e3c831:00955",
+        "0690bb81b7e3c831:00243",
+        "0690bb81b7e3c831:00263"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00239"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 641.9
+    },
+    {
+      "question_id": "6e0e13906b9777a9",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00347",
+        "0690bb81b7e3c831:00367",
+        "0690bb81b7e3c831:00344",
+        "0690bb81b7e3c831:00343",
+        "0690bb81b7e3c831:00348",
+        "0690bb81b7e3c831:00366",
+        "0690bb81b7e3c831:00354",
+        "0690bb81b7e3c831:00350"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00347"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 641.2
+    },
+    {
+      "question_id": "ed1c61fd9ceed3ca",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00970",
+        "0690bb81b7e3c831:00969",
+        "0690bb81b7e3c831:00475",
+        "0690bb81b7e3c831:00101",
+        "0690bb81b7e3c831:01137",
+        "0690bb81b7e3c831:00418",
+        "0690bb81b7e3c831:00117",
+        "0690bb81b7e3c831:00432"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00970"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 638.4
+    },
+    {
+      "question_id": "91f616ead5fd7d58",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00735",
+        "0690bb81b7e3c831:00085",
+        "0690bb81b7e3c831:00490",
+        "0690bb81b7e3c831:00410",
+        "0690bb81b7e3c831:00843",
+        "0690bb81b7e3c831:00889",
+        "0690bb81b7e3c831:00818",
+        "0690bb81b7e3c831:00644"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00735"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 659.2
+    },
+    {
+      "question_id": "c50e5ec1281959ca",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00612",
+        "0690bb81b7e3c831:00622",
+        "0690bb81b7e3c831:00611",
+        "0690bb81b7e3c831:00614",
+        "0690bb81b7e3c831:00610",
+        "0690bb81b7e3c831:00618",
+        "0690bb81b7e3c831:00609",
+        "0690bb81b7e3c831:00562",
+        "0690bb81b7e3c831:00578",
+        "0690bb81b7e3c831:00623",
+        "0690bb81b7e3c831:00516",
+        "0690bb81b7e3c831:00518",
+        "0690bb81b7e3c831:00519",
+        "0690bb81b7e3c831:00579",
+        "0690bb81b7e3c831:00574",
+        "0690bb81b7e3c831:00624"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00622"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.062,
+      "latency_ms": 643.2
+    },
+    {
+      "question_id": "a718c6fed08b8c84",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00666",
+        "0690bb81b7e3c831:00665",
+        "0690bb81b7e3c831:00687",
+        "0690bb81b7e3c831:00658",
+        "0690bb81b7e3c831:00671",
+        "0690bb81b7e3c831:00677",
+        "0690bb81b7e3c831:00685",
+        "0690bb81b7e3c831:00672",
+        "0690bb81b7e3c831:00688",
+        "0690bb81b7e3c831:00670",
+        "0690bb81b7e3c831:00694",
+        "0690bb81b7e3c831:00641",
+        "0690bb81b7e3c831:00673",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00674",
+        "0690bb81b7e3c831:00689"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00666"
+      ],
+      "used_graph": true,
+      "graph_share": 0.188,
+      "graph_only_share": 0.0,
+      "latency_ms": 650.6
+    },
+    {
+      "question_id": "1a637c0a04e59520",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00159",
+        "0690bb81b7e3c831:00162",
+        "0690bb81b7e3c831:00161",
+        "0690bb81b7e3c831:00150",
+        "0690bb81b7e3c831:00149",
+        "0690bb81b7e3c831:00164",
+        "0690bb81b7e3c831:00160",
+        "0690bb81b7e3c831:00154",
+        "0690bb81b7e3c831:00141",
+        "0690bb81b7e3c831:00139",
+        "0690bb81b7e3c831:00148",
+        "0690bb81b7e3c831:00156",
+        "0690bb81b7e3c831:00153",
+        "0690bb81b7e3c831:00155",
+        "0690bb81b7e3c831:00349",
+        "0690bb81b7e3c831:00200"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00159"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.0,
+      "latency_ms": 679.5
+    },
+    {
+      "question_id": "4dbd61e50c70e691",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00676",
+        "0690bb81b7e3c831:00658",
+        "0690bb81b7e3c831:00677",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00670",
+        "0690bb81b7e3c831:00694",
+        "0690bb81b7e3c831:01125",
+        "0690bb81b7e3c831:01138",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:00671",
+        "0690bb81b7e3c831:00681",
+        "0690bb81b7e3c831:00638",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00657",
+        "0690bb81b7e3c831:00669"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00668"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.0,
+      "latency_ms": 687.3
+    },
+    {
+      "question_id": "7cc0b4bd22ea29f6",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00932",
+        "0690bb81b7e3c831:00933",
+        "0690bb81b7e3c831:00966",
+        "0690bb81b7e3c831:00988",
+        "0690bb81b7e3c831:00917",
+        "0690bb81b7e3c831:00972",
+        "0690bb81b7e3c831:00967",
+        "0690bb81b7e3c831:00971",
+        "0690bb81b7e3c831:00974",
+        "0690bb81b7e3c831:00223",
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:00958",
+        "0690bb81b7e3c831:00996",
+        "0690bb81b7e3c831:00094",
+        "0690bb81b7e3c831:00450",
+        "0690bb81b7e3c831:00930"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00932"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.062,
+      "latency_ms": 687.4
+    },
+    {
+      "question_id": "daa91319c2bbef4b",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00607",
+        "0690bb81b7e3c831:00593",
+        "0690bb81b7e3c831:00594",
+        "0690bb81b7e3c831:00606",
+        "0690bb81b7e3c831:00603",
+        "0690bb81b7e3c831:00630",
+        "0690bb81b7e3c831:00585",
+        "0690bb81b7e3c831:00595"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00607"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 677.5
+    },
+    {
+      "question_id": "10a7d57fc944ed97",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00690",
+        "0690bb81b7e3c831:00682",
+        "0690bb81b7e3c831:00688",
+        "0690bb81b7e3c831:00473",
+        "0690bb81b7e3c831:00692",
+        "0690bb81b7e3c831:00884",
+        "0690bb81b7e3c831:00691",
+        "0690bb81b7e3c831:00329"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00690"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 670.8
+    },
+    {
+      "question_id": "685b10f924b53fa9",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00479",
+        "0690bb81b7e3c831:00473",
+        "0690bb81b7e3c831:00485",
+        "0690bb81b7e3c831:00613",
+        "0690bb81b7e3c831:00474",
+        "0690bb81b7e3c831:00670",
+        "0690bb81b7e3c831:00614",
+        "0690bb81b7e3c831:00482"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00479"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 680.1
+    },
+    {
+      "question_id": "9977bc4b9cbd4bc3",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00227",
+        "0690bb81b7e3c831:00323",
+        "0690bb81b7e3c831:00258",
+        "0690bb81b7e3c831:00259",
+        "0690bb81b7e3c831:00226",
+        "0690bb81b7e3c831:00942",
+        "0690bb81b7e3c831:00946",
+        "0690bb81b7e3c831:00225"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00227"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 676.1
+    },
+    {
+      "question_id": "96a08e322ecd07a1",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00093",
+        "0690bb81b7e3c831:00092",
+        "0690bb81b7e3c831:00190",
+        "0690bb81b7e3c831:00094",
+        "0690bb81b7e3c831:00091",
+        "0690bb81b7e3c831:00181",
+        "0690bb81b7e3c831:00084",
+        "0690bb81b7e3c831:00137"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00092"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 704.0
+    },
+    {
+      "question_id": "daf163323b38cb00",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00525",
+        "0690bb81b7e3c831:00524",
+        "0690bb81b7e3c831:00526",
+        "0690bb81b7e3c831:00568",
+        "0690bb81b7e3c831:00528",
+        "0690bb81b7e3c831:00510",
+        "0690bb81b7e3c831:00512",
+        "0690bb81b7e3c831:00566"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00524"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 686.6
+    },
+    {
+      "question_id": "2dcb3b110aa7d3c3",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00825",
+        "0690bb81b7e3c831:00820",
+        "0690bb81b7e3c831:00827",
+        "0690bb81b7e3c831:00818",
+        "0690bb81b7e3c831:00839",
+        "0690bb81b7e3c831:00653",
+        "0690bb81b7e3c831:00888",
+        "0690bb81b7e3c831:00828",
+        "0690bb81b7e3c831:00874",
+        "0690bb81b7e3c831:00718",
+        "0690bb81b7e3c831:00872",
+        "0690bb81b7e3c831:00821",
+        "0690bb81b7e3c831:00539",
+        "0690bb81b7e3c831:00819",
+        "0690bb81b7e3c831:00852",
+        "0690bb81b7e3c831:00529"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00825"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.062,
+      "latency_ms": 663.2
+    },
+    {
+      "question_id": "691a5be2e4574c01",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00153",
+        "0690bb81b7e3c831:00152",
+        "0690bb81b7e3c831:00151",
+        "0690bb81b7e3c831:00304",
+        "0690bb81b7e3c831:00349",
+        "0690bb81b7e3c831:00437",
+        "0690bb81b7e3c831:00312",
+        "0690bb81b7e3c831:00200"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00153"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 677.9
+    },
+    {
+      "question_id": "1cb57859143bfff0",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00856",
+        "0690bb81b7e3c831:00877",
+        "0690bb81b7e3c831:00774",
+        "0690bb81b7e3c831:00875",
+        "0690bb81b7e3c831:00876",
+        "0690bb81b7e3c831:00756",
+        "0690bb81b7e3c831:00527",
+        "0690bb81b7e3c831:00571"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00856"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 654.0
+    },
+    {
+      "question_id": "4f17dea55bc140ed",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00639",
+        "0690bb81b7e3c831:00460",
+        "0690bb81b7e3c831:00682",
+        "0690bb81b7e3c831:00458",
+        "0690bb81b7e3c831:00443",
+        "0690bb81b7e3c831:00654",
+        "0690bb81b7e3c831:00077",
+        "0690bb81b7e3c831:00452"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00639"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 666.8
+    },
+    {
+      "question_id": "d202205c2a0c1186",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00372",
+        "0690bb81b7e3c831:00344",
+        "0690bb81b7e3c831:00373",
+        "0690bb81b7e3c831:00343",
+        "0690bb81b7e3c831:00965",
+        "0690bb81b7e3c831:00366",
+        "0690bb81b7e3c831:00348",
+        "0690bb81b7e3c831:00357"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00372"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 690.5
+    },
+    {
+      "question_id": "449a9abbecb00477",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:01055",
+        "0690bb81b7e3c831:01062",
+        "0690bb81b7e3c831:01056",
+        "0690bb81b7e3c831:01057",
+        "0690bb81b7e3c831:01061",
+        "0690bb81b7e3c831:01058",
+        "0690bb81b7e3c831:01063",
+        "0690bb81b7e3c831:01066"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01055"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 668.6
+    },
+    {
+      "question_id": "0b57872fba2f8f5d",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00839",
+        "0690bb81b7e3c831:00828",
+        "0690bb81b7e3c831:00827",
+        "0690bb81b7e3c831:00838",
+        "0690bb81b7e3c831:00717",
+        "0690bb81b7e3c831:00623",
+        "0690bb81b7e3c831:00874",
+        "0690bb81b7e3c831:00463"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00839"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 676.9
+    },
+    {
+      "question_id": "79d76e2c1e88b537",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00933",
+        "0690bb81b7e3c831:00979",
+        "0690bb81b7e3c831:01002",
+        "0690bb81b7e3c831:00978",
+        "0690bb81b7e3c831:00543",
+        "0690bb81b7e3c831:00930",
+        "0690bb81b7e3c831:00900",
+        "0690bb81b7e3c831:01001"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00933"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 649.7
+    },
+    {
+      "question_id": "70876f8415d549ad",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00512",
+        "0690bb81b7e3c831:00511",
+        "0690bb81b7e3c831:00510",
+        "0690bb81b7e3c831:00529",
+        "0690bb81b7e3c831:00609",
+        "0690bb81b7e3c831:00522",
+        "0690bb81b7e3c831:00521",
+        "0690bb81b7e3c831:00564",
+        "0690bb81b7e3c831:00520",
+        "0690bb81b7e3c831:00565",
+        "0690bb81b7e3c831:00537",
+        "0690bb81b7e3c831:00566",
+        "0690bb81b7e3c831:00611",
+        "0690bb81b7e3c831:00519",
+        "0690bb81b7e3c831:00527",
+        "0690bb81b7e3c831:00513"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00628"
+      ],
+      "used_graph": true,
+      "graph_share": 0.438,
+      "graph_only_share": 0.0,
+      "latency_ms": 631.2
+    },
+    {
+      "question_id": "b012a07520760736",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00155",
+        "0690bb81b7e3c831:00164",
+        "0690bb81b7e3c831:00156",
+        "0690bb81b7e3c831:00154",
+        "0690bb81b7e3c831:00167",
+        "0690bb81b7e3c831:00166",
+        "0690bb81b7e3c831:00197",
+        "0690bb81b7e3c831:00162"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00155"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 664.4
+    },
+    {
+      "question_id": "75dbeb3789487fb9",
+      "type": "formula_table",
+      "retrieved": [
+        "0690bb81b7e3c831:00216",
+        "0690bb81b7e3c831:00222",
+        "0690bb81b7e3c831:00215",
+        "0690bb81b7e3c831:00221",
+        "0690bb81b7e3c831:00241",
+        "0690bb81b7e3c831:00210",
+        "0690bb81b7e3c831:00218",
+        "0690bb81b7e3c831:00206"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00216"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 661.4
+    },
+    {
+      "question_id": "3108984d1bda15f1",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00822",
+        "0690bb81b7e3c831:00825",
+        "0690bb81b7e3c831:00824",
+        "0690bb81b7e3c831:00823",
+        "0690bb81b7e3c831:00912",
+        "0690bb81b7e3c831:00910",
+        "0690bb81b7e3c831:01004",
+        "0690bb81b7e3c831:00403",
+        "0690bb81b7e3c831:00762",
+        "0690bb81b7e3c831:00828",
+        "0690bb81b7e3c831:00815",
+        "0690bb81b7e3c831:00402",
+        "0690bb81b7e3c831:00819",
+        "0690bb81b7e3c831:00820",
+        "0690bb81b7e3c831:00826",
+        "0690bb81b7e3c831:00830"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00822"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.0,
+      "latency_ms": 643.1
+    },
+    {
+      "question_id": "eb4c7187d35eed0f",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00990",
+        "0690bb81b7e3c831:00995",
+        "0690bb81b7e3c831:00994",
+        "0690bb81b7e3c831:00988",
+        "0690bb81b7e3c831:00989",
+        "0690bb81b7e3c831:00781",
+        "0690bb81b7e3c831:00986",
+        "0690bb81b7e3c831:00984"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00989"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 620.9
+    },
+    {
+      "question_id": "0728fa2ad935e5b3",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00497",
+        "0690bb81b7e3c831:00500",
+        "0690bb81b7e3c831:00510",
+        "0690bb81b7e3c831:00505",
+        "0690bb81b7e3c831:00493",
+        "0690bb81b7e3c831:00588",
+        "0690bb81b7e3c831:00506",
+        "0690bb81b7e3c831:00492"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00497"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 567.1
+    },
+    {
+      "question_id": "99a991b24695bfe2",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00999",
+        "0690bb81b7e3c831:00998",
+        "0690bb81b7e3c831:00921",
+        "0690bb81b7e3c831:00920",
+        "0690bb81b7e3c831:00996",
+        "0690bb81b7e3c831:00997",
+        "0690bb81b7e3c831:00995",
+        "0690bb81b7e3c831:00979"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00999"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 562.4
+    },
+    {
+      "question_id": "33c2411443bc48ef",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00765",
+        "0690bb81b7e3c831:00766",
+        "0690bb81b7e3c831:00764",
+        "0690bb81b7e3c831:00819",
+        "0690bb81b7e3c831:00709",
+        "0690bb81b7e3c831:00821",
+        "0690bb81b7e3c831:00820",
+        "0690bb81b7e3c831:00892"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00765"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 569.7
+    },
+    {
+      "question_id": "7cae16b14cf9ef50",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00327",
+        "0690bb81b7e3c831:00970",
+        "0690bb81b7e3c831:00328",
+        "0690bb81b7e3c831:00973",
+        "0690bb81b7e3c831:00323",
+        "0690bb81b7e3c831:00934",
+        "0690bb81b7e3c831:00301",
+        "0690bb81b7e3c831:00340"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00327"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 582.3
+    },
+    {
+      "question_id": "6441fd5b4978bf42",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:01050",
+        "0690bb81b7e3c831:01049",
+        "0690bb81b7e3c831:01051",
+        "0690bb81b7e3c831:01067",
+        "0690bb81b7e3c831:00753",
+        "0690bb81b7e3c831:01053",
+        "0690bb81b7e3c831:01066",
+        "0690bb81b7e3c831:01046"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01050"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 601.6
+    },
+    {
+      "question_id": "90e3cdea7c15d271",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00539",
+        "0690bb81b7e3c831:00538",
+        "0690bb81b7e3c831:00533",
+        "0690bb81b7e3c831:00574",
+        "0690bb81b7e3c831:00535",
+        "0690bb81b7e3c831:00573",
+        "0690bb81b7e3c831:00534",
+        "0690bb81b7e3c831:00901"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00538"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 630.1
+    },
+    {
+      "question_id": "597b05707ef76ff9",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:00393",
+        "0690bb81b7e3c831:00337",
+        "0690bb81b7e3c831:00335",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:00399",
+        "0690bb81b7e3c831:00296",
+        "0690bb81b7e3c831:00074"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00393"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 654.6
+    },
+    {
+      "question_id": "9c7384e6d713c01a",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00318",
+        "0690bb81b7e3c831:00319",
+        "0690bb81b7e3c831:00391",
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:00064",
+        "0690bb81b7e3c831:00338",
+        "0690bb81b7e3c831:00063",
+        "0690bb81b7e3c831:00175"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00391"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 664.4
+    },
+    {
+      "question_id": "d0fac3f0a3612657",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00373",
+        "0690bb81b7e3c831:00344",
+        "0690bb81b7e3c831:00372",
+        "0690bb81b7e3c831:00358",
+        "0690bb81b7e3c831:00375",
+        "0690bb81b7e3c831:00354",
+        "0690bb81b7e3c831:00347",
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:00967",
+        "0690bb81b7e3c831:00366",
+        "0690bb81b7e3c831:00359",
+        "0690bb81b7e3c831:00348",
+        "0690bb81b7e3c831:00360",
+        "0690bb81b7e3c831:00374",
+        "0690bb81b7e3c831:00367",
+        "0690bb81b7e3c831:00384"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00373"
+      ],
+      "used_graph": true,
+      "graph_share": 0.438,
+      "graph_only_share": 0.0,
+      "latency_ms": 676.3
+    },
+    {
+      "question_id": "d3f578d15827df47",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:01144",
+        "0690bb81b7e3c831:01143",
+        "0690bb81b7e3c831:00043",
+        "0690bb81b7e3c831:00025",
+        "0690bb81b7e3c831:00027",
+        "0690bb81b7e3c831:00184",
+        "0690bb81b7e3c831:00404",
+        "0690bb81b7e3c831:00026"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01144"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 892.5
+    },
+    {
+      "question_id": "9c7cf1b06bb3f46b",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00354",
+        "0690bb81b7e3c831:00355",
+        "0690bb81b7e3c831:00359",
+        "0690bb81b7e3c831:00163",
+        "0690bb81b7e3c831:00357",
+        "0690bb81b7e3c831:00362",
+        "0690bb81b7e3c831:00365",
+        "0690bb81b7e3c831:00376"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00355"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 916.2
+    },
+    {
+      "question_id": "cf0b2859fac5673d",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00205",
+        "0690bb81b7e3c831:01089",
+        "0690bb81b7e3c831:00217",
+        "0690bb81b7e3c831:00864",
+        "0690bb81b7e3c831:00946",
+        "0690bb81b7e3c831:00185",
+        "0690bb81b7e3c831:00019",
+        "0690bb81b7e3c831:00020"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01089"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 921.7
+    },
+    {
+      "question_id": "907c35eb768ee70b",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00699",
+        "0690bb81b7e3c831:00700",
+        "0690bb81b7e3c831:01140",
+        "0690bb81b7e3c831:00669",
+        "0690bb81b7e3c831:00013",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00697",
+        "0690bb81b7e3c831:00684"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00699"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 889.5
+    },
+    {
+      "question_id": "60282fbdd534834e",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:01139",
+        "0690bb81b7e3c831:01074",
+        "0690bb81b7e3c831:01075",
+        "0690bb81b7e3c831:01143",
+        "0690bb81b7e3c831:01076",
+        "0690bb81b7e3c831:01105",
+        "0690bb81b7e3c831:01142",
+        "0690bb81b7e3c831:00021",
+        "0690bb81b7e3c831:01073",
+        "0690bb81b7e3c831:01077",
+        "0690bb81b7e3c831:01080",
+        "0690bb81b7e3c831:00014",
+        "0690bb81b7e3c831:01084",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:01122",
+        "0690bb81b7e3c831:01141"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01139"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.0,
+      "latency_ms": 638.0
+    },
+    {
+      "question_id": "75c5f12738affe6d",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00969",
+        "0690bb81b7e3c831:00968",
+        "0690bb81b7e3c831:00643",
+        "0690bb81b7e3c831:00642",
+        "0690bb81b7e3c831:00322",
+        "0690bb81b7e3c831:00308",
+        "0690bb81b7e3c831:00320",
+        "0690bb81b7e3c831:00850"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00969"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 604.1
+    },
+    {
+      "question_id": "08c95926f2e48624",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00332",
+        "0690bb81b7e3c831:00583",
+        "0690bb81b7e3c831:00333",
+        "0690bb81b7e3c831:00328",
+        "0690bb81b7e3c831:00329",
+        "0690bb81b7e3c831:00582",
+        "0690bb81b7e3c831:00585",
+        "0690bb81b7e3c831:00340"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00583"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 593.5
+    },
+    {
+      "question_id": "8afc47b464b74bd7",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00820",
+        "0690bb81b7e3c831:00949",
+        "0690bb81b7e3c831:00351",
+        "0690bb81b7e3c831:00819",
+        "0690bb81b7e3c831:00415",
+        "0690bb81b7e3c831:00352",
+        "0690bb81b7e3c831:00892",
+        "0690bb81b7e3c831:00852"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00853"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 612.9
+    },
+    {
+      "question_id": "f6988fdefa1e5995",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00179",
+        "0690bb81b7e3c831:00178",
+        "0690bb81b7e3c831:00181",
+        "0690bb81b7e3c831:00177",
+        "0690bb81b7e3c831:00180",
+        "0690bb81b7e3c831:00229",
+        "0690bb81b7e3c831:00176",
+        "0690bb81b7e3c831:01080"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00179"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 642.4
+    },
+    {
+      "question_id": "cc502bdd2c77920c",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00067",
+        "0690bb81b7e3c831:00109",
+        "0690bb81b7e3c831:00230",
+        "0690bb81b7e3c831:00210",
+        "0690bb81b7e3c831:00256",
+        "0690bb81b7e3c831:00108",
+        "0690bb81b7e3c831:00477",
+        "0690bb81b7e3c831:00206"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00109"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 650.4
+    },
+    {
+      "question_id": "e1483b8dce6c3574",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00229",
+        "0690bb81b7e3c831:00228",
+        "0690bb81b7e3c831:00952",
+        "0690bb81b7e3c831:00275",
+        "0690bb81b7e3c831:00262",
+        "0690bb81b7e3c831:00962",
+        "0690bb81b7e3c831:00279",
+        "0690bb81b7e3c831:00221"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00005"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 654.5
+    },
+    {
+      "question_id": "43418cd551756042",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00352",
+        "0690bb81b7e3c831:00351",
+        "0690bb81b7e3c831:00353",
+        "0690bb81b7e3c831:00260",
+        "0690bb81b7e3c831:00943",
+        "0690bb81b7e3c831:00944",
+        "0690bb81b7e3c831:00922",
+        "0690bb81b7e3c831:00146",
+        "0690bb81b7e3c831:00449",
+        "0690bb81b7e3c831:00147",
+        "0690bb81b7e3c831:00145",
+        "0690bb81b7e3c831:00311",
+        "0690bb81b7e3c831:00450",
+        "0690bb81b7e3c831:00952",
+        "0690bb81b7e3c831:00945",
+        "0690bb81b7e3c831:00919"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00352"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.125,
+      "latency_ms": 664.1
+    },
+    {
+      "question_id": "c2d15a3b63722d23",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00260",
+        "0690bb81b7e3c831:00261",
+        "0690bb81b7e3c831:00148",
+        "0690bb81b7e3c831:00147",
+        "0690bb81b7e3c831:00146",
+        "0690bb81b7e3c831:00958",
+        "0690bb81b7e3c831:00236",
+        "0690bb81b7e3c831:00351",
+        "0690bb81b7e3c831:00944",
+        "0690bb81b7e3c831:00244",
+        "0690bb81b7e3c831:00949",
+        "0690bb81b7e3c831:00145",
+        "0690bb81b7e3c831:00237",
+        "0690bb81b7e3c831:00239",
+        "0690bb81b7e3c831:00950",
+        "0690bb81b7e3c831:00180"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00260"
+      ],
+      "used_graph": true,
+      "graph_share": 0.188,
+      "graph_only_share": 0.062,
+      "latency_ms": 665.3
+    },
+    {
+      "question_id": "9ca41be80db42516",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00975",
+        "0690bb81b7e3c831:00924",
+        "0690bb81b7e3c831:00977",
+        "0690bb81b7e3c831:00920",
+        "0690bb81b7e3c831:00971",
+        "0690bb81b7e3c831:00914",
+        "0690bb81b7e3c831:00961",
+        "0690bb81b7e3c831:00921"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00975"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 640.9
+    },
+    {
+      "question_id": "3770df6abf408d30",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:00344",
+        "0690bb81b7e3c831:00965",
+        "0690bb81b7e3c831:00283",
+        "0690bb81b7e3c831:00361",
+        "0690bb81b7e3c831:00343",
+        "0690bb81b7e3c831:00355",
+        "0690bb81b7e3c831:00045"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00006"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 619.8
+    },
+    {
+      "question_id": "8d8ec0cd50b0f912",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00371",
+        "0690bb81b7e3c831:00346",
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:00370",
+        "0690bb81b7e3c831:00376",
+        "0690bb81b7e3c831:00388",
+        "0690bb81b7e3c831:00373",
+        "0690bb81b7e3c831:00387"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00371"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 623.9
+    },
+    {
+      "question_id": "e88be516ba422e65",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:01009",
+        "0690bb81b7e3c831:01005",
+        "0690bb81b7e3c831:00992",
+        "0690bb81b7e3c831:01004",
+        "0690bb81b7e3c831:00776",
+        "0690bb81b7e3c831:00984",
+        "0690bb81b7e3c831:00999",
+        "0690bb81b7e3c831:00021",
+        "0690bb81b7e3c831:00867",
+        "0690bb81b7e3c831:00985",
+        "0690bb81b7e3c831:00988",
+        "0690bb81b7e3c831:00986",
+        "0690bb81b7e3c831:00775",
+        "0690bb81b7e3c831:00866",
+        "0690bb81b7e3c831:01003",
+        "0690bb81b7e3c831:01006"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01009"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.0,
+      "latency_ms": 591.4
+    },
+    {
+      "question_id": "e83b4f7f3e547230",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00685",
+        "0690bb81b7e3c831:00684",
+        "0690bb81b7e3c831:00687",
+        "0690bb81b7e3c831:01115",
+        "0690bb81b7e3c831:01078",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:01084",
+        "0690bb81b7e3c831:01107"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00685"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 613.6
+    },
+    {
+      "question_id": "242ac9d5370733c3",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00626",
+        "0690bb81b7e3c831:00627",
+        "0690bb81b7e3c831:00618",
+        "0690bb81b7e3c831:00507",
+        "0690bb81b7e3c831:00623",
+        "0690bb81b7e3c831:00621",
+        "0690bb81b7e3c831:00625",
+        "0690bb81b7e3c831:00770",
+        "0690bb81b7e3c831:00000",
+        "0690bb81b7e3c831:00498",
+        "0690bb81b7e3c831:00502",
+        "0690bb81b7e3c831:00432",
+        "0690bb81b7e3c831:00523",
+        "0690bb81b7e3c831:00786",
+        "0690bb81b7e3c831:00628",
+        "0690bb81b7e3c831:00508"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00626"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.062,
+      "latency_ms": 601.3
+    },
+    {
+      "question_id": "22e67d5f2b3cb294",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00036",
+        "0690bb81b7e3c831:00805",
+        "0690bb81b7e3c831:00041",
+        "0690bb81b7e3c831:00724",
+        "0690bb81b7e3c831:00037",
+        "0690bb81b7e3c831:00026",
+        "0690bb81b7e3c831:00707",
+        "0690bb81b7e3c831:00706"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00041"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 546.5
+    },
+    {
+      "question_id": "3cdc45e2dcaaf5ed",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00387",
+        "0690bb81b7e3c831:00315",
+        "0690bb81b7e3c831:00045",
+        "0690bb81b7e3c831:00283",
+        "0690bb81b7e3c831:00374",
+        "0690bb81b7e3c831:00395",
+        "0690bb81b7e3c831:00296",
+        "0690bb81b7e3c831:00287"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00003"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 547.6
+    },
+    {
+      "question_id": "d411d96da379508a",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00743",
+        "0690bb81b7e3c831:00742",
+        "0690bb81b7e3c831:00744",
+        "0690bb81b7e3c831:00804",
+        "0690bb81b7e3c831:00738",
+        "0690bb81b7e3c831:00733",
+        "0690bb81b7e3c831:00736",
+        "0690bb81b7e3c831:00728"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00742"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 549.7
+    },
+    {
+      "question_id": "35b117eb4a856dcb",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00319",
+        "0690bb81b7e3c831:00318",
+        "0690bb81b7e3c831:00310",
+        "0690bb81b7e3c831:00311",
+        "0690bb81b7e3c831:00303",
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:00338",
+        "0690bb81b7e3c831:00391"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00318"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 570.7
+    },
+    {
+      "question_id": "c8c5ff01c9d1ca5b",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00725",
+        "0690bb81b7e3c831:00721",
+        "0690bb81b7e3c831:00779",
+        "0690bb81b7e3c831:00724",
+        "0690bb81b7e3c831:00794",
+        "0690bb81b7e3c831:00744",
+        "0690bb81b7e3c831:00038",
+        "0690bb81b7e3c831:00767"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00725"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 579.4
+    },
+    {
+      "question_id": "3b291847dbebc63f",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:01145",
+        "0690bb81b7e3c831:00001",
+        "0690bb81b7e3c831:00025",
+        "0690bb81b7e3c831:00049",
+        "0690bb81b7e3c831:00035",
+        "0690bb81b7e3c831:00628",
+        "0690bb81b7e3c831:00026",
+        "0690bb81b7e3c831:00907"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01145"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 554.8
+    },
+    {
+      "question_id": "23acfe8354299064",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00379",
+        "0690bb81b7e3c831:00378",
+        "0690bb81b7e3c831:00382",
+        "0690bb81b7e3c831:00384",
+        "0690bb81b7e3c831:00377",
+        "0690bb81b7e3c831:00381",
+        "0690bb81b7e3c831:00383",
+        "0690bb81b7e3c831:00380",
+        "0690bb81b7e3c831:00388",
+        "0690bb81b7e3c831:00386",
+        "0690bb81b7e3c831:00967",
+        "0690bb81b7e3c831:00364",
+        "0690bb81b7e3c831:00374",
+        "0690bb81b7e3c831:00966",
+        "0690bb81b7e3c831:00385",
+        "0690bb81b7e3c831:00401"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00379"
+      ],
+      "used_graph": true,
+      "graph_share": 0.438,
+      "graph_only_share": 0.0,
+      "latency_ms": 557.9
+    },
+    {
+      "question_id": "72f34d7d18a63514",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00312",
+        "0690bb81b7e3c831:00315",
+        "0690bb81b7e3c831:00314",
+        "0690bb81b7e3c831:00153",
+        "0690bb81b7e3c831:00317",
+        "0690bb81b7e3c831:00304",
+        "0690bb81b7e3c831:00326",
+        "0690bb81b7e3c831:00311"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00312"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 566.3
+    },
+    {
+      "question_id": "b4c58f5092010eac",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:01015",
+        "0690bb81b7e3c831:01013",
+        "0690bb81b7e3c831:01014",
+        "0690bb81b7e3c831:01012",
+        "0690bb81b7e3c831:01016",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01068",
+        "0690bb81b7e3c831:01040"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01015"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 596.5
+    },
+    {
+      "question_id": "e842f5283b03156b",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:01077",
+        "0690bb81b7e3c831:01076",
+        "0690bb81b7e3c831:01106",
+        "0690bb81b7e3c831:01115",
+        "0690bb81b7e3c831:01105",
+        "0690bb81b7e3c831:01139",
+        "0690bb81b7e3c831:01084",
+        "0690bb81b7e3c831:01110"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01077"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 611.6
+    },
+    {
+      "question_id": "f63171b4fc7011e9",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00462",
+        "0690bb81b7e3c831:00470",
+        "0690bb81b7e3c831:00457",
+        "0690bb81b7e3c831:00464",
+        "0690bb81b7e3c831:00471",
+        "0690bb81b7e3c831:00461",
+        "0690bb81b7e3c831:00452",
+        "0690bb81b7e3c831:00455",
+        "0690bb81b7e3c831:00421",
+        "0690bb81b7e3c831:00417",
+        "0690bb81b7e3c831:00427",
+        "0690bb81b7e3c831:00006",
+        "0690bb81b7e3c831:00468",
+        "0690bb81b7e3c831:00333",
+        "0690bb81b7e3c831:00654",
+        "0690bb81b7e3c831:00439"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00462"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.0,
+      "latency_ms": 607.8
+    },
+    {
+      "question_id": "5b793174ef58c1ff",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00500",
+        "0690bb81b7e3c831:00499",
+        "0690bb81b7e3c831:00502",
+        "0690bb81b7e3c831:00501",
+        "0690bb81b7e3c831:00503",
+        "0690bb81b7e3c831:00522",
+        "0690bb81b7e3c831:00505",
+        "0690bb81b7e3c831:00512"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00500"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 601.7
+    },
+    {
+      "question_id": "2da8ece3069614ea",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00656",
+        "0690bb81b7e3c831:00657",
+        "0690bb81b7e3c831:00764",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:00699",
+        "0690bb81b7e3c831:00691",
+        "0690bb81b7e3c831:00778",
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:00697",
+        "0690bb81b7e3c831:00914",
+        "0690bb81b7e3c831:00684",
+        "0690bb81b7e3c831:00822",
+        "0690bb81b7e3c831:00755",
+        "0690bb81b7e3c831:01103",
+        "0690bb81b7e3c831:01111"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00656"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.25,
+      "latency_ms": 597.4
+    },
+    {
+      "question_id": "dccc699e04a3bc5b",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00789",
+        "0690bb81b7e3c831:00788",
+        "0690bb81b7e3c831:00797",
+        "0690bb81b7e3c831:00291",
+        "0690bb81b7e3c831:00820",
+        "0690bb81b7e3c831:00171",
+        "0690bb81b7e3c831:00852",
+        "0690bb81b7e3c831:00987"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00788"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 596.4
+    },
+    {
+      "question_id": "5659f281cee93a20",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00747",
+        "0690bb81b7e3c831:01076",
+        "0690bb81b7e3c831:00725",
+        "0690bb81b7e3c831:00746",
+        "0690bb81b7e3c831:00745",
+        "0690bb81b7e3c831:00737",
+        "0690bb81b7e3c831:00733",
+        "0690bb81b7e3c831:00736",
+        "0690bb81b7e3c831:00524",
+        "0690bb81b7e3c831:00738",
+        "0690bb81b7e3c831:00732",
+        "0690bb81b7e3c831:01077",
+        "0690bb81b7e3c831:00739",
+        "0690bb81b7e3c831:00728",
+        "0690bb81b7e3c831:00722",
+        "0690bb81b7e3c831:00735"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00747"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.0,
+      "latency_ms": 568.7
+    },
+    {
+      "question_id": "a5a7d5176e87d99d",
+      "type": "single_chunk",
+      "retrieved": [
+        "0690bb81b7e3c831:00910",
+        "0690bb81b7e3c831:00458",
+        "0690bb81b7e3c831:00909",
+        "0690bb81b7e3c831:00459",
+        "0690bb81b7e3c831:00317",
+        "0690bb81b7e3c831:00457",
+        "0690bb81b7e3c831:00998",
+        "0690bb81b7e3c831:00605"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00910"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 568.0
+    },
+    {
+      "question_id": "14c29f3edd5bc518",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00176",
+        "0690bb81b7e3c831:00182",
+        "0690bb81b7e3c831:00181",
+        "0690bb81b7e3c831:00177",
+        "0690bb81b7e3c831:00178",
+        "0690bb81b7e3c831:00172",
+        "0690bb81b7e3c831:00114",
+        "0690bb81b7e3c831:00179"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00004",
+        "0690bb81b7e3c831:00182"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 581.7
+    },
+    {
+      "question_id": "bd14a0a21fb5de10",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00223",
+        "0690bb81b7e3c831:00224",
+        "0690bb81b7e3c831:00225",
+        "0690bb81b7e3c831:00273",
+        "0690bb81b7e3c831:00236",
+        "0690bb81b7e3c831:00206",
+        "0690bb81b7e3c831:00266",
+        "0690bb81b7e3c831:00099",
+        "0690bb81b7e3c831:00071",
+        "0690bb81b7e3c831:00218",
+        "0690bb81b7e3c831:00258",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:01128",
+        "0690bb81b7e3c831:00221",
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:01079"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00086",
+        "0690bb81b7e3c831:00223"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.062,
+      "latency_ms": 607.7
+    },
+    {
+      "question_id": "abcfc839369fa081",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00910",
+        "0690bb81b7e3c831:00911",
+        "0690bb81b7e3c831:01009",
+        "0690bb81b7e3c831:00816",
+        "0690bb81b7e3c831:00402",
+        "0690bb81b7e3c831:00867",
+        "0690bb81b7e3c831:00822",
+        "0690bb81b7e3c831:00912",
+        "0690bb81b7e3c831:01143",
+        "0690bb81b7e3c831:00862",
+        "0690bb81b7e3c831:00276",
+        "0690bb81b7e3c831:00824",
+        "0690bb81b7e3c831:00403",
+        "0690bb81b7e3c831:00768",
+        "0690bb81b7e3c831:00825",
+        "0690bb81b7e3c831:00897"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00873",
+        "0690bb81b7e3c831:00910"
+      ],
+      "used_graph": true,
+      "graph_share": 0.125,
+      "graph_only_share": 0.0,
+      "latency_ms": 610.4
+    },
+    {
+      "question_id": "82e0ca56524d1a36",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00211",
+        "0690bb81b7e3c831:00337",
+        "0690bb81b7e3c831:00356",
+        "0690bb81b7e3c831:00335",
+        "0690bb81b7e3c831:00213",
+        "0690bb81b7e3c831:00209",
+        "0690bb81b7e3c831:00338",
+        "0690bb81b7e3c831:00320",
+        "0690bb81b7e3c831:00306",
+        "0690bb81b7e3c831:00208",
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:00217",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:00399",
+        "0690bb81b7e3c831:00355",
+        "0690bb81b7e3c831:00978"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00213",
+        "0690bb81b7e3c831:00399"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.125,
+      "latency_ms": 631.3
+    },
+    {
+      "question_id": "e83e3578eb943f10",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00199",
+        "0690bb81b7e3c831:00166",
+        "0690bb81b7e3c831:00198",
+        "0690bb81b7e3c831:00339",
+        "0690bb81b7e3c831:00164",
+        "0690bb81b7e3c831:00197",
+        "0690bb81b7e3c831:00155",
+        "0690bb81b7e3c831:00350",
+        "0690bb81b7e3c831:00349",
+        "0690bb81b7e3c831:00979",
+        "0690bb81b7e3c831:00150",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:00162",
+        "0690bb81b7e3c831:00227",
+        "0690bb81b7e3c831:00169",
+        "0690bb81b7e3c831:00351"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00199",
+        "0690bb81b7e3c831:00884"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.125,
+      "latency_ms": 668.3
+    },
+    {
+      "question_id": "5c4338281feb38dd",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00658",
+        "0690bb81b7e3c831:00928",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:00661",
+        "0690bb81b7e3c831:00694",
+        "0690bb81b7e3c831:00657"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00012",
+        "0690bb81b7e3c831:00664"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.0,
+      "latency_ms": 690.3
+    },
+    {
+      "question_id": "57711cf74776eb1d",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00296",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:00337",
+        "0690bb81b7e3c831:00399",
+        "0690bb81b7e3c831:00393",
+        "0690bb81b7e3c831:00335",
+        "0690bb81b7e3c831:00295",
+        "0690bb81b7e3c831:00343",
+        "0690bb81b7e3c831:00340",
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:00283",
+        "0690bb81b7e3c831:00338",
+        "0690bb81b7e3c831:00336",
+        "0690bb81b7e3c831:00391",
+        "0690bb81b7e3c831:00339",
+        "0690bb81b7e3c831:00306"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00296",
+        "0690bb81b7e3c831:00399"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.0,
+      "latency_ms": 717.7
+    },
+    {
+      "question_id": "00775da85d928b40",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:00665",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00658",
+        "0690bb81b7e3c831:00693"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01090"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 727.5
+    },
+    {
+      "question_id": "ee1bc7d9c5080a01",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01138",
+        "0690bb81b7e3c831:01127",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:01119",
+        "0690bb81b7e3c831:00677",
+        "0690bb81b7e3c831:01077",
+        "0690bb81b7e3c831:01136",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:01140",
+        "0690bb81b7e3c831:01133",
+        "0690bb81b7e3c831:01120"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00677",
+        "0690bb81b7e3c831:01111"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.188,
+      "latency_ms": 690.0
+    },
+    {
+      "question_id": "b60af063837066d9",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00102",
+        "0690bb81b7e3c831:00050",
+        "0690bb81b7e3c831:00109",
+        "0690bb81b7e3c831:00054",
+        "0690bb81b7e3c831:00108",
+        "0690bb81b7e3c831:00051",
+        "0690bb81b7e3c831:00039",
+        "0690bb81b7e3c831:00110",
+        "0690bb81b7e3c831:00714",
+        "0690bb81b7e3c831:00206",
+        "0690bb81b7e3c831:00281",
+        "0690bb81b7e3c831:00106",
+        "0690bb81b7e3c831:00067",
+        "0690bb81b7e3c831:00111",
+        "0690bb81b7e3c831:00075",
+        "0690bb81b7e3c831:00017"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00102",
+        "0690bb81b7e3c831:00185"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.0,
+      "latency_ms": 668.8
+    },
+    {
+      "question_id": "272c77dc78c33116",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00612",
+        "0690bb81b7e3c831:00614",
+        "0690bb81b7e3c831:00611",
+        "0690bb81b7e3c831:00610",
+        "0690bb81b7e3c831:00622",
+        "0690bb81b7e3c831:00609",
+        "0690bb81b7e3c831:00623",
+        "0690bb81b7e3c831:00518",
+        "0690bb81b7e3c831:00615",
+        "0690bb81b7e3c831:00516",
+        "0690bb81b7e3c831:00519",
+        "0690bb81b7e3c831:00574",
+        "0690bb81b7e3c831:00520",
+        "0690bb81b7e3c831:00529",
+        "0690bb81b7e3c831:00527",
+        "0690bb81b7e3c831:00618"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00518",
+        "0690bb81b7e3c831:00614"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.0,
+      "latency_ms": 672.0
+    },
+    {
+      "question_id": "5207ce657e655931",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00578",
+        "0690bb81b7e3c831:00579",
+        "0690bb81b7e3c831:00623",
+        "0690bb81b7e3c831:00899",
+        "0690bb81b7e3c831:00573",
+        "0690bb81b7e3c831:00580",
+        "0690bb81b7e3c831:00552",
+        "0690bb81b7e3c831:00562",
+        "0690bb81b7e3c831:00625",
+        "0690bb81b7e3c831:00332",
+        "0690bb81b7e3c831:00563",
+        "0690bb81b7e3c831:00574",
+        "0690bb81b7e3c831:00561",
+        "0690bb81b7e3c831:00622",
+        "0690bb81b7e3c831:00575",
+        "0690bb81b7e3c831:00582"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00152",
+        "0690bb81b7e3c831:00578"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.0,
+      "latency_ms": 661.5
+    },
+    {
+      "question_id": "91b558c5bb7c3f7d",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00436",
+        "0690bb81b7e3c831:00621",
+        "0690bb81b7e3c831:00438",
+        "0690bb81b7e3c831:00624",
+        "0690bb81b7e3c831:00437",
+        "0690bb81b7e3c831:00447",
+        "0690bb81b7e3c831:00325",
+        "0690bb81b7e3c831:00620",
+        "0690bb81b7e3c831:00417",
+        "0690bb81b7e3c831:00622",
+        "0690bb81b7e3c831:00290",
+        "0690bb81b7e3c831:00435",
+        "0690bb81b7e3c831:00433",
+        "0690bb81b7e3c831:00432",
+        "0690bb81b7e3c831:00623",
+        "0690bb81b7e3c831:00445"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00436",
+        "0690bb81b7e3c831:00621"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.062,
+      "latency_ms": 681.4
+    },
+    {
+      "question_id": "735e5a34da1740c7",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00177",
+        "0690bb81b7e3c831:00062",
+        "0690bb81b7e3c831:00180",
+        "0690bb81b7e3c831:00061",
+        "0690bb81b7e3c831:00060",
+        "0690bb81b7e3c831:00181",
+        "0690bb81b7e3c831:00102",
+        "0690bb81b7e3c831:00127",
+        "0690bb81b7e3c831:00179",
+        "0690bb81b7e3c831:00115",
+        "0690bb81b7e3c831:00100",
+        "0690bb81b7e3c831:00685",
+        "0690bb81b7e3c831:00304",
+        "0690bb81b7e3c831:00128",
+        "0690bb81b7e3c831:00055",
+        "0690bb81b7e3c831:00189"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00062",
+        "0690bb81b7e3c831:00177"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.062,
+      "latency_ms": 687.5
+    },
+    {
+      "question_id": "74bba6eda1ac7745",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00612",
+        "0690bb81b7e3c831:00610",
+        "0690bb81b7e3c831:00518",
+        "0690bb81b7e3c831:00611",
+        "0690bb81b7e3c831:00622",
+        "0690bb81b7e3c831:00614",
+        "0690bb81b7e3c831:00623",
+        "0690bb81b7e3c831:00516",
+        "0690bb81b7e3c831:00609",
+        "0690bb81b7e3c831:00561",
+        "0690bb81b7e3c831:00529",
+        "0690bb81b7e3c831:00616",
+        "0690bb81b7e3c831:00519",
+        "0690bb81b7e3c831:00506",
+        "0690bb81b7e3c831:00520",
+        "0690bb81b7e3c831:00537"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00518",
+        "0690bb81b7e3c831:00619"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.062,
+      "latency_ms": 678.3
+    },
+    {
+      "question_id": "48e620a43672ee93",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00662",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00661",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01138",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:00663",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00660"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00662",
+        "0690bb81b7e3c831:01112"
+      ],
+      "used_graph": true,
+      "graph_share": 0.75,
+      "graph_only_share": 0.0,
+      "latency_ms": 687.2
+    },
+    {
+      "question_id": "1027bb75cadf1ce8",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00228",
+        "0690bb81b7e3c831:00229",
+        "0690bb81b7e3c831:00958",
+        "0690bb81b7e3c831:00952",
+        "0690bb81b7e3c831:00259",
+        "0690bb81b7e3c831:00962",
+        "0690bb81b7e3c831:00906",
+        "0690bb81b7e3c831:00953",
+        "0690bb81b7e3c831:00225",
+        "0690bb81b7e3c831:00226",
+        "0690bb81b7e3c831:00258",
+        "0690bb81b7e3c831:00264",
+        "0690bb81b7e3c831:00237",
+        "0690bb81b7e3c831:00246",
+        "0690bb81b7e3c831:00261",
+        "0690bb81b7e3c831:00227"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00005",
+        "0690bb81b7e3c831:00228"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.0,
+      "latency_ms": 691.4
+    },
+    {
+      "question_id": "dd05b17b79ad24a6",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00804",
+        "0690bb81b7e3c831:00741",
+        "0690bb81b7e3c831:00803",
+        "0690bb81b7e3c831:00737",
+        "0690bb81b7e3c831:00743",
+        "0690bb81b7e3c831:00805",
+        "0690bb81b7e3c831:00742",
+        "0690bb81b7e3c831:00744",
+        "0690bb81b7e3c831:00735",
+        "0690bb81b7e3c831:00824",
+        "0690bb81b7e3c831:00806",
+        "0690bb81b7e3c831:01066",
+        "0690bb81b7e3c831:00723",
+        "0690bb81b7e3c831:00532",
+        "0690bb81b7e3c831:00855",
+        "0690bb81b7e3c831:01029"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00804",
+        "0690bb81b7e3c831:01037"
+      ],
+      "used_graph": true,
+      "graph_share": 0.438,
+      "graph_only_share": 0.0,
+      "latency_ms": 657.7
+    },
+    {
+      "question_id": "4c97c7af06f1d3b3",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00702",
+        "0690bb81b7e3c831:00638",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00683"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00638",
+        "0690bb81b7e3c831:00703"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 668.6
+    },
+    {
+      "question_id": "526234c38a34c466",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00899",
+        "0690bb81b7e3c831:00629",
+        "0690bb81b7e3c831:00578",
+        "0690bb81b7e3c831:00561",
+        "0690bb81b7e3c831:00567",
+        "0690bb81b7e3c831:00565",
+        "0690bb81b7e3c831:00563",
+        "0690bb81b7e3c831:00992",
+        "0690bb81b7e3c831:00570",
+        "0690bb81b7e3c831:00562",
+        "0690bb81b7e3c831:01061",
+        "0690bb81b7e3c831:00574",
+        "0690bb81b7e3c831:00628",
+        "0690bb81b7e3c831:00595",
+        "0690bb81b7e3c831:00525",
+        "0690bb81b7e3c831:00897"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00565",
+        "0690bb81b7e3c831:00629"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.0,
+      "latency_ms": 652.4
+    },
+    {
+      "question_id": "fc2a22e23a055579",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01096",
+        "0690bb81b7e3c831:01114",
+        "0690bb81b7e3c831:00900",
+        "0690bb81b7e3c831:01098",
+        "0690bb81b7e3c831:01100",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01126",
+        "0690bb81b7e3c831:00574",
+        "0690bb81b7e3c831:00402",
+        "0690bb81b7e3c831:00822",
+        "0690bb81b7e3c831:01067",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:00144",
+        "0690bb81b7e3c831:00012",
+        "0690bb81b7e3c831:00055"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00792",
+        "0690bb81b7e3c831:01098"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.125,
+      "latency_ms": 629.9
+    },
+    {
+      "question_id": "0154eee0c6d1e407",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:01138",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01133",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:01137",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:00681",
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:01119",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:01120",
+        "0690bb81b7e3c831:00684",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:01127",
+        "0690bb81b7e3c831:00693"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00012",
+        "0690bb81b7e3c831:01134"
+      ],
+      "used_graph": true,
+      "graph_share": 0.812,
+      "graph_only_share": 0.125,
+      "latency_ms": 654.7
+    },
+    {
+      "question_id": "0a5c25781394a5c9",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:01125",
+        "0690bb81b7e3c831:00658",
+        "0690bb81b7e3c831:01079"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01079"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 664.2
+    },
+    {
+      "question_id": "314701e9c1941b1f",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00846",
+        "0690bb81b7e3c831:00760",
+        "0690bb81b7e3c831:00824",
+        "0690bb81b7e3c831:01001",
+        "0690bb81b7e3c831:01017",
+        "0690bb81b7e3c831:00802",
+        "0690bb81b7e3c831:00866",
+        "0690bb81b7e3c831:00850"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00846",
+        "0690bb81b7e3c831:01042"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 640.6
+    },
+    {
+      "question_id": "3f7c4980662e5309",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00296",
+        "0690bb81b7e3c831:00072",
+        "0690bb81b7e3c831:00284",
+        "0690bb81b7e3c831:00287",
+        "0690bb81b7e3c831:00299",
+        "0690bb81b7e3c831:00306",
+        "0690bb81b7e3c831:00394",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:00285",
+        "0690bb81b7e3c831:00300",
+        "0690bb81b7e3c831:00307",
+        "0690bb81b7e3c831:00294",
+        "0690bb81b7e3c831:00286",
+        "0690bb81b7e3c831:00295",
+        "0690bb81b7e3c831:00303",
+        "0690bb81b7e3c831:00324"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00072",
+        "0690bb81b7e3c831:00300"
+      ],
+      "used_graph": true,
+      "graph_share": 0.625,
+      "graph_only_share": 0.062,
+      "latency_ms": 637.7
+    },
+    {
+      "question_id": "517cbe6308bc8517",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00343",
+        "0690bb81b7e3c831:00400",
+        "0690bb81b7e3c831:00344",
+        "0690bb81b7e3c831:00965",
+        "0690bb81b7e3c831:00338",
+        "0690bb81b7e3c831:00337",
+        "0690bb81b7e3c831:00283",
+        "0690bb81b7e3c831:00399"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00343",
+        "0690bb81b7e3c831:00400"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 639.6
+    },
+    {
+      "question_id": "7e432e05a100006c",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00100",
+        "0690bb81b7e3c831:00097",
+        "0690bb81b7e3c831:00096",
+        "0690bb81b7e3c831:00071",
+        "0690bb81b7e3c831:00079",
+        "0690bb81b7e3c831:00099",
+        "0690bb81b7e3c831:00080",
+        "0690bb81b7e3c831:00098",
+        "0690bb81b7e3c831:00257",
+        "0690bb81b7e3c831:00062",
+        "0690bb81b7e3c831:00088",
+        "0690bb81b7e3c831:00101",
+        "0690bb81b7e3c831:00137",
+        "0690bb81b7e3c831:00903",
+        "0690bb81b7e3c831:00058",
+        "0690bb81b7e3c831:00060"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00099",
+        "0690bb81b7e3c831:00287"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.062,
+      "latency_ms": 628.7
+    },
+    {
+      "question_id": "987949e31f432245",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01018",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01047",
+        "0690bb81b7e3c831:01025",
+        "0690bb81b7e3c831:01067",
+        "0690bb81b7e3c831:00764",
+        "0690bb81b7e3c831:00402",
+        "0690bb81b7e3c831:01013",
+        "0690bb81b7e3c831:00763",
+        "0690bb81b7e3c831:01069",
+        "0690bb81b7e3c831:00780",
+        "0690bb81b7e3c831:00761",
+        "0690bb81b7e3c831:00723",
+        "0690bb81b7e3c831:01048",
+        "0690bb81b7e3c831:01051",
+        "0690bb81b7e3c831:00815"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01018",
+        "0690bb81b7e3c831:01051"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.125,
+      "latency_ms": 643.5
+    },
+    {
+      "question_id": "28ed8822332565de",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:01127",
+        "0690bb81b7e3c831:01133",
+        "0690bb81b7e3c831:00684",
+        "0690bb81b7e3c831:00699",
+        "0690bb81b7e3c831:01132",
+        "0690bb81b7e3c831:01126",
+        "0690bb81b7e3c831:01140",
+        "0690bb81b7e3c831:00910"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01136"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.125,
+      "latency_ms": 637.6
+    },
+    {
+      "question_id": "fcbf0be9bb264aee",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00804",
+        "0690bb81b7e3c831:00743",
+        "0690bb81b7e3c831:00742",
+        "0690bb81b7e3c831:00803",
+        "0690bb81b7e3c831:00805",
+        "0690bb81b7e3c831:00741",
+        "0690bb81b7e3c831:00735",
+        "0690bb81b7e3c831:00767"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00743",
+        "0690bb81b7e3c831:00804"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 609.2
+    },
+    {
+      "question_id": "81b18d08fcb9acac",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00474",
+        "0690bb81b7e3c831:00479",
+        "0690bb81b7e3c831:00412",
+        "0690bb81b7e3c831:00413",
+        "0690bb81b7e3c831:00473",
+        "0690bb81b7e3c831:00409",
+        "0690bb81b7e3c831:00410",
+        "0690bb81b7e3c831:00485",
+        "0690bb81b7e3c831:00480",
+        "0690bb81b7e3c831:00414",
+        "0690bb81b7e3c831:00411",
+        "0690bb81b7e3c831:00489",
+        "0690bb81b7e3c831:00478",
+        "0690bb81b7e3c831:00476",
+        "0690bb81b7e3c831:00475",
+        "0690bb81b7e3c831:00488"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00412",
+        "0690bb81b7e3c831:01116"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.0,
+      "latency_ms": 636.1
+    },
+    {
+      "question_id": "9dad497a29672c95",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00742",
+        "0690bb81b7e3c831:00743",
+        "0690bb81b7e3c831:00804",
+        "0690bb81b7e3c831:00737",
+        "0690bb81b7e3c831:00744",
+        "0690bb81b7e3c831:00738",
+        "0690bb81b7e3c831:00735",
+        "0690bb81b7e3c831:00805"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00742",
+        "0690bb81b7e3c831:01037"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 611.8
+    },
+    {
+      "question_id": "a2d53df04b5f9faa",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:01043",
+        "0690bb81b7e3c831:01018",
+        "0690bb81b7e3c831:01118",
+        "0690bb81b7e3c831:01015",
+        "0690bb81b7e3c831:01048",
+        "0690bb81b7e3c831:01045",
+        "0690bb81b7e3c831:01047",
+        "0690bb81b7e3c831:01014",
+        "0690bb81b7e3c831:01042",
+        "0690bb81b7e3c831:01016",
+        "0690bb81b7e3c831:01069",
+        "0690bb81b7e3c831:01013",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01025",
+        "0690bb81b7e3c831:01029"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:01041"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.0,
+      "latency_ms": 626.7
+    },
+    {
+      "question_id": "8324590e28831630",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01047",
+        "0690bb81b7e3c831:01025",
+        "0690bb81b7e3c831:01018",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01013",
+        "0690bb81b7e3c831:01048",
+        "0690bb81b7e3c831:01066",
+        "0690bb81b7e3c831:01053"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01018",
+        "0690bb81b7e3c831:01047"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 639.3
+    },
+    {
+      "question_id": "5480c96e2f5bc7b3",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00694",
+        "0690bb81b7e3c831:00658",
+        "0690bb81b7e3c831:00677",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01084",
+        "0690bb81b7e3c831:01092",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:00665",
+        "0690bb81b7e3c831:01112"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00694",
+        "0690bb81b7e3c831:01094"
+      ],
+      "used_graph": true,
+      "graph_share": 0.688,
+      "graph_only_share": 0.188,
+      "latency_ms": 625.4
+    },
+    {
+      "question_id": "afdd3bdf3abcf009",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00062",
+        "0690bb81b7e3c831:00257",
+        "0690bb81b7e3c831:00244",
+        "0690bb81b7e3c831:00114",
+        "0690bb81b7e3c831:00179",
+        "0690bb81b7e3c831:00259",
+        "0690bb81b7e3c831:00181",
+        "0690bb81b7e3c831:00304"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00062",
+        "0690bb81b7e3c831:00244"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 677.7
+    },
+    {
+      "question_id": "40f72c4bf4c47b84",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:00402",
+        "0690bb81b7e3c831:01044",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01045",
+        "0690bb81b7e3c831:00561",
+        "0690bb81b7e3c831:01025",
+        "0690bb81b7e3c831:00928",
+        "0690bb81b7e3c831:01029",
+        "0690bb81b7e3c831:01011",
+        "0690bb81b7e3c831:01030",
+        "0690bb81b7e3c831:01103",
+        "0690bb81b7e3c831:01040",
+        "0690bb81b7e3c831:00657",
+        "0690bb81b7e3c831:01138",
+        "0690bb81b7e3c831:01015"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:01041"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.062,
+      "latency_ms": 668.5
+    },
+    {
+      "question_id": "65d48afa5cbcb27d",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00966",
+        "0690bb81b7e3c831:00965",
+        "0690bb81b7e3c831:00938",
+        "0690bb81b7e3c831:00363",
+        "0690bb81b7e3c831:00929",
+        "0690bb81b7e3c831:00939",
+        "0690bb81b7e3c831:00344",
+        "0690bb81b7e3c831:00343",
+        "0690bb81b7e3c831:01001",
+        "0690bb81b7e3c831:00367",
+        "0690bb81b7e3c831:00940",
+        "0690bb81b7e3c831:00978",
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:01039",
+        "0690bb81b7e3c831:00962",
+        "0690bb81b7e3c831:00282"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:01001"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.125,
+      "latency_ms": 684.5
+    },
+    {
+      "question_id": "da4f0a7b6093a879",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01008",
+        "0690bb81b7e3c831:00458",
+        "0690bb81b7e3c831:00459",
+        "0690bb81b7e3c831:00457",
+        "0690bb81b7e3c831:00460",
+        "0690bb81b7e3c831:00941",
+        "0690bb81b7e3c831:00998",
+        "0690bb81b7e3c831:00999"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00458",
+        "0690bb81b7e3c831:01008"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 656.2
+    },
+    {
+      "question_id": "5eb7111e439569ce",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00928",
+        "0690bb81b7e3c831:00925",
+        "0690bb81b7e3c831:00927",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00929",
+        "0690bb81b7e3c831:01118",
+        "0690bb81b7e3c831:00931",
+        "0690bb81b7e3c831:01112"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00444",
+        "0690bb81b7e3c831:00928"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 642.8
+    },
+    {
+      "question_id": "5eda413f985c49a8",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00669",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:01138",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:01125",
+        "0690bb81b7e3c831:00684",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01119",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:01120",
+        "0690bb81b7e3c831:00685",
+        "0690bb81b7e3c831:00690",
+        "0690bb81b7e3c831:01140",
+        "0690bb81b7e3c831:00679"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00669",
+        "0690bb81b7e3c831:01134"
+      ],
+      "used_graph": true,
+      "graph_share": 0.625,
+      "graph_only_share": 0.125,
+      "latency_ms": 646.3
+    },
+    {
+      "question_id": "61cd9ce4d20fbf69",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01116",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:00474",
+        "0690bb81b7e3c831:00488",
+        "0690bb81b7e3c831:00480",
+        "0690bb81b7e3c831:01109",
+        "0690bb81b7e3c831:00485",
+        "0690bb81b7e3c831:00344",
+        "0690bb81b7e3c831:00551",
+        "0690bb81b7e3c831:00675",
+        "0690bb81b7e3c831:00676",
+        "0690bb81b7e3c831:00282",
+        "0690bb81b7e3c831:00674",
+        "0690bb81b7e3c831:00550",
+        "0690bb81b7e3c831:00475",
+        "0690bb81b7e3c831:00486"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00475",
+        "0690bb81b7e3c831:01116"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.125,
+      "latency_ms": 663.2
+    },
+    {
+      "question_id": "aae30636cbfc6573",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01053",
+        "0690bb81b7e3c831:01051",
+        "0690bb81b7e3c831:01067",
+        "0690bb81b7e3c831:01047",
+        "0690bb81b7e3c831:01069",
+        "0690bb81b7e3c831:01018",
+        "0690bb81b7e3c831:01048",
+        "0690bb81b7e3c831:01005"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01051",
+        "0690bb81b7e3c831:01067"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 645.4
+    },
+    {
+      "question_id": "212d5d5d1c51eb6a",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01118",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:01115",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:01114",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:01113",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01042",
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:01043",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:00693"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00663",
+        "0690bb81b7e3c831:01113"
+      ],
+      "used_graph": true,
+      "graph_share": 0.75,
+      "graph_only_share": 0.062,
+      "latency_ms": 660.1
+    },
+    {
+      "question_id": "772cb5a34e5bade1",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01047",
+        "0690bb81b7e3c831:01025",
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:01040",
+        "0690bb81b7e3c831:01018",
+        "0690bb81b7e3c831:01045",
+        "0690bb81b7e3c831:01064",
+        "0690bb81b7e3c831:01066",
+        "0690bb81b7e3c831:01044",
+        "0690bb81b7e3c831:01069",
+        "0690bb81b7e3c831:01055",
+        "0690bb81b7e3c831:01030",
+        "0690bb81b7e3c831:01029",
+        "0690bb81b7e3c831:01024",
+        "0690bb81b7e3c831:00012"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:01064"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.062,
+      "latency_ms": 664.3
+    },
+    {
+      "question_id": "2ee991c85d9edc16",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:01077",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:01119",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:01137",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00012",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01076"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:01079"
+      ],
+      "used_graph": true,
+      "graph_share": 0.625,
+      "graph_only_share": 0.0,
+      "latency_ms": 653.5
+    },
+    {
+      "question_id": "155ef2f957c4b09c",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:00661",
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:00928",
+        "0690bb81b7e3c831:00684"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01111"
+      ],
+      "used_graph": true,
+      "graph_share": 0.688,
+      "graph_only_share": 0.062,
+      "latency_ms": 698.4
+    },
+    {
+      "question_id": "dc71e3abf078b943",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01029",
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:01023",
+        "0690bb81b7e3c831:01066",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:01044",
+        "0690bb81b7e3c831:01022",
+        "0690bb81b7e3c831:01025"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01037",
+        "0690bb81b7e3c831:01066"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 682.4
+    },
+    {
+      "question_id": "eb83c0d48ad1a7b7",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00186",
+        "0690bb81b7e3c831:00105",
+        "0690bb81b7e3c831:00104",
+        "0690bb81b7e3c831:00185",
+        "0690bb81b7e3c831:00103",
+        "0690bb81b7e3c831:00187",
+        "0690bb81b7e3c831:00073",
+        "0690bb81b7e3c831:00106"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00103",
+        "0690bb81b7e3c831:00186"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 681.0
+    },
+    {
+      "question_id": "08dccf9bdaa4f6e4",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00846",
+        "0690bb81b7e3c831:00847",
+        "0690bb81b7e3c831:00828",
+        "0690bb81b7e3c831:01001",
+        "0690bb81b7e3c831:00866",
+        "0690bb81b7e3c831:01005",
+        "0690bb81b7e3c831:01003",
+        "0690bb81b7e3c831:00824"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00846",
+        "0690bb81b7e3c831:01037"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 664.9
+    },
+    {
+      "question_id": "bcd7ff98969843b0",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00014",
+        "0690bb81b7e3c831:00000",
+        "0690bb81b7e3c831:00405",
+        "0690bb81b7e3c831:00394",
+        "0690bb81b7e3c831:00406",
+        "0690bb81b7e3c831:00636",
+        "0690bb81b7e3c831:00046",
+        "0690bb81b7e3c831:00705"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00406",
+        "0690bb81b7e3c831:00619"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 651.5
+    },
+    {
+      "question_id": "05a7b2bc1e70618e",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:01043",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:01045",
+        "0690bb81b7e3c831:00659"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:01041"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 665.2
+    },
+    {
+      "question_id": "511397fc1d7e5472",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01076",
+        "0690bb81b7e3c831:01127",
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:01138",
+        "0690bb81b7e3c831:01126",
+        "0690bb81b7e3c831:01133",
+        "0690bb81b7e3c831:01077",
+        "0690bb81b7e3c831:01137",
+        "0690bb81b7e3c831:01132",
+        "0690bb81b7e3c831:01119",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01128",
+        "0690bb81b7e3c831:00715",
+        "0690bb81b7e3c831:01075"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01079",
+        "0690bb81b7e3c831:01134"
+      ],
+      "used_graph": true,
+      "graph_share": 0.438,
+      "graph_only_share": 0.062,
+      "latency_ms": 652.0
+    },
+    {
+      "question_id": "7d0651a0e6143d33",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:00668",
+        "0690bb81b7e3c831:00693",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00703",
+        "0690bb81b7e3c831:01117",
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:00659",
+        "0690bb81b7e3c831:00661",
+        "0690bb81b7e3c831:01134",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:00679",
+        "0690bb81b7e3c831:00684",
+        "0690bb81b7e3c831:00657"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:01111"
+      ],
+      "used_graph": true,
+      "graph_share": 0.625,
+      "graph_only_share": 0.062,
+      "latency_ms": 678.5
+    },
+    {
+      "question_id": "c038aa182a8cd750",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00307",
+        "0690bb81b7e3c831:00305",
+        "0690bb81b7e3c831:00306",
+        "0690bb81b7e3c831:00300",
+        "0690bb81b7e3c831:00340",
+        "0690bb81b7e3c831:00304",
+        "0690bb81b7e3c831:00321",
+        "0690bb81b7e3c831:00968"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00172",
+        "0690bb81b7e3c831:00307"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 678.8
+    },
+    {
+      "question_id": "5c9b84e6d01c541d",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00368",
+        "0690bb81b7e3c831:00369",
+        "0690bb81b7e3c831:00965",
+        "0690bb81b7e3c831:00387",
+        "0690bb81b7e3c831:00357",
+        "0690bb81b7e3c831:00363",
+        "0690bb81b7e3c831:00364",
+        "0690bb81b7e3c831:00388",
+        "0690bb81b7e3c831:00966",
+        "0690bb81b7e3c831:00367",
+        "0690bb81b7e3c831:00372",
+        "0690bb81b7e3c831:00303",
+        "0690bb81b7e3c831:00301",
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:00328",
+        "0690bb81b7e3c831:00302"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00345",
+        "0690bb81b7e3c831:00368"
+      ],
+      "used_graph": true,
+      "graph_share": 0.438,
+      "graph_only_share": 0.062,
+      "latency_ms": 679.1
+    },
+    {
+      "question_id": "95ae6be48d151113",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00678",
+        "0690bb81b7e3c831:01111",
+        "0690bb81b7e3c831:01101",
+        "0690bb81b7e3c831:01112",
+        "0690bb81b7e3c831:00664",
+        "0690bb81b7e3c831:00660",
+        "0690bb81b7e3c831:00012",
+        "0690bb81b7e3c831:00693"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00012",
+        "0690bb81b7e3c831:00678"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 695.6
+    },
+    {
+      "question_id": "bf107206a8c48f97",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00739",
+        "0690bb81b7e3c831:00740",
+        "0690bb81b7e3c831:00746",
+        "0690bb81b7e3c831:00865",
+        "0690bb81b7e3c831:00724",
+        "0690bb81b7e3c831:00759",
+        "0690bb81b7e3c831:01103",
+        "0690bb81b7e3c831:00736",
+        "0690bb81b7e3c831:00862",
+        "0690bb81b7e3c831:00745",
+        "0690bb81b7e3c831:00748",
+        "0690bb81b7e3c831:00747",
+        "0690bb81b7e3c831:00863",
+        "0690bb81b7e3c831:01108",
+        "0690bb81b7e3c831:00009",
+        "0690bb81b7e3c831:00813"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00739",
+        "0690bb81b7e3c831:00865"
+      ],
+      "used_graph": true,
+      "graph_share": 0.625,
+      "graph_only_share": 0.125,
+      "latency_ms": 653.3
+    },
+    {
+      "question_id": "d218fe64375bf74f",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00843",
+        "0690bb81b7e3c831:00901",
+        "0690bb81b7e3c831:00760",
+        "0690bb81b7e3c831:01001",
+        "0690bb81b7e3c831:00748",
+        "0690bb81b7e3c831:00844",
+        "0690bb81b7e3c831:00841",
+        "0690bb81b7e3c831:00999",
+        "0690bb81b7e3c831:00782",
+        "0690bb81b7e3c831:00776",
+        "0690bb81b7e3c831:00842",
+        "0690bb81b7e3c831:00831",
+        "0690bb81b7e3c831:00773",
+        "0690bb81b7e3c831:00838",
+        "0690bb81b7e3c831:00073",
+        "0690bb81b7e3c831:00866"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00117",
+        "0690bb81b7e3c831:00844"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.125,
+      "latency_ms": 653.4
+    },
+    {
+      "question_id": "3630b430b8d1ffaa",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00595",
+        "0690bb81b7e3c831:00593",
+        "0690bb81b7e3c831:00594",
+        "0690bb81b7e3c831:00607",
+        "0690bb81b7e3c831:00588",
+        "0690bb81b7e3c831:00592",
+        "0690bb81b7e3c831:00604",
+        "0690bb81b7e3c831:00795",
+        "0690bb81b7e3c831:00494",
+        "0690bb81b7e3c831:00591",
+        "0690bb81b7e3c831:00585",
+        "0690bb81b7e3c831:00873",
+        "0690bb81b7e3c831:00875",
+        "0690bb81b7e3c831:00590",
+        "0690bb81b7e3c831:00771",
+        "0690bb81b7e3c831:00606"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00494",
+        "0690bb81b7e3c831:00593"
+      ],
+      "used_graph": true,
+      "graph_share": 0.562,
+      "graph_only_share": 0.188,
+      "latency_ms": 633.8
+    },
+    {
+      "question_id": "b7ff39960590dcaf",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01047",
+        "0690bb81b7e3c831:00780",
+        "0690bb81b7e3c831:01009",
+        "0690bb81b7e3c831:01069",
+        "0690bb81b7e3c831:01010",
+        "0690bb81b7e3c831:01066",
+        "0690bb81b7e3c831:01067",
+        "0690bb81b7e3c831:00021",
+        "0690bb81b7e3c831:01003",
+        "0690bb81b7e3c831:01055",
+        "0690bb81b7e3c831:00012",
+        "0690bb81b7e3c831:01042",
+        "0690bb81b7e3c831:01025",
+        "0690bb81b7e3c831:01013",
+        "0690bb81b7e3c831:01051",
+        "0690bb81b7e3c831:01018"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:01009",
+        "0690bb81b7e3c831:01042"
+      ],
+      "used_graph": true,
+      "graph_share": 0.438,
+      "graph_only_share": 0.062,
+      "latency_ms": 632.6
+    },
+    {
+      "question_id": "8e5d7778e5b23b5b",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01063",
+        "0690bb81b7e3c831:00714",
+        "0690bb81b7e3c831:00987",
+        "0690bb81b7e3c831:00026",
+        "0690bb81b7e3c831:00772",
+        "0690bb81b7e3c831:00041",
+        "0690bb81b7e3c831:00988",
+        "0690bb81b7e3c831:01054"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00714",
+        "0690bb81b7e3c831:01063"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 629.5
+    },
+    {
+      "question_id": "f8f6897ca2a78d7b",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00632",
+        "0690bb81b7e3c831:00585",
+        "0690bb81b7e3c831:00631",
+        "0690bb81b7e3c831:00603",
+        "0690bb81b7e3c831:00607",
+        "0690bb81b7e3c831:00593",
+        "0690bb81b7e3c831:00600",
+        "0690bb81b7e3c831:00586",
+        "0690bb81b7e3c831:00606",
+        "0690bb81b7e3c831:00599",
+        "0690bb81b7e3c831:00602",
+        "0690bb81b7e3c831:00587",
+        "0690bb81b7e3c831:00584",
+        "0690bb81b7e3c831:00588",
+        "0690bb81b7e3c831:00532",
+        "0690bb81b7e3c831:00605"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00021",
+        "0690bb81b7e3c831:00632"
+      ],
+      "used_graph": true,
+      "graph_share": 0.625,
+      "graph_only_share": 0.0,
+      "latency_ms": 628.3
+    },
+    {
+      "question_id": "49965fba8f66fac9",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:01041",
+        "0690bb81b7e3c831:01043",
+        "0690bb81b7e3c831:01029",
+        "0690bb81b7e3c831:01044",
+        "0690bb81b7e3c831:01024",
+        "0690bb81b7e3c831:01025",
+        "0690bb81b7e3c831:01046",
+        "0690bb81b7e3c831:00659"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00666",
+        "0690bb81b7e3c831:01041"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 647.0
+    },
+    {
+      "question_id": "76a32976f9131582",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00266",
+        "0690bb81b7e3c831:00225",
+        "0690bb81b7e3c831:00273",
+        "0690bb81b7e3c831:00224",
+        "0690bb81b7e3c831:00236",
+        "0690bb81b7e3c831:00314",
+        "0690bb81b7e3c831:00139",
+        "0690bb81b7e3c831:00906",
+        "0690bb81b7e3c831:00223",
+        "0690bb81b7e3c831:00005",
+        "0690bb81b7e3c831:00283",
+        "0690bb81b7e3c831:00235",
+        "0690bb81b7e3c831:00233",
+        "0690bb81b7e3c831:00206",
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:00313"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00225",
+        "0690bb81b7e3c831:00266"
+      ],
+      "used_graph": true,
+      "graph_share": 0.375,
+      "graph_only_share": 0.0,
+      "latency_ms": 633.9
+    },
+    {
+      "question_id": "839ed6ba1b3a95a4",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00399",
+        "0690bb81b7e3c831:00392",
+        "0690bb81b7e3c831:00071",
+        "0690bb81b7e3c831:00100",
+        "0690bb81b7e3c831:00356",
+        "0690bb81b7e3c831:00334",
+        "0690bb81b7e3c831:00400",
+        "0690bb81b7e3c831:00391",
+        "0690bb81b7e3c831:00335",
+        "0690bb81b7e3c831:00394",
+        "0690bb81b7e3c831:00097",
+        "0690bb81b7e3c831:00393",
+        "0690bb81b7e3c831:00304",
+        "0690bb81b7e3c831:00337",
+        "0690bb81b7e3c831:00223",
+        "0690bb81b7e3c831:00338"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00099",
+        "0690bb81b7e3c831:00399"
+      ],
+      "used_graph": true,
+      "graph_share": 0.5,
+      "graph_only_share": 0.062,
+      "latency_ms": 667.7
+    },
+    {
+      "question_id": "6546c8a474ecaf84",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00177",
+        "0690bb81b7e3c831:00244",
+        "0690bb81b7e3c831:00236",
+        "0690bb81b7e3c831:00178",
+        "0690bb81b7e3c831:00314",
+        "0690bb81b7e3c831:00176",
+        "0690bb81b7e3c831:00237",
+        "0690bb81b7e3c831:00260",
+        "0690bb81b7e3c831:00261",
+        "0690bb81b7e3c831:00239",
+        "0690bb81b7e3c831:00266",
+        "0690bb81b7e3c831:00901",
+        "0690bb81b7e3c831:00235",
+        "0690bb81b7e3c831:00202",
+        "0690bb81b7e3c831:00265",
+        "0690bb81b7e3c831:00062"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00177",
+        "0690bb81b7e3c831:00236"
+      ],
+      "used_graph": true,
+      "graph_share": 0.312,
+      "graph_only_share": 0.062,
+      "latency_ms": 667.8
+    },
+    {
+      "question_id": "c392e160c077486c",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00314",
+        "0690bb81b7e3c831:00347",
+        "0690bb81b7e3c831:00266",
+        "0690bb81b7e3c831:00311",
+        "0690bb81b7e3c831:00437",
+        "0690bb81b7e3c831:00349",
+        "0690bb81b7e3c831:00282",
+        "0690bb81b7e3c831:00283"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00313",
+        "0690bb81b7e3c831:00437"
+      ],
+      "used_graph": false,
+      "graph_share": 0.0,
+      "graph_only_share": 0.0,
+      "latency_ms": 637.7
+    },
+    {
+      "question_id": "de73644392fe9073",
+      "type": "graph_linked",
+      "retrieved": [
+        "0690bb81b7e3c831:00774",
+        "0690bb81b7e3c831:00877",
+        "0690bb81b7e3c831:00878",
+        "0690bb81b7e3c831:00591",
+        "0690bb81b7e3c831:00859",
+        "0690bb81b7e3c831:00590",
+        "0690bb81b7e3c831:00856",
+        "0690bb81b7e3c831:00529",
+        "0690bb81b7e3c831:00857",
+        "0690bb81b7e3c831:00571",
+        "0690bb81b7e3c831:01070",
+        "0690bb81b7e3c831:00597",
+        "0690bb81b7e3c831:00758",
+        "0690bb81b7e3c831:00607",
+        "0690bb81b7e3c831:00593",
+        "0690bb81b7e3c831:00756"
+      ],
+      "relevant": [
+        "0690bb81b7e3c831:00008",
+        "0690bb81b7e3c831:00593"
+      ],
+      "used_graph": true,
+      "graph_share": 0.25,
+      "graph_only_share": 0.062,
+      "latency_ms": 643.5
+    }
+  ]
+}

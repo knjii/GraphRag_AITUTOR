@@ -22,6 +22,7 @@ from rag_textbook.config import Settings
 from rag_textbook.generation.answering import AnswerGenerator
 from rag_textbook.generation.history import ChatHistoryStore
 from rag_textbook.graph.extractor import EntityExtractor
+from rag_textbook.graph.failure_journal import JsonlFailureJournal
 from rag_textbook.logging_setup import configure_logging, get_logger
 from rag_textbook.retrieval.graph_retriever import GraphRetriever
 from rag_textbook.retrieval.pipeline import RetrievalPipeline
@@ -51,10 +52,17 @@ class AppContext:
     extraction_cache: ArtifactCache
 
     def entity_extractor(self) -> EntityExtractor:
+        # Журнал отказов кладётся рядом с прочим состоянием прогона: причина,
+        # по которой фрагмент ушёл в правиловый откат, иначе не сохраняется
+        # нигде — результат отката намеренно не кэшируется.
+        journal = JsonlFailureJournal(
+            self.settings.paths.state_dir / "extraction_failures.jsonl"
+        )
         return EntityExtractor(
             self.settings.graph,
             llm=self.llm,
             cache=self.extraction_cache,
+            journal=journal,
         )
 
     def health(self) -> dict[str, Any]:

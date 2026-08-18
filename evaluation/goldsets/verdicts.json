@@ -1,0 +1,35 @@
+{
+  "verdicts": [
+    {"question_id": "14c29f3edd5bc518", "verdict": "single_hop_enough", "note": "первый эталонный фрагмент — страница оглавления"},
+    {"question_id": "bd14a0a21fb5de10", "verdict": "single_hop_enough", "note": "первый фрагмент — пример гауссова исключения, к вопросу об ортогональных матрицах отношения не имеет"},
+    {"question_id": "abcfc839369fa081", "verdict": "single_hop_enough", "note": "нейросети и гауссовы процессы описаны во втором фрагменте вместе"},
+    {"question_id": "82e0ca56524d1a36", "verdict": "ok", "note": "диагонализуемость и внутреннее произведение действительно в разных фрагментах"},
+    {"question_id": "e83e3578eb943f10", "verdict": "unanswerable", "note": "битый LaTeX в вопросе; канонического вида квадратичной формы нет ни в одном фрагменте"},
+    {"question_id": "5c4338281feb38dd", "verdict": "single_hop_enough", "note": "первый эталонный фрагмент — страница оглавления"},
+    {"question_id": "57711cf74776eb1d", "verdict": "unanswerable", "note": "ответ генератора противоречит источнику: источник прямо говорит, что диагонализуемость не связана с обратимостью"},
+    {"question_id": "00775da85d928b40", "verdict": "single_hop_enough", "note": "вогнутость двойственной функции целиком в первом фрагменте"},
+    {"question_id": "ee1bc7d9c5080a01", "verdict": "ok", "note": "выпуклость и переход к размеру выборки — разные фрагменты"},
+    {"question_id": "b60af063837066d9", "verdict": "ok", "note": "определение группы и пример Z/nZ в разных фрагментах"},
+    {"question_id": "272c77dc78c33116", "verdict": "single_hop_enough", "note": "ответ выводится из второго фрагмента"},
+    {"question_id": "5207ce657e655931", "verdict": "unanswerable", "note": "первый фрагмент о преобразовании векторов, о ковариационной матрице в нём ничего нет"},
+    {"question_id": "91b558c5bb7c3f7d", "verdict": "ok", "note": "якобиан и замена переменных разнесены по главам"},
+    {"question_id": "735e5a34da1740c7", "verdict": "ok", "note": "пересечение плоскостей и определение аффинного подпространства — разные фрагменты"},
+    {"question_id": "74bba6eda1ac7745", "verdict": "ok", "note": "связь плотности и функции распределения плюс переход к функции переменной"},
+    {"question_id": "48e620a43672ee93", "verdict": "ok", "note": "неравенство слабой двойственности и множители в задаче SVM — разные фрагменты"},
+    {"question_id": "1027bb75cadf1ce8", "verdict": "single_hop_enough", "note": "первый эталонный фрагмент — страница оглавления"},
+    {"question_id": "dd05b17b79ad24a6", "verdict": "single_hop_enough", "note": "второй фрагмент об обновлении ковариаций в модели смеси, к вопросу отношения не имеет"},
+    {"question_id": "4c97c7af06f1d3b3", "verdict": "single_hop_enough", "note": "второй фрагмент — страница упражнений без содержания"},
+    {"question_id": "526234c38a34c466", "verdict": "single_hop_enough", "note": "второй фрагмент — страница упражнений без содержания"},
+
+    {"question_id": "3108984d1bda15f1", "verdict": "ok", "note": ""},
+    {"question_id": "eb4c7187d35eed0f", "verdict": "ok", "note": ""},
+    {"question_id": "0728fa2ad935e5b3", "verdict": "ok", "note": ""},
+    {"question_id": "99a991b24695bfe2", "verdict": "ok", "note": "ответ дословно в фрагменте, вопрос лексически лёгкий"},
+    {"question_id": "33c2411443bc48ef", "verdict": "leaky", "note": "вопрос ссылается на номер рисунка: учащийся так не спросит"},
+
+    {"question_id": "1c410c5463c96476", "verdict": "leaky", "note": "вопрос ссылается на номер формулы (8.24)"},
+    {"question_id": "1adfeb0060d2fb8d", "verdict": "ok", "note": ""},
+    {"question_id": "c8e2e79865aedbdf", "verdict": "leaky", "note": "«в описанном методе» — отсылка к тексту, которую промпт генерации прямо запрещает"},
+    {"question_id": "4118731d44d58b53", "verdict": "ok", "note": ""}
+  ]
+}

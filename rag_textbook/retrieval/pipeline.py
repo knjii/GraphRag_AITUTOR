@@ -23,6 +23,7 @@ from rag_textbook.clients.reranker import RerankerClient
 from rag_textbook.config import Settings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import ScoredChunk
+from rag_textbook.retrieval.diversity import apply_diversity
 from rag_textbook.retrieval.fusion import (
     deduplicate,
     enforce_minimum_graph_documents,
@@ -43,6 +44,11 @@ class RetrievalResult:
     route: RouteDecision | None = None
     timings_ms: dict[str, float] = field(default_factory=dict)
     channel_sizes: dict[str, int] = field(default_factory=dict)
+    # Кандидаты каналов до слияния и баллы реранкера. Нужны, чтобы снять
+    # слепок: по нему весь отбор и порядок пересчитываются офлайн бесплатно,
+    # без аренды сервера. Стоят они дёшево — идентификатор, ранг и число.
+    channel_candidates: dict[str, list[tuple[str, int, float]]] = field(default_factory=dict)
+    rerank_scores: dict[str, float] = field(default_factory=dict)
     # Подвопросы, на которые был разложен связывающий вопрос. Пусто, если
     # разложение выключено или вопрос делению не поддался.
     sub_questions: list[str] = field(default_factory=list)
@@ -107,6 +113,11 @@ def _merge_preserving_order(
             seen.add(item.chunk.id)
             result.append(item)
     return result
+
+
+def _traced(items: Sequence[ScoredChunk]) -> list[tuple[str, int, float]]:
+    """Кандидаты канала в виде, пригодном для слепка: кто, каким по счёту, с каким баллом."""
+    return [(item.chunk.id, index, float(item.score)) for index, item in enumerate(items)]
 
 
 def _reserve_graph_candidates(
@@ -290,7 +301,7 @@ class RetrievalPipeline:
 
     # ---------------------------------------------------------- реранкинг
 
-    def _rerank_width(self, top_k: int | None = None) -> int:
+    def _rerank_width(self, top_k: int | None = None, items: int = 0) -> int:
         """Сколько кандидатов должно остаться после реранкера.
 
         Не просто размер выдачи. За ним нужен запас: обязательная квота мест
@@ -306,7 +317,19 @@ class RetrievalPipeline:
         выключенной квоте — первые ``top_k`` элементов те же самые.
         """
         width = max(self.settings.reranker.top_n, top_k or self.settings.retrieval.top_k)
-        return width + self.settings.retrieval.min_graph_docs
+        width += self.settings.retrieval.min_graph_docs
+        # При снятии слепка баллы нужны по всему окну кандидатов, а не только
+        # по выдаче: без запаса нельзя проверить, не обрезает ли окно нужное
+        # ещё до ранжирования.
+        if self.settings.evaluation.trace_rerank_all and items:
+            return max(width, items)
+        # Разнообразию нужен запас: если передать ему ровно top_k элементов,
+        # переупорядочивать будет нечего, и настройка окажется молчаливо
+        # неработающей. Ровно так уже вышло с RETRIEVAL_MIN_GRAPH_DOCS,
+        # который добросовестно показывал ноль изменённых вопросов.
+        if self.settings.retrieval.diversity_mode != "off" and items:
+            return max(width, items)
+        return width
 
     def _rerank(
         self, query: str, items: list[ScoredChunk], top_k: int | None = None
@@ -314,7 +337,7 @@ class RetrievalPipeline:
         if not self.settings.reranker.enabled or not items:
             return items
         documents = [item.chunk.text for item in items]
-        top_n = min(len(items), self._rerank_width(top_k))
+        top_n = min(len(items), self._rerank_width(top_k, items=len(items)))
         pairs = self.reranker.rerank(query, documents, top_n)
         reranked: list[ScoredChunk] = []
         for index, score in pairs:
@@ -435,14 +458,37 @@ class RetrievalPipeline:
             limit=self.settings.reranker.candidates,
             quota=self.settings.retrieval.graph_candidate_quota,
         )
+
+        # Снятие слепка: баллы нужны шире, чем пул отбора, иначе гипотезу
+        # о ширине окна проверить нечем. Отбор при этом остаётся прежним —
+        # расширять его значило бы снять слепок с другой конфигурации.
+        wide_scores: dict[str, float] = {}
+        trace_pool = self.settings.evaluation.trace_pool
+        if trace_pool > len(candidates) and self.settings.reranker.enabled:
+            wide = _reserve_graph_candidates(
+                merged,
+                limit=trace_pool,
+                quota=self.settings.retrieval.graph_candidate_quota,
+            )
+            scored = self._rerank(rewritten, list(wide), top_k=len(wide))
+            wide_scores = {
+                item.chunk.id: float(item.rerank_score)
+                for item in scored
+                if item.rerank_score is not None
+            }
+
         if parts:
             reranked = self._rerank_by_parts(parts, candidates, top_k)
         else:
             reranked = self._rerank(rewritten, candidates, top_k)
         timings["rerank"] = (time.perf_counter() - stage) * 1000
 
+        # Разнообразие применяется ПОСЛЕ реранкинга и ДО отсечки: раньше
+        # реранкера ему нечего переупорядочивать, позже отсечки — уже поздно.
+        diversified = apply_diversity(reranked, self.settings, top_k=top_k)
+
         final = enforce_minimum_graph_documents(
-            reranked,
+            diversified,
             minimum=self.settings.retrieval.min_graph_docs,
             top_k=top_k,
         )
@@ -460,6 +506,16 @@ class RetrievalPipeline:
                 "graph": len(graph_items),
                 "merged": len(merged),
                 "final": len(final),
+            },
+            channel_candidates={
+                "base": _traced(base_items),
+                "graph": _traced(graph_items),
+            },
+            rerank_scores=wide_scores
+            or {
+                item.chunk.id: float(item.rerank_score)
+                for item in reranked
+                if item.rerank_score is not None
             },
         )
         logger.debug(
