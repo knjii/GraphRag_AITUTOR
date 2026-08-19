@@ -25,10 +25,19 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from rag_textbook.benchmarks.multihop_rag import build_goldset, load_corpus, original_type
+from rag_textbook.benchmarks.text_corpus import chunk_documents
+from rag_textbook.chunking.layout_chunker import LayoutAwareChunker
 from rag_textbook.config import Settings
 from rag_textbook.context import build_context
-from rag_textbook.models import Chunk
 from rag_textbook.evaluation import graph_offline as graph_offline_eval
+from rag_textbook.evaluation.ablation import (
+    ablate_question,
+    run_ablation,
+    summarize_ablation,
+)
+from rag_textbook.evaluation.answers import run_answer_evaluation, save_answer_evaluation
+from rag_textbook.evaluation.audit import audit_questions, summarize_audit
 from rag_textbook.evaluation.goldset import (
     GoldsetBuilder,
     load_goldset,
@@ -37,16 +46,17 @@ from rag_textbook.evaluation.goldset import (
 )
 from rag_textbook.evaluation.metrics import compare_paired, evaluate_retrieval, paired_bootstrap
 from rag_textbook.evaluation.replay import fidelity_report, replay
-from rag_textbook.evaluation.trace import NotReplayable, TraceSet, align_to_snapshot
-from rag_textbook.evaluation.verdicts import VerdictSet, apply_verdicts, summarize
 from rag_textbook.evaluation.runner import (
     load_outcomes,
     run_ab_comparison,
     run_retrieval_evaluation,
     save_evaluation,
 )
+from rag_textbook.evaluation.trace import NotReplayable, TraceSet, align_to_snapshot
+from rag_textbook.evaluation.verdicts import VerdictSet, apply_verdicts, summarize
 from rag_textbook.indexing.pipeline import IndexingPipeline
 from rag_textbook.logging_setup import configure_logging
+from rag_textbook.models import Chunk
 
 app = typer.Typer(help="RAG-ассистент по математической литературе", no_args_is_help=True)
 eval_app = typer.Typer(help="Оценка качества", no_args_is_help=True)
@@ -424,6 +434,17 @@ def goldset_build(
             )
         ),
     ] = 20260814,
+    verify: Annotated[
+        bool,
+        typer.Option(
+            "--verify",
+            help=(
+                "Приёмка абляцией: вопрос попадает в набор, только если ответ "
+                "не получается по одному фрагменту. Втрое дороже по вызовам "
+                "модели и настолько же честнее"
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Собирает эталонный набор из проиндексированных чанков."""
     settings = _settings()
@@ -449,13 +470,29 @@ def goldset_build(
         # а не по общим словам: на лексически похожих парах вклад графа
         # принципиально неизмерим.
         builder = GoldsetBuilder(context.llm, seed=seed, graph_store=context.graph_store)
-        produced = builder.build(chunks, single_count=single, multihop_count=multihop)
+        verifier = None
+        if verify:
+            by_id = {chunk.id: chunk for chunk in chunks}
+
+            def verifier(question):  # noqa: ANN001, ANN202
+                return ablate_question(context.llm, question, by_id).verdict
+
+        produced = builder.build(
+            chunks, single_count=single, multihop_count=multihop, verifier=verifier
+        )
         if append:
             questions, appended = merge_goldsets(existing, produced)
             console.print(
                 f"Сгенерировано {len(produced)}, добавлено новых {appended}, "
                 f"повторов отброшено {len(produced) - appended}"
             )
+        if verify:
+            rejected = {
+                name.removeprefix("вердикт:"): count
+                for name, count in builder.failures.items()
+                if name.startswith("вердикт:")
+            }
+            console.print(f"Приёмка абляцией: {rejected}")
         else:
             questions = produced
         path = save_goldset(questions, target)
@@ -548,6 +585,304 @@ def goldset_verdicts(
     save_goldset(updated, target)
     verified = sum(1 for item in updated if item.verified)
     console.print(f"Записано в {target}: проверенными помечены {verified} вопросов.")
+
+
+def _load_chunks_file(path: Path) -> dict[str, Chunk]:
+    """Читает фрагменты из выгрузки. Нужен офлайн, где хранилища нет."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    items = raw if isinstance(raw, list) else raw.get("chunks", [])
+    return {chunk.id: chunk for chunk in (Chunk.model_validate(item) for item in items)}
+
+
+def _find_chunks_file(explicit: Path | None) -> Path | None:
+    if explicit is not None:
+        return explicit
+    for directory in (Path("capture"), Path("artifacts/parsed")):
+        found = next(directory.glob("*_chunks.json"), None) if directory.exists() else None
+        if found is not None:
+            return found
+    return None
+
+
+@goldset_app.command("audit")
+def goldset_audit(
+    path: Annotated[Path | None, typer.Option(help="Путь к набору")] = None,
+    chunks: Annotated[
+        Path | None, typer.Option(help="Выгрузка фрагментов; по умолчанию ищется сама")
+    ] = None,
+    write: Annotated[
+        Path | None,
+        typer.Option(help="Сохранить очищенный набор (вопросы с изъянами исключаются)"),
+    ] = None,
+) -> None:
+    """Проверяет набор арифметикой, без модели и без сервера.
+
+    Ищет то, что можно найти наверняка: ссылки на номера формул, эталонные
+    фрагменты-оглавления, пустые ответы, повторы. Проверка «нужны ли оба
+    фрагмента» сюда не входит — она требует модели, см. ``goldset label``.
+    """
+    settings = _settings()
+    target = path or settings.evaluation.goldset_path
+    questions = load_goldset(target)
+    chunks_path = _find_chunks_file(chunks)
+    corpus = _load_chunks_file(chunks_path) if chunks_path else None
+    if corpus is None:
+        console.print(
+            "[yellow]Выгрузка фрагментов не найдена: проверки по фрагментам пропущены.[/yellow]"
+        )
+
+    audits = audit_questions(questions, corpus)
+    summary = summarize_audit(audits)
+
+    table = Table(title=f"Аудит набора: {summary['всего']} вопросов")
+    table.add_column("Изъян")
+    table.add_column("Вопросов", justify="right")
+    table.add_column("Доля", justify="right")
+    for defect, count in summary["изъяны"].items():
+        table.add_row(defect, str(count), f"{count / summary['всего']:.1%}")
+    console.print(table)
+
+    by_type = Table(title="По типам вопросов")
+    by_type.add_column("Тип")
+    by_type.add_column("Вопросов", justify="right")
+    by_type.add_column("Годных", justify="right")
+    for name, bucket in summary["по типам"].items():
+        total = bucket["вопросов"]
+        good = bucket.get("годен", 0)
+        by_type.add_row(name, str(total), f"{good} ({good / total:.0%})")
+    console.print(by_type)
+    console.print(f"Годных всего: [bold]{summary['годных']}[/bold] ({summary['доля годных']:.1%})")
+
+    if write is None:
+        console.print("[dim]Для сохранения очищенного набора добавьте --write путь.[/dim]")
+        return
+
+    usable = {item.question_id for item in audits if item.usable}
+    cleaned = [item for item in questions if item.id in usable]
+    save_goldset(cleaned, write)
+    console.print(
+        f"[green]Сохранено {len(cleaned)} вопросов в {write}.[/green] "
+        f"Исключено {len(questions) - len(cleaned)}."
+    )
+    console.print(
+        "[yellow]Прогоны по очищенному набору несравнимы с прежними напрямую: "
+        "изменился состав вопросов. Сравнивайте только между собой.[/yellow]"
+    )
+
+
+@goldset_app.command("label")
+def goldset_label(
+    path: Annotated[Path | None, typer.Option(help="Путь к набору")] = None,
+    verdicts: Annotated[
+        Path, typer.Option(help="Файл вердиктов")
+    ] = Path("evaluation/goldsets/verdicts.json"),
+    limit: Annotated[int, typer.Option(help="Ограничить число вопросов")] = 0,
+    only_linked: Annotated[
+        bool,
+        typer.Option("--only-linked", help="Только связывающие вопросы: изъян сосредоточен там"),
+    ] = False,
+    workers: Annotated[int, typer.Option(help="Параллельных вопросов")] = 4,
+) -> None:
+    """Размечает набор абляцией: нужны ли вопросу оба эталонных фрагмента.
+
+    Требует модели, поэтому работает на сервере. Ручные вердикты не
+    затираются: они остаются как есть, а совпадение с ними печатается —
+    это и есть мера доверия к машинной разметке.
+    """
+    settings = _settings()
+    target = path or settings.evaluation.goldset_path
+    questions = load_goldset(target)
+    if only_linked:
+        questions = [item for item in questions if len(item.gold_chunk_ids) > 1]
+    if limit:
+        questions = questions[:limit]
+
+    existing = VerdictSet.load(verdicts)
+    human = dict(existing.verdicts)
+
+    context = build_context(settings)
+    try:
+        corpus = {chunk.id: chunk for chunk in context.vector_store.iter_chunks()}
+        if not corpus:
+            console.print("[red]В хранилище нет фрагментов. Сначала выполните ingest.[/red]")
+            raise typer.Exit(code=1)
+        results = run_ablation(context.llm, questions, corpus, max_workers=workers)
+    finally:
+        context.close()
+
+    summary = summarize_ablation(results)
+    table = Table(title=f"Абляция: {len(results)} вопросов")
+    table.add_column("Тип")
+    table.add_column("Вердикт")
+    table.add_column("Количество", justify="right")
+    for question_type, bucket in sorted(summary["по типам"].items()):
+        for verdict, count in sorted(bucket.items(), key=lambda pair: -pair[1]):
+            table.add_row(question_type, verdict, str(count))
+    console.print(table)
+    if "доля одношаговых среди связывающих" in summary:
+        console.print(
+            "Связывающих вопросов, которым хватает одного фрагмента: "
+            f"[bold]{summary['доля одношаговых среди связывающих']:.0%}[/bold]"
+        )
+
+    # Совпадение с ручной проверкой — единственная доступная мера доверия
+    # к машинной разметке. Без неё её числа нечем поверить.
+    overlap = [item for item in results if item.question_id in human]
+    if overlap:
+        agreed = sum(1 for item in overlap if human[item.question_id].verdict == item.verdict)
+        console.print(
+            f"Совпадение с ручной проверкой: [bold]{agreed}/{len(overlap)}[/bold] "
+            f"({agreed / len(overlap):.0%})"
+        )
+    else:
+        console.print("[yellow]Пересечения с ручной проверкой нет: доверие не измерено.[/yellow]")
+
+    for item in results:
+        if item.question_id not in human:
+            existing.add(item.to_verdict())
+    existing.save(verdicts)
+    console.print(
+        f"[green]Записано в {verdicts}: всего вердиктов {len(existing)}, "
+        f"из них проверенных вручную {len(human)}.[/green]"
+    )
+
+
+# Коллекция по умолчанию. Считается один раз при загрузке модуля: если
+# считать её внутри команды, значение придёт из того же окружения, что
+# и рабочее, и защита от смешивания корпусов молча перестанет срабатывать.
+_DEFAULT_COLLECTION = "textbook_chunks"
+
+
+@eval_app.command("public")
+def eval_public(
+    corpus: Annotated[Path, typer.Option(help="corpus.json набора MultiHop-RAG")],
+    questions: Annotated[Path, typer.Option(help="MultiHopRAG.json набора")],
+    label: Annotated[str, typer.Option(help="Метка прогона")] = "multihop-rag",
+    limit: Annotated[int, typer.Option(help="Ограничить число вопросов")] = 0,
+    index: Annotated[
+        bool, typer.Option("--index/--no-index", help="Проиндексировать корпус перед замером")
+    ] = True,
+    with_graph: Annotated[
+        bool, typer.Option("--graph/--no-graph", help="Строить граф по чужому корпусу")
+    ] = True,
+) -> None:
+    """Прогоняет конвейер на публичном наборе MultiHop-RAG.
+
+    Зачем. Собственный набор отвечает, стало ли лучше, чем вчера; на вопрос
+    «как это выглядит рядом с другими системами» он не отвечает никак.
+    MultiHop-RAG размечен дословными цитатами, поэтому по нему считается
+    полнота поиска — ровно та величина, вокруг которой идёт весь проект, —
+    и его числа опубликованы.
+
+    Корпус чужой: новостной и английский. Выводы на наш учебник не
+    переносятся, это внешняя точка сравнения, а не замена своему набору.
+
+    Индексировать нужно **в отдельную коллекцию**: иначе чужие документы
+    смешаются с учебником и испортят все прежние замеры. Задайте
+    QDRANT_COLLECTION и NEO4J_DATABASE перед запуском.
+    """
+    settings = _settings()
+    console.print(
+        f"Коллекция: [bold]{settings.vector_store.collection}[/bold], "
+        f"база графа: [bold]{settings.graph.database}[/bold]"
+    )
+    if settings.vector_store.collection == _DEFAULT_COLLECTION and index:
+        console.print(
+            "[red]Коллекция та же, что у учебника. Чужой корпус смешается "
+            "с ним и испортит все прежние замеры. Задайте QDRANT_COLLECTION.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    documents = load_corpus(corpus)
+    console.print(f"Документов в корпусе: {len(documents)}")
+
+    context = build_context(settings)
+    try:
+        chunker = LayoutAwareChunker(settings.chunking)
+        chunks = chunk_documents(documents, chunker, source_label=label)
+        console.print(f"Чанков: {len(chunks)}")
+
+        if index:
+            pipeline = IndexingPipeline(context)
+            result = pipeline.index_chunks(chunks, source_label=label, with_graph=with_graph)
+            console.print(f"Проиндексировано: {result}")
+
+        gold, mapping = build_goldset(questions, chunks, limit=limit)
+        console.print(json.dumps(mapping.as_dict(), ensure_ascii=False, indent=2))
+        if mapping.coverage < 0.9:
+            console.print(
+                "[yellow]Свидетельств сопоставилось меньше 90%: часть эталона "
+                "потеряна, и число нельзя ставить рядом с опубликованными "
+                "без этой оговорки.[/yellow]"
+            )
+        if not gold:
+            console.print("[red]Ни одного вопроса не сопоставилось с корпусом.[/red]")
+            raise typer.Exit(code=1)
+
+        metrics, outcomes = run_retrieval_evaluation(context, gold)
+        path = save_evaluation(metrics, outcomes, settings, label=label)
+    finally:
+        context.close()
+
+    table = Table(title=f"MultiHop-RAG: {len(gold)} вопросов")
+    table.add_column("k", justify="right")
+    for name in ("recall", "precision", "ndcg", "hit_rate"):
+        table.add_column(name, justify="right")
+    for k, values in sorted(metrics.per_k.items()):
+        table.add_row(
+            str(k),
+            *[
+                f"{values.get(name, 0.0):.3f}"
+                for name in ("recall", "precision", "ndcg", "hit_rate")
+            ],
+        )
+    console.print(table)
+    console.print(f"MRR: [bold]{metrics.mrr:.3f}[/bold]")
+
+    # Разбивка по типам самого набора: опубликованные числа даны в ней,
+    # а наш словарь типов с ней не совпадает.
+    by_original: dict[str, list[Any]] = {}
+    outcome_by_id = {item.question_id: item for item in outcomes}
+    for question in gold:
+        outcome = outcome_by_id.get(question.id)
+        if outcome is not None:
+            by_original.setdefault(original_type(question), []).append(outcome)
+    if by_original:
+        types = Table(title="По типам вопросов набора")
+        types.add_column("Тип")
+        types.add_column("Вопросов", justify="right")
+        types.add_column("recall@k", justify="right")
+        for name, items in sorted(by_original.items()):
+            share = evaluate_retrieval(items, [settings.retrieval.top_k])
+            types.add_row(
+                name,
+                str(len(items)),
+                f"{share.per_k[settings.retrieval.top_k].get('recall', 0.0):.3f}",
+            )
+        console.print(types)
+
+    # Участие графа обязано печататься рядом с метриками, а не лежать в JSON.
+    # Без этого сравнение «с графом против без графа» выглядит осмысленным,
+    # даже когда графовый канал получил считанные проценты вопросов, —
+    # ровно так первый прогон на MultiHop-RAG дал «графа не видно»,
+    # хотя маршрутизатор направил в граф 6.6% вопросов из 2255.
+    routed = metrics.graph_usage.get("routed_to_graph", 0.0)
+    share = metrics.graph_usage.get("avg_graph_share_in_context", 0.0)
+    only = metrics.graph_usage.get("avg_graph_only_share", 0.0)
+    console.print(
+        f"Граф: маршрутизировано {routed:.1%} вопросов, "
+        f"нашёл {share:.1%} контекста, из них только он — {only:.1%}"
+    )
+    if settings.graph.retrieval_enabled and routed < 0.5:
+        console.print(
+            f"[red]В граф направлено лишь {routed:.1%} вопросов. Сравнение "
+            "с графом и без него на таком прогоне ничего не покажет: канал "
+            "почти не участвовал. Эвристический маршрутизатор настроен "
+            "на русские приметы и на чужом языке молчит — задайте "
+            "RETRIEVAL_ROUTER_MODE=always.[/red]"
+        )
+
+    console.print(f"Метрики сохранены: {path}")
 
 
 @eval_app.command("run")
@@ -671,6 +1006,18 @@ REPLAY_GRID: dict[str, list[dict[str, dict]]] = {
         {"reranker": {"candidates": 45}},
         {"reranker": {"candidates": 60}},
         {"reranker": {"candidates": 100}},
+    ],
+    # Проверка следствия из замера на MultiHop-RAG: там весь прирост графа
+    # лежал за восьмым местом, то есть граф находил нужное, а отбор его
+    # прятал. Если то же верно на учебнике, резерв мест под графовые
+    # фрагменты обязан поднять recall на малых k.
+    "П8-резерв-графа": [
+        {"retrieval": {"min_graph_docs": 1}},
+        {"retrieval": {"min_graph_docs": 2}},
+        {"retrieval": {"min_graph_docs": 3}},
+        {"retrieval": {"min_graph_docs": 4}},
+        {"retrieval": {"min_graph_docs": 2, "graph_candidate_quota": 12}},
+        {"retrieval": {"min_graph_docs": 3, "graph_candidate_quota": 16}},
     ],
     "П4-слияние": [
         {"retrieval": {"rrf_k": 20}},
@@ -813,6 +1160,120 @@ def eval_replay(
         "[dim]Офлайн годится, чтобы отбрасывать. Выжившее подтверждается "
         "прогоном на сервере — порядок обратный уже стоил одной ошибки.[/dim]"
     )
+
+
+@eval_app.command("answers")
+def eval_answers(
+    goldset: Annotated[Path | None, typer.Option(help="Путь к эталонному набору")] = None,
+    label: Annotated[str, typer.Option(help="Метка прогона")] = "answers",
+    limit: Annotated[int, typer.Option(help="Сколько вопросов взять, 0 — все")] = 0,
+    verified_only: Annotated[
+        bool,
+        typer.Option("--verified-only", help="Только вопросы, вычитанные вручную"),
+    ] = False,
+    judge: Annotated[
+        bool, typer.Option("--judge/--no-judge", help="Оценивать ответы моделью-судьёй")
+    ] = True,
+) -> None:
+    """Измеряет качество ОТВЕТОВ, а не только поиска.
+
+    Считаются две объективные величины — сохранность формул и доля выдумки, —
+    и две судейские: верность и обоснованность. Судьёй работает та же модель,
+    что и отвечает, поэтому судейские оценки годятся для сравнения
+    конфигураций между собой, но не как абсолютная оценка качества.
+
+    ``--verified-only`` берёт лишь вопросы, вычитанные человеком: на них
+    числа означают то, что написано, а не свойство разметки.
+    """
+    settings = _settings()
+    questions = load_goldset(goldset or settings.evaluation.goldset_path)
+    if verified_only:
+        questions = [item for item in questions if item.verified]
+        if not questions:
+            console.print(
+                "[red]Проверенных вопросов нет. Примените вердикты: "
+                "goldset verdicts --apply[/red]"
+            )
+            raise typer.Exit(code=1)
+    if limit > 0:
+        questions = questions[:limit]
+
+    # Фрагменты выбираются по документам эталонного набора, а не «первым
+    # попавшимся файлом». Именно так замер однажды посчитался по чужому
+    # корпусу: рядом лежали 609 файлов публичного набора, glob вернул
+    # новостную статью, эталонные фрагменты не нашлись — и сохранность
+    # формул молча не посчиталась ни для одного вопроса.
+    wanted = {doc_id for question in questions for doc_id in question.gold_doc_ids}
+    corpus: dict[str, Chunk] = {}
+    for path in sorted(Path(settings.paths.parsed_dir).glob("*_chunks.json")):
+        if wanted and path.stem.removesuffix("_chunks") not in wanted:
+            continue
+        corpus.update(
+            {
+                item.id: item
+                for item in (
+                    Chunk.model_validate(raw)
+                    for raw in json.loads(path.read_text(encoding="utf-8"))
+                )
+            }
+        )
+
+    # Молчаливый пропуск здесь недопустим: метрика сохранности формул просто
+    # исчезнет из сводки, а прогон будет выглядеть удачным.
+    covered = sum(
+        1
+        for question in questions
+        if any(chunk_id in corpus for chunk_id in question.gold_chunk_ids)
+    )
+    if not corpus or covered < len(questions) // 2:
+        console.print(
+            f"[red]Фрагменты эталонного набора не найдены "
+            f"({covered} из {len(questions)} вопросов). Сохранность формул "
+            f"не посчитается. Проверьте {settings.paths.parsed_dir}.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    context = build_context(settings)
+    try:
+        summary, outcomes = run_answer_evaluation(
+            context,
+            questions,
+            chunks=corpus,
+            judge=judge,
+            max_workers=max(1, settings.evaluation.max_concurrency // 2),
+        )
+        path = save_answer_evaluation(
+            summary, outcomes, settings.paths.metrics_dir, label=label
+        )
+    finally:
+        context.close()
+
+    table = Table(title=f"Качество ответов ({label}, {len(questions)} вопросов)")
+    table.add_column("Показатель")
+    table.add_column("Всего", justify="right")
+    types = sorted(summary["по типам"])
+    for name in types:
+        table.add_column(name, justify="right")
+
+    rows = ["отказов", "выдумка", "формулы дошли", "верность", "обоснованность"]
+    for row in rows:
+        values = [summary["всего"].get(row)]
+        values += [summary["по типам"][name].get(row) for name in types]
+        if all(value is None for value in values):
+            continue
+        table.add_row(
+            row,
+            *[f"{value:.3f}" if isinstance(value, (int, float)) else "—" for value in values],
+        )
+    console.print(table)
+
+    if judge:
+        console.print(
+            "[yellow]Судьёй работает та же модель, что и отвечает: она склонна "
+            "одобрять собственные ответы. Верность и обоснованность годятся "
+            "для сравнения конфигураций, но не как абсолютная оценка.[/yellow]"
+        )
+    console.print(f"Сохранено: {path}")
 
 
 @eval_app.command("ab")
@@ -977,6 +1438,38 @@ def eval_compare(
         )
 
     _render_paired(paired, (base_label, cand_label))
+
+
+@graph_app.command("drop")
+def graph_drop(
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Подтверждение: операция необратима на месте")
+    ] = False,
+) -> None:
+    """Удаляет граф целиком.
+
+    Neo4j Community держит одну базу, поэтому измерить граф на публичном
+    наборе можно, только сняв граф учебника. Потеря восполнима: граф
+    учебника пересобирается из кэша извлечения за минуты и без обращений
+    к модели — командой ``ingest --stages graph`` после
+    ``deploy/reset-stages.sh graphed``.
+    """
+    settings = _settings()
+    context = build_context(settings)
+    try:
+        store = context.graph_store
+        if store is None or not store.verify():
+            console.print("[red]Граф недоступен.[/red]")
+            raise typer.Exit(code=1)
+        before = store.stats()
+        console.print(f"Сейчас в графе: {before}")
+        if not yes:
+            console.print("[yellow]Показан предпросмотр. Для удаления добавьте --yes.[/yellow]")
+            return
+        result = store.clear()
+        console.print(f"[green]Удалено узлов: {result['nodes']}[/green]")
+    finally:
+        context.close()
 
 
 @graph_app.command("stats")

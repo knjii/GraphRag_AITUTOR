@@ -191,6 +191,61 @@ class IndexingPipeline:
         )
         return result.as_dict()
 
+    # --------------------------------------------------------- готовые чанки
+
+    def index_chunks(
+        self,
+        chunks: Sequence[Chunk],
+        *,
+        source_label: str,
+        with_graph: bool = True,
+    ) -> dict[str, Any]:
+        """Индексирует готовые чанки, минуя разбор PDF.
+
+        Нужно для публичных бенчмарков: их корпус раздаётся текстом, и гонять
+        его через печать в PDF и обратно значило бы мерить свойства этой
+        перегонки. Стадии ниже те же самые — векторизация и граф, — поэтому
+        измеряется именно наш поиск.
+
+        Чанки сохраняются в **отдельный подкаталог** по имени корпуса.
+        Не рядом с чанками учебника: инструменты, которые ищут выгрузку
+        фрагментов маской ``*_chunks.json``, взяли бы первый попавшийся
+        файл — и аудит эталонного набора молча посчитался бы по новостям.
+        """
+        if not chunks:
+            return {"чанков": 0}
+        by_doc: dict[str, list[Chunk]] = {}
+        for chunk in chunks:
+            by_doc.setdefault(chunk.doc_id, []).append(chunk)
+
+        logger.info(
+            "Индексация готовых чанков: корпус=%s, документов=%s, чанков=%s",
+            source_label,
+            len(by_doc),
+            len(chunks),
+        )
+        directory = Path(self.settings.paths.parsed_dir) / source_label
+        directory.mkdir(parents=True, exist_ok=True)
+        for doc_id, items in by_doc.items():
+            (directory / f"{doc_id}_chunks.json").write_text(
+                json.dumps([chunk.model_dump() for chunk in items], ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+        with self.monitor.stage("embed", source_label):
+            embedded = self._embed_and_store(list(chunks))
+
+        graph: dict[str, Any] = {"status": "skipped"}
+        if with_graph:
+            with self.monitor.stage("graph", source_label):
+                graph = self._build_graph(
+                    list(chunks),
+                    doc_id=source_label,
+                    doc_name=source_label,
+                    source_path=source_label,
+                )
+        return {"чанков": len(chunks), "векторизовано": embedded, "граф": graph}
+
     # ------------------------------------------------------------- документ
 
     def index_document(self, source_path: Path, force: bool = False) -> DocumentReport:

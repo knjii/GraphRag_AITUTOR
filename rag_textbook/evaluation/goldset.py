@@ -17,7 +17,7 @@ import json
 import random
 import re
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +90,60 @@ _LEAKY_PATTERNS = (
     "показанной на",
     "представленной на",
 )
+
+
+# Оглавление опознаётся по «отточию» — цепочке точек перед номером страницы.
+# Признак устойчивее номера страницы: оглавление встречается и в середине
+# книги, перед началом частей.
+_TOC_LEADER = re.compile(r"\.{2,}\s*\d{1,3}")
+
+_EXERCISE_HEADERS = ("УПРАЖНЕНИЯ", "УПРАЖНЕНИЕ", "ЗАДАЧИ", "EXERCISES")
+
+# Порог близости вопросов. 0.8 по множеству лемм — это уже перефразировка
+# одного вопроса, а не два разных вопроса на одну тему.
+def is_toc(chunk: Chunk) -> bool:
+    return len(_TOC_LEADER.findall(chunk.text or "")) >= 8
+
+
+def is_exercise(chunk: Chunk) -> bool:
+    return any(
+        str(header).upper().startswith(_EXERCISE_HEADERS) for header in (chunk.headers or [])
+    )
+
+
+def classify_chunk(chunk: Chunk) -> str:
+    if is_toc(chunk):
+        return "оглавление"
+    if is_exercise(chunk):
+        return "упражнения"
+    return "содержательный"
+
+
+
+# Ссылка на нумерованный объект: «формула (8.24)», «рис. 8.8», «раздел 7.3.1»,
+# «глава 4». Скобочный номер сам по себе взят в шаблон отдельно: в наборе
+# он встречается и без слова «формула».
+_NUMBERED = re.compile(
+    r"\(\d+\.\d+[а-яa-z]?\)"
+    r"|формул\w*\s*\(?\s*\d"
+    r"|уравнени\w*\s*\(?\s*\d"
+    r"|рис\w*\.?\s*\d"
+    r"|табл\w*\.?\s*\d"
+    r"|раздел\w*\s*\d"
+    r"|парагра\w*\s*\d"
+    r"|глав\w*\s*\d",
+    re.IGNORECASE,
+)
+
+
+
+def references_numbering(question: str) -> bool:
+    """Вопрос ссылается на номер формулы, рисунка или раздела.
+
+    Такой вопрос неразрешим поиском: номер живёт рядом с самой формулой,
+    и человек его не задаст — он спросит про предмет, а не про нумерацию.
+    """
+    return bool(_NUMBERED.search(question or ""))
 
 
 def looks_leaky(question: str) -> bool:
@@ -181,7 +235,12 @@ class GoldsetBuilder:
         candidates = [
             chunk
             for chunk in chunks
-            if len(chunk.text) >= 400 and len(content_terms(chunk.text, limit=40)) >= 12
+            if len(chunk.text) >= 400
+            and len(content_terms(chunk.text, limit=40)) >= 12
+            # Оглавление и страницы упражнений делят с вопросом лексику,
+            # поэтому охотно отбираются, но содержания в них нет: измерено,
+            # что на них приходится 17.7% связывающих вопросов набора.
+            and classify_chunk(chunk) == "содержательный"
         ]
         if not candidates:
             candidates = list(chunks)
@@ -241,6 +300,13 @@ class GoldsetBuilder:
             left, right = by_id.get(left_id), by_id.get(right_id)
             if left is None or right is None:
                 continue
+            # Пара со страницей упражнений или оглавлением выглядит связанной,
+            # но ответить по такому фрагменту нельзя, и вопрос выходит
+            # одношаговым при разметке «двухшаговый».
+            if not all(
+                classify_chunk(chunk) == "содержательный" for chunk in (left, right)
+            ):
+                continue
             left_terms, right_terms = terms(left_id), terms(right_id)
             union = left_terms | right_terms
             if not union:
@@ -271,6 +337,7 @@ class GoldsetBuilder:
         Требование «разные места» существенно: соседние чанки перекрываются,
         и вопрос по ним не будет многохоповым по-настоящему.
         """
+        chunks = [chunk for chunk in chunks if classify_chunk(chunk) == "содержательный"]
         terms_by_chunk = {chunk.id: set(content_terms(chunk.text, limit=60)) for chunk in chunks}
         by_id = {chunk.id: chunk for chunk in chunks}
         pairs: list[tuple[Chunk, Chunk, int]] = []
@@ -296,6 +363,22 @@ class GoldsetBuilder:
 
     # ---------------------------------------------------------------- сборка
 
+    def _accept(
+        self, question: GoldQuestion, verifier: Callable[[GoldQuestion], str] | None
+    ) -> GoldQuestion | None:
+        """Пропускает вопрос через приёмку и помечает прошедший проверенным."""
+        if verifier is None:
+            return question
+        verdict = verifier(question)
+        self.failures[f"вердикт:{verdict}"] += 1
+        if verdict != "ok":
+            return None
+        question.verified = True
+        question.notes = "абляция: оба фрагмента нужны" if len(
+            question.gold_chunk_ids
+        ) > 1 else "абляция: ответ получен по эталонному фрагменту"
+        return question
+
     def build(
         self,
         chunks: Sequence[Chunk],
@@ -303,7 +386,16 @@ class GoldsetBuilder:
         single_count: int = 100,
         multihop_count: int = 50,
         max_chars: int = 2500,
+        verifier: Callable[[GoldQuestion], str] | None = None,
     ) -> list[GoldQuestion]:
+        """Собирает набор.
+
+        ``verifier`` — приёмочная проверка. Получает готовый вопрос и
+        возвращает вердикт; всё, кроме ``ok``, в набор не попадает, а причина
+        записывается в журнал исходов. Именно здесь набор перестаёт расти
+        мусором: без приёмки половина «связывающих» вопросов оказывалась
+        одношаговой, и измеритель наполовину мерил не то, что заявлено.
+        """
         questions: list[GoldQuestion] = []
 
         selected = self._select_single(chunks, single_count)
@@ -317,17 +409,21 @@ class GoldsetBuilder:
                 self.failures["leaky"] += 1
                 logger.debug("Вопрос отброшен как привязанный к тексту: %s", question[:60])
                 continue
-            questions.append(
-                GoldQuestion(
-                    id=content_hash("single", chunk.id, question)[:16],
-                    question=question,
-                    answer=answer,
-                    gold_chunk_ids=[chunk.id],
-                    gold_doc_ids=[chunk.doc_id],
-                    question_type=self._classify(chunk),
-                    expected_hops=1,
-                )
+            if references_numbering(question):
+                self.failures["numbered_reference"] += 1
+                continue
+            candidate = GoldQuestion(
+                id=content_hash("single", chunk.id, question)[:16],
+                question=question,
+                answer=answer,
+                gold_chunk_ids=[chunk.id],
+                gold_doc_ids=[chunk.doc_id],
+                question_type=self._classify(chunk),
+                expected_hops=1,
             )
+            accepted = self._accept(candidate, verifier)
+            if accepted is not None:
+                questions.append(accepted)
 
         # Сначала пары, связанные структурно: только на них видно, даёт ли граф
         # что-то сверх лексического поиска. Лексически связанные пары добирают
@@ -356,21 +452,25 @@ class GoldsetBuilder:
             if looks_leaky(question):
                 self.failures["leaky"] += 1
                 continue
-            questions.append(
-                GoldQuestion(
-                    id=content_hash("multi", left.id, right.id, question)[:16],
-                    question=question,
-                    answer=answer,
-                    gold_chunk_ids=[left.id, right.id],
-                    gold_doc_ids=sorted({left.doc_id, right.doc_id}),
-                    # Отдельный тип, чтобы вклад графа считался именно там,
-                    # где лексический поиск заведомо не справляется.
-                    question_type=(
-                        "graph_linked" if (left.id, right.id) in graph_linked else "multi_hop"
-                    ),
-                    expected_hops=2,
-                )
+            if references_numbering(question):
+                self.failures["numbered_reference"] += 1
+                continue
+            candidate = GoldQuestion(
+                id=content_hash("multi", left.id, right.id, question)[:16],
+                question=question,
+                answer=answer,
+                gold_chunk_ids=[left.id, right.id],
+                gold_doc_ids=sorted({left.doc_id, right.doc_id}),
+                # Отдельный тип, чтобы вклад графа считался именно там,
+                # где лексический поиск заведомо не справляется.
+                question_type=(
+                    "graph_linked" if (left.id, right.id) in graph_linked else "multi_hop"
+                ),
+                expected_hops=2,
             )
+            accepted = self._accept(candidate, verifier)
+            if accepted is not None:
+                questions.append(accepted)
 
         logger.info(
             "Эталонный набор собран: всего=%s (одношаговых=%s, многошаговых=%s), исходы=%s",

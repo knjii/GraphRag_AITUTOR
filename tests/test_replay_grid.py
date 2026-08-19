@@ -65,6 +65,7 @@ def test_grid_covers_the_stated_hypotheses():
         "П2-реранкер",
         "П3-окно",
         "П4-слияние",
+        "П8-резерв-графа",
     }
 
 

@@ -318,6 +318,30 @@ class GraphStore:
             entities = int((record or {}).get("entities") or 0)
         return {"passages": passages, "orphan_entities": entities}
 
+    def clear(self) -> dict[str, int]:
+        """Удаляет из графа всё.
+
+        Нужно затем, что Neo4j Community держит одну базу: чтобы измерить
+        граф на чужом корпусе, граф учебника приходится снимать. Операция
+        обратима — граф учебника пересобирается из кэша извлечения, без
+        единого обращения к модели.
+
+        Возвращает, сколько узлов удалено: молчаливая очистка неотличима
+        от очистки, которая ничего не нашла.
+        """
+        with self._session() as session:
+            record = self._run(
+                session,
+                """
+                MATCH (n)
+                DETACH DELETE n
+                RETURN count(n) AS nodes
+                """,
+            ).single()
+        nodes = int((record or {}).get("nodes") or 0)
+        logger.warning("Граф очищен: удалено узлов %s", nodes)
+        return {"nodes": nodes}
+
     # ------------------------------------------------------------------ чтение
 
     def find_seed_entities(self, terms: Sequence[str], limit: int) -> list[dict[str, Any]]:

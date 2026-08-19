@@ -1,0 +1,64 @@
+
+[1;34m=== Переношу вердикты ручной проверки ===[0m
+│ graph_linked  │ unanswerable      │          3 │
+│ single_chunk  │ ok                │          4 │
+│ single_chunk  │ leaky             │          1 │
+└───────────────┴───────────────────┴────────────┘
+Связывающих вопросов, которым хватает одного фрагмента: 50% из 20 проверенных
+Записано в evaluation/goldsets/goldset.json: проверенными помечены 23 вопросов.
+
+[1;34m=== А. Нынешняя конфигурация: маршрут эвристикой, выдача 8 ===[0m
+14:29:10 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"Requested token count exceeds the model's maximum context length of 8192 tokens. You requested a total of 8488 tokens: 7720 tokens from the input messages and 768 tokens for the completion. Please reduce the number of tokens in the input messages or the completion to fit within the limit.","type":"BadRequestError","param":null,"code":400}
+14:29:12 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"The input (8296 tokens) is longer than the model's context length (8192 tokens).","type":"BadRequestError","param":null,"code":400}
+14:29:14 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"Requested token count exceeds the model's maximum context length of 8192 tokens. You requested a total of 8216 tokens: 7448 tokens from the input messages and 768 tokens for the completion. Please reduce the number of tokens in the input messages or the completion to fit within the limit.","type":"BadRequestError","param":null,"code":400}
+14:29:15 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"Requested token count exceeds the model's maximum context length of 8192 tokens. You requested a total of 8480 tokens: 7712 tokens from the input messages and 768 tokens for the completion. Please reduce the number of tokens in the input messages or the completion to fit within the limit.","type":"BadRequestError","param":null,"code":400}
+14:29:18 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"The input (8238 tokens) is longer than the model's context length (8192 tokens).","type":"BadRequestError","param":null,"code":400}
+14:29:20 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"Requested token count exceeds the model's maximum context length of 8192 tokens. You requested a total of 8748 tokens: 7980 tokens from the input messages and 768 tokens for the completion. Please reduce the number of tokens in the input messages or the completion to fit within the limit.","type":"BadRequestError","param":null,"code":400}
+14:29:31 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"Requested token count exceeds the model's maximum context length of 8192 tokens. You requested a total of 8676 tokens: 7908 tokens from the input messages and 768 tokens for the completion. Please reduce the number of tokens in the input messages or the completion to fit within the limit.","type":"BadRequestError","param":null,"code":400}
+14:29:33 ERROR   rag.generation.answering     Генерация ответа не удалась: LLM вернул 400: {"object":"error","message":"Requested token count exceeds the model's maximum context length of 8192 tokens. You requested a total of 8606 tokens: 7838 tokens from the input messages and 768 tokens for the completion. Please reduce the number of tokens in the input messages or the completion to fit within the limit.","type":"BadRequestError","param":null,"code":400}
+                Качество ответов (current, 388 вопросов)                
+┏━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Показатель     ┃ Всего ┃ formula_table ┃ graph_linked ┃ single_chunk ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ отказов        │ 0.003 │         0.000 │        0.005 │        0.000 │
+│ выдумка        │ 0.988 │         0.994 │        0.997 │        0.964 │
+│ формулы дошли  │ 0.052 │         0.099 │        0.010 │        0.109 │
+│ верность       │ 1.116 │         1.387 │        0.629 │        1.760 │
+│ обоснованность │ 1.131 │         1.415 │        0.640 │        1.771 │
+└────────────────┴───────┴───────────────┴──────────────┴──────────────┘
+Судьёй работает та же модель, что и отвечает: она склонна одобрять собственные 
+ответы. Верность и обоснованность годятся для сравнения конфигураций, но не как 
+абсолютная оценка.
+Сохранено: artifacts/metrics/answers_current.json
+
+[1;34m=== Б. Кандидат: маршрут всегда в граф, выдача 16 ===[0m
+               Качество ответов (candidate, 388 вопросов)               
+┏━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Показатель     ┃ Всего ┃ formula_table ┃ graph_linked ┃ single_chunk ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ отказов        │ 0.005 │         0.009 │        0.000 │        0.010 │
+│ выдумка        │ 0.982 │         0.990 │        0.990 │        0.957 │
+│ формулы дошли  │ 0.054 │         0.088 │        0.013 │        0.137 │
+│ верность       │ 1.678 │         1.840 │        1.484 │        1.875 │
+│ обоснованность │ 1.647 │         1.840 │        1.409 │        1.896 │
+└────────────────┴───────┴───────────────┴──────────────┴──────────────┘
+Судьёй работает та же модель, что и отвечает: она склонна одобрять собственные 
+ответы. Верность и обоснованность годятся для сравнения конфигураций, но не как 
+абсолютная оценка.
+Сохранено: artifacts/metrics/answers_candidate.json
+
+[1;34m=== В. Кандидат без судьи — только объективные величины ===[0m
+         Качество ответов (candidate-objective, 388 вопросов)          
+┏━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Показатель    ┃ Всего ┃ formula_table ┃ graph_linked ┃ single_chunk ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ отказов       │ 0.010 │         0.028 │        0.005 │        0.000 │
+│ выдумка       │ 0.983 │         0.991 │        0.991 │        0.959 │
+│ формулы дошли │ 0.050 │         0.083 │        0.010 │        0.135 │
+└───────────────┴───────┴───────────────┴──────────────┴──────────────┘
+Сохранено: artifacts/metrics/answers_candidate-objective.json
+
+[1;34m=== ОТВЕТЫ_ЗАМЕРЕНЫ ===[0m
+-rw-r--r-- 1 root root 1366583 Aug 19 15:46 artifacts/metrics/answers_candidate-objective.json
+-rw-r--r-- 1 root root 1479211 Aug 19 15:10 artifacts/metrics/answers_candidate.json
+-rw-r--r-- 1 root root  984560 Aug 19 14:29 artifacts/metrics/answers_current.json

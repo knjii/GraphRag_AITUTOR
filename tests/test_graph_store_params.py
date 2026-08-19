@@ -88,3 +88,39 @@ def test_no_query_uses_keyword_parameters() -> None:
     assert "session.run(" not in outside.replace("self._run(session,", ""), (
         "запрос обходит обёртку _run и может столкнуться с именами аргументов драйвера"
     )
+
+
+# ------------------------------------------------------------ очистка графа
+
+class _CountingSession(_RecordingSession):
+    """Возвращает число удалённых узлов, как настоящий драйвер."""
+
+    def single(self):  # noqa: ANN201
+        return {"nodes": 7}
+
+
+def test_clear_reports_how_much_it_deleted() -> None:
+    """Молчаливая очистка неотличима от очистки, которая ничего не нашла.
+
+    Различать их обязательно: граф учебника снимается ради замера на чужом
+    корпусе, и «удалено 0» означает, что снимать было нечего, — то есть
+    предыдущий шаг не отработал.
+    """
+    store = _store()
+    session = _CountingSession()
+    store._session = lambda: _as_context(session)  # type: ignore[method-assign]
+
+    assert store.clear() == {"nodes": 7}
+    cypher, _, _ = session.calls[0]
+    assert "DETACH DELETE" in cypher
+
+
+class _as_context:
+    def __init__(self, session) -> None:  # noqa: ANN001
+        self.session = session
+
+    def __enter__(self):  # noqa: ANN204
+        return self.session
+
+    def __exit__(self, *args) -> bool:  # noqa: ANN002
+        return False
