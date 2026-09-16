@@ -81,7 +81,7 @@ up)
     done
 
     say "Проверяю связность через приложение"
-    uv run rag-textbook health
+    uv run rag-textbook health --skip-llm
 
     say "Занятая видеопамять"
     nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu \

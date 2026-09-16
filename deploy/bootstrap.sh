@@ -172,23 +172,47 @@ grep -q 'UV_DEFAULT_INDEX' "$HOME/.bashrc" 2>/dev/null \
 ok "Индекс: $CHOSEN_INDEX"
 
 say "Ставлю зависимости проекта"
-# parsing тянет MinerU, dev — pytest и линтер для прогона тестов на месте.
-uv sync --extra parsing --extra dev
+# parsing тянет MinerU вместе с PyTorch — это около 2.5 ГБ и минуты установки.
+# Нужен он только там, где ДЕЙСТВИТЕЛЬНО разбирают PDF. Сессия, которая
+# считает метрики по готовым чанкам, обходится без него: MinerU вызывается
+# подпроцессом `python -m mineru.cli.client`, а не импортируется, поэтому
+# его отсутствие ничего не ломает на прочих стадиях.
+#
+#   WITH_PARSING=0 bash deploy/bootstrap.sh    только замеры, без разбора
+WITH_PARSING="${WITH_PARSING:-1}"
+if [ "$WITH_PARSING" = "1" ]; then
+    uv sync --extra parsing --extra dev
+else
+    warn_no_parsing=1
+    uv sync --extra dev
+fi
 ok "Зависимости установлены"
 
-say "Проверяю, что PyTorch видит CUDA"
-uv run python -c "
+if [ "$WITH_PARSING" = "1" ]; then
+    say "Проверяю, что PyTorch видит CUDA"
+    uv run python -c "
 import torch
 assert torch.cuda.is_available(), 'PyTorch не видит CUDA'
 print(f'torch {torch.__version__}, CUDA {torch.version.cuda}, {torch.cuda.get_device_name(0)}')
 "
-ok "PyTorch работает с GPU"
+    ok "PyTorch работает с GPU"
+else
+    printf '[1;33m    Разбор PDF пропущен: WITH_PARSING=0. Стадия parse работать не будет,
+'
+    printf '    остальные — да, если разбор уже лежит в artifacts/parsed.[0m
+'
+fi
 
 # ------------------------------------------------------------------- .env
 
 if [ ! -f .env ]; then
     say "Создаю .env"
     cp .env.example .env
+    # Переводы строк приводятся к unix-виду. Образец правится и на Windows,
+    # откуда в него попадает CR. В .env это ломает всё разом: сравнение
+    # настроек с кэшем считает одинаковые значения разными, а docker compose
+    # подставляет пароль с невидимым символом на конце.
+    sed -i 's/\r$//' .env
     # Пароль генерируется на сервере и никуда не передаётся.
     NEO4J_PASS=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
     sed -i "s|^NEO4J_PASSWORD=.*|NEO4J_PASSWORD=${NEO4J_PASS}|" .env

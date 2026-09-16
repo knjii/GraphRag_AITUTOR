@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from rag_textbook.clients.embeddings import EmbeddingClient, build_embedding_client
-from rag_textbook.clients.llm import LLMClient, build_llm_client
+from rag_textbook.clients.llm import ChatMessage, LLMClient, build_llm_client
 from rag_textbook.clients.reranker import RerankerClient, build_reranker_client
 from rag_textbook.config import Settings
+from rag_textbook.evaluation.answers import latin_share, looks_like_reasoning
 from rag_textbook.generation.answering import AnswerGenerator
 from rag_textbook.generation.history import ChatHistoryStore
 from rag_textbook.graph.extractor import EntityExtractor
@@ -65,7 +66,7 @@ class AppContext:
             journal=journal,
         )
 
-    def health(self) -> dict[str, Any]:
+    def health(self, *, check_llm: bool = True) -> dict[str, Any]:
         """Состояние зависимостей.
 
         Нужно и для ``/health`` сервиса, и для быстрой проверки после подъёма
@@ -102,6 +103,16 @@ class AppContext:
         else:
             report["components"]["graph"] = {"status": "disabled"}
 
+        # Генератор проверяется не всегда. При восстановлении индекса и графа
+        # модель не вызывается вовсе, и её отсутствие не повод останавливать
+        # подготовку: именно на этом застряло восстановление 2026-09-09.
+        llm_report = self._llm_health() if check_llm else {"status": "не проверялся"}
+        report["components"]["llm"] = llm_report
+        # Именно error, а не degraded: без работающего генератора замер
+        # ответов не имеет смысла, а идти дальше — тратить аренду.
+        if llm_report["status"] == "error":
+            report["status"] = "error"
+
         try:
             vector = self.embeddings.embed_query("проверка доступности")
             report["components"]["embeddings"] = {"status": "ok", "dimensions": len(vector)}
@@ -110,6 +121,65 @@ class AppContext:
             report["status"] = "error"
 
         return report
+
+    def _llm_health(self) -> dict[str, Any]:
+        """Отвечает ли модель, тем ли языком и с той ли длиной контекста.
+
+        Три вещи, каждая из которых однажды испортила замер молча.
+
+        Длина контекста движка обязана быть не меньше нашей: бюджет символов
+        считаем мы, а отвергает запрос движок, и расхождение проявляется
+        ошибкой 400 на длинных промптах посреди прогона.
+
+        Размышление в ответе означает, что настройка не доехала: в прогоне
+        2026-08-19 качество считалось по потоку мыслей, а не по ответам.
+
+        Ответ не по-русски — то же самое с другой стороны: модель отвечает,
+        но не то и не так, а метрики при этом считаются.
+        """
+        describe = getattr(self.llm, "describe_model", None)
+        info = describe() if callable(describe) else {}
+        payload: dict[str, Any] = {"status": "ok", "model": info.get("model", "")}
+
+        engine_length = info.get("max_model_len")
+        if engine_length:
+            payload["max_model_len"] = engine_length
+            if int(engine_length) < self.settings.llm.context_window:
+                payload["status"] = "error"
+                payload["error"] = (
+                    f"движок отдаёт {engine_length} токенов, а мы считаем бюджет "
+                    f"по {self.settings.llm.context_window}: поднимите "
+                    f"SGLANG_MAX_MODEL_LEN"
+                )
+                return payload
+
+        try:
+            reply = self.llm.chat(
+                [
+                    ChatMessage(
+                        role="user",
+                        content="Ответь одним словом по-русски: столица России?",
+                    )
+                ],
+                purpose="chat",
+                max_tokens=64,
+                temperature=0.0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "error", "error": str(exc)[:200]}
+
+        if not (reply or "").strip():
+            payload["status"] = "error"
+            payload["error"] = "пустой ответ: лимит токенов уходит на размышление"
+        elif looks_like_reasoning(reply):
+            payload["status"] = "error"
+            payload["error"] = "модель размышляет вместо ответа: LLM_CHAT_REASONING_EFFORT"
+        elif latin_share(reply) > 0.5:
+            payload["status"] = "error"
+            payload["error"] = f"ответ не по-русски: {reply[:60]!r}"
+        else:
+            payload["reply"] = reply.strip()[:40]
+        return payload
 
     def close(self) -> None:
         for resource in (self.embeddings, self.llm, self.reranker):

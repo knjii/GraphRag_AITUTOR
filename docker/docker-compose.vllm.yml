@@ -6,6 +6,12 @@
 #   # затем в .env: LLM_BASE_URL=http://127.0.0.1:8000/v1
 #
 # Оба движка выключены профилями и не поднимаются по умолчанию.
+
+# Имя проекта обязано совпадать с основным compose-файлом. Без него docker
+# берёт имя каталога («docker»), заводит ОТДЕЛЬНЫЕ тома с тем же коротким
+# именем — и модель, которая уже лежит в кэше, скачивается заново. Ошибка
+# тихая: контейнер поднимается, просто на полчаса позже.
+name: rag-textbook
 # Включать имеет смысл только после замера `rag-textbook bench`:
 # если коэффициент масштабирования у Ollama близок к единице, переход даст
 # кратный выигрыш; если Ollama и так батчит — выигрыш будет скромным.
@@ -80,8 +86,14 @@ services:
       - "127.0.0.1:8001:8000"
     volumes:
       - hf_cache:/root/.cache/huggingface
+      # Отдельный том под GGUF: файлы по 13-17 ГБ, и скачивать их заново
+      # при каждой пересборке контейнера — это оплаченное время карты.
+      - gguf_models:/models
     environment:
       HUGGING_FACE_HUB_TOKEN: "${HF_TOKEN:-}"
+    # SGLANG_EXTRA пусто для обычных весов safetensors. Для GGUF туда идёт
+    # «--load-format gguf --quantization gguf»: путь к файлу задаётся тем же
+    # SGLANG_MODEL, а формат движок сам не угадывает.
     command: >
       python3 -m sglang.launch_server
       --model-path ${SGLANG_MODEL:-Qwen/Qwen3.5-4B}
@@ -90,6 +102,7 @@ services:
       --mem-fraction-static ${SGLANG_GPU_FRACTION:-0.55}
       --context-length ${SGLANG_MAX_MODEL_LEN:-8192}
       --grammar-backend xgrammar
+      ${SGLANG_EXTRA:-}
     shm_size: "8gb"
     deploy:
       resources:
@@ -107,5 +120,7 @@ services:
 
 volumes:
   hf_cache:
+    external: false
+  gguf_models:
     external: false
     name: rag-textbook_hf_cache

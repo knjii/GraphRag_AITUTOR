@@ -52,8 +52,12 @@ Write-Host "`n==> Создаю каталоги" -ForegroundColor Cyan
 Invoke-Remote "mkdir -p $RemoteDir/documents/pdf_docs $RemoteDir/deploy"
 
 Write-Host "`n==> Копирую код" -ForegroundColor Cyan
+# capture обязателен: там лежат слепки поиска, по которым идут замеры
+# с замороженным контекстом. Без них блок сравнения генераторов падает
+# на первой строке, уже на оплаченной карте.
+# scripts — офлайн-разборы; они мелкие, а искать их потом дороже.
 $codePaths = @(
-    "rag_textbook", "tests", "docker", "deploy", "docs",
+    "rag_textbook", "tests", "docker", "deploy", "docs", "scripts", "capture",
     "pyproject.toml", ".env.example", "README.md"
 )
 foreach ($path in $codePaths) {

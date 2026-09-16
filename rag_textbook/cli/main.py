@@ -186,11 +186,23 @@ def _settings() -> Settings:
 
 
 @app.command()
-def health() -> None:
+def health(
+    skip_llm: Annotated[
+        bool,
+        typer.Option(
+            "--skip-llm",
+            help=(
+                "Не проверять генератор. Нужно при восстановлении индекса "
+                "и графа: там модель не вызывается, а её отсутствие иначе "
+                "останавливает всю подготовку"
+            ),
+        ),
+    ] = False,
+) -> None:
     """Проверяет доступность хранилищ и моделей."""
     context = build_context(_settings())
     try:
-        report = context.health()
+        report = context.health(check_llm=not skip_llm)
     finally:
         context.close()
 
@@ -1174,6 +1186,15 @@ def eval_answers(
     judge: Annotated[
         bool, typer.Option("--judge/--no-judge", help="Оценивать ответы моделью-судьёй")
     ] = True,
+    from_trace: Annotated[
+        Path | None,
+        typer.Option(
+            help=(
+                "Слепок поиска: контекст берётся из него, поиск не выполняется. "
+                "Нужно для сравнения генераторов на одном и том же материале"
+            )
+        ),
+    ] = None,
 ) -> None:
     """Измеряет качество ОТВЕТОВ, а не только поиска.
 
@@ -1233,6 +1254,19 @@ def eval_answers(
         )
         raise typer.Exit(code=1)
 
+    frozen: dict[str, list[str]] | None = None
+    if from_trace is not None:
+        trace_set = TraceSet.load(from_trace)
+        frozen = {item.question_id: list(item.final) for item in trace_set.traces}
+        questions = [item for item in questions if item.id in frozen]
+        console.print(
+            f"Контекст из слепка: вопросов с контекстом {len(questions)}, "
+            f"поиск выполняться не будет"
+        )
+        if not questions:
+            console.print("[red]Слепок не пересекается с набором по вопросам.[/red]")
+            raise typer.Exit(code=1)
+
     context = build_context(settings)
     try:
         summary, outcomes = run_answer_evaluation(
@@ -1240,8 +1274,32 @@ def eval_answers(
             questions,
             chunks=corpus,
             judge=judge,
+            frozen_contexts=frozen,
             max_workers=max(1, settings.evaluation.max_concurrency // 2),
         )
+        # Имя модели спрашивается У ДВИЖКА, а не берётся из настроек.
+        # Разница не теоретическая: при сравнении моделей движок поднимается
+        # отдельно от .env, и в замере Muse Glimmer провенанс записал
+        # «Qwen/Qwen3.5-4B» — имя из конфигурации, а не то, что отвечало.
+        # Для сравнения моделей это ровно то поле, которое обязано быть верным.
+        describe = getattr(context.llm, "describe_model", None)
+        served = (describe() or {}).get("model") if callable(describe) else ""
+        summary["чем сделано"] = {
+            "модель ответа": served or settings.llm.model_for("chat"),
+            "модель по настройке": settings.llm.model_for("chat"),
+            "модель судьи": settings.llm.model_for("judge") if judge else "—",
+            "промпт": settings.prompts.fingerprint(),
+            "окно контекста": settings.llm.context_window,
+            "выдача": settings.retrieval.top_k,
+            "контекст": "из слепка" if frozen is not None else "из поиска",
+        }
+        if judge and settings.llm.model_for("judge") == settings.llm.model_for("chat"):
+            console.print(
+                "[yellow]Судья и генератор — одна и та же модель. Она склонна "
+                "одобрять собственные ответы: судейские числа годятся для "
+                "сравнения конфигураций, но не как оценка качества. "
+                "Задайте LLM_JUDGE_MODEL другого семейства.[/yellow]"
+            )
         path = save_answer_evaluation(
             summary, outcomes, settings.paths.metrics_dir, label=label
         )
@@ -1255,7 +1313,16 @@ def eval_answers(
     for name in types:
         table.add_column(name, justify="right")
 
-    rows = ["отказов", "выдумка", "формулы дошли", "верность", "обоснованность"]
+    rows = [
+        "отказов",
+        "размышление вместо ответа",
+        "ответ не по-русски",
+        "опора на контекст",
+        "хотя бы одна формула",
+        "формулы дошли",
+        "верность",
+        "обоснованность",
+    ]
     for row in rows:
         values = [summary["всего"].get(row)]
         values += [summary["по типам"][name].get(row) for name in types]

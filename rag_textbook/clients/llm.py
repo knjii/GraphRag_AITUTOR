@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 import threading
 from collections.abc import Sequence
 from pathlib import Path
@@ -83,6 +84,29 @@ def _to_openai_messages(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]
                 parts.append({"type": "image_url", "image_url": {"url": data_url}})
         result.append({"role": message.role, "content": parts})
     return result
+
+
+# Блок размышления рассуждающей модели. Qwen3.5 в режиме размышления
+# возвращает его прямо в content, а не отдельным полем, и без вырезания
+# он доходит до пользователя. Измерено 2026-08-19: 46% ответов содержали
+# тег think, 60% начинались с рассуждения по-английски. Метрики при этом
+# считались по потоку мыслей, а не по ответу.
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_UNCLOSED_THINK = re.compile(r"^\s*<think>.*", re.DOTALL | re.IGNORECASE)
+
+
+def strip_reasoning(text: str) -> str:
+    """Убирает цепочку рассуждений из ответа.
+
+    Закрытый блок вырезается целиком. Незакрытый означает, что лимит токенов
+    кончился посреди размышления и ответа в тексте нет вовсе — тогда
+    возвращается пустая строка, и вызывающий код честно увидит отказ,
+    а не обрывок чужих мыслей.
+    """
+    cleaned = _THINK_BLOCK.sub("", text or "").strip()
+    if _UNCLOSED_THINK.match(cleaned):
+        return ""
+    return cleaned
 
 
 class OpenAICompatibleLLMClient:
@@ -169,10 +193,39 @@ class OpenAICompatibleLLMClient:
         content = message.get("content")
         if isinstance(content, list):
             # Некоторые серверы отдают контент частями.
-            return "".join(
-                part.get("text", "") for part in content if isinstance(part, dict)
-            ).strip()
-        return str(content or "").strip()
+            return strip_reasoning(
+                "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            )
+        return strip_reasoning(str(content or ""))
+
+    def describe_model(self, purpose: str = "chat") -> dict[str, Any]:
+        """Что за модель отвечает по этому адресу и с какой длиной контекста.
+
+        Нужно из-за расхождения, которое иначе проявляется поздно и невнятно.
+        Бюджет символов считаем мы, по ``LLM_CONTEXT_WINDOW``; отвергает
+        запрос движок, по своей ``--context-length``. Если движок короче,
+        длинные промпты падают ошибкой 400 где-то посреди замера, а причина
+        выглядит как поломка модели.
+
+        Возвращает пустой словарь, если сервер не отдаёт эти сведения:
+        отсутствие проверки не должно быть отказом.
+        """
+        try:
+            response = self._sync_client().get(
+                f"{self.settings.base_url_for(purpose)}/models"  # type: ignore[arg-type]
+            )
+            if response.status_code >= 400:
+                return {}
+            entries = response.json().get("data") or []
+        except Exception:  # noqa: BLE001
+            return {}
+        if not entries:
+            return {}
+        first = entries[0]
+        # Имена полей разнятся по движкам: sglang отдаёт max_model_len,
+        # vllm — его же, ollama не отдаёт ничего.
+        length = first.get("max_model_len") or first.get("context_length")
+        return {"model": first.get("id", ""), "max_model_len": length}
 
     def chat(
         self,
@@ -188,7 +241,8 @@ class OpenAICompatibleLLMClient:
         def call() -> str:
             with self._semaphore:
                 response = self._sync_client().post(
-                    f"{self._base_url}/chat/completions", json=payload
+                    f"{self.settings.base_url_for(purpose)}/chat/completions",  # type: ignore[arg-type]
+                    json=payload,
                 )
             if response.status_code >= 400:
                 raise RuntimeError(f"LLM вернул {response.status_code}: {response.text[:500]}")
@@ -215,7 +269,8 @@ class OpenAICompatibleLLMClient:
             assert self._asemaphore is not None
             async with self._asemaphore:
                 response = await self._async_client().post(
-                    f"{self._base_url}/chat/completions", json=payload
+                    f"{self.settings.base_url_for(purpose)}/chat/completions",  # type: ignore[arg-type]
+                    json=payload,
                 )
             if response.status_code >= 400:
                 raise RuntimeError(f"LLM вернул {response.status_code}: {response.text[:500]}")

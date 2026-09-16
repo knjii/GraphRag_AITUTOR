@@ -16,7 +16,16 @@ from rag_textbook.utils.stopwords import STOPWORDS
 
 _TOKEN_RE = re.compile(r"[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё0-9_\-]{1,63}")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+|\n{2,}")
-_LATEX_INLINE_RE = re.compile(r"\$\$?[^$]+\$\$?")
+# Формулы отделяются от прозы только внутри своей пары знаков доллара.
+# Прежнее выражение «$ что угодно кроме $ затем $» ловило и текст МЕЖДУ
+# формулами: при нечётном числе долларов в абзаце закрывающий знак одной
+# формулы становился открывающим для следующего совпадения, и в «формулу»
+# попадал абзац целиком. На замере сохранности формул это раздувало
+# знаменатель: медианно 7 «формул» на фрагмент вместо настоящих одной-двух.
+_LATEX_INLINE_RE = re.compile(r"\$\$.+?\$\$|\$[^$]+?\$", re.DOTALL)
+
+# Два и более слова кириллицей внутри «формулы» означают, что это проза.
+_CYRILLIC_WORD_RE = re.compile(r"[а-яёА-ЯЁ]{3,}")
 
 
 # Термины предметной области, которые нельзя лемматизировать до неузнаваемости
@@ -166,8 +175,28 @@ def near_duplicate(text_a: str, text_b: str, threshold: float = 0.92) -> bool:
     return jaccard(terms_a, terms_b) >= threshold
 
 
+def strip_latex(text: str) -> str:
+    """Текст без формул. Нужно там, где формулы исказили бы подсчёт:
+    например, доля латиницы в правильном ответе про матрицы законно
+    выше половины, потому что ответ состоит из LaTeX."""
+    return _LATEX_INLINE_RE.sub(" ", text or "")
+
+
 def extract_latex_fragments(text: str, limit: int = 32) -> list[str]:
-    return [match.group(0) for match in _LATEX_INLINE_RE.finditer(text or "")][:limit]
+    """Формулы текста в исходной записи.
+
+    Куски, где два и более слова кириллицей, отбрасываются: это не формула,
+    а проза, попавшая между знаками доллара при разборе PDF.
+    """
+    out: list[str] = []
+    for match in _LATEX_INLINE_RE.finditer(text or ""):
+        fragment = match.group(0)
+        if len(_CYRILLIC_WORD_RE.findall(fragment)) >= 2:
+            continue
+        out.append(fragment)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def truncate(text: str, max_chars: int) -> str:

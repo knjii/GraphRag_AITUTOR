@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from typing import Annotated, Literal
@@ -290,9 +291,30 @@ class LLMSettings(_Base):
     vision_model: str = Field(default="qwen2.5vl:3b", alias="LLM_VISION_MODEL")
     extraction_model: str = Field(default="", alias="LLM_EXTRACTION_MODEL")
     judge_model: str = Field(default="", alias="LLM_JUDGE_MODEL")
+    # Ответ пользователю и служебные вызовы разделены намеренно.
+    #
+    # Литература утверждает, что модели до 7B плохо используют извлечённый
+    # контекст, и проверить это можно только так: крупная модель отвечает,
+    # мелкая продолжает переписывать вопрос и решать маршрут. Без разделения
+    # опыт «крупная модель только на генерации» поставить нельзя — поменяется
+    # сразу всё, и приписать эффект будет нечему.
+    chat_model: str = Field(default="", alias="LLM_CHAT_MODEL")
+    utility_model: str = Field(default="", alias="LLM_UTILITY_MODEL")
+    # Свой адрес на назначение. Крупная модель занимает карту целиком,
+    # поэтому мелкая живёт на отдельном сервере (ollama), а не рядом.
+    chat_base_url: str = Field(default="", alias="LLM_CHAT_BASE_URL")
+    utility_base_url: str = Field(default="", alias="LLM_UTILITY_BASE_URL")
+    vision_base_url: str = Field(default="", alias="LLM_VISION_BASE_URL")
+    extraction_base_url: str = Field(default="", alias="LLM_EXTRACTION_BASE_URL")
+    judge_base_url: str = Field(default="", alias="LLM_JUDGE_BASE_URL")
     temperature: float = Field(default=0.1, ge=0.0, le=2.0, alias="LLM_TEMPERATURE")
     max_tokens: int = Field(default=768, ge=16, alias="LLM_MAX_TOKENS")
-    context_window: int = Field(default=8192, ge=512, alias="LLM_CONTEXT_WINDOW")
+    # Окно контекста. 8192 было выбрано при развёртывании и оказалось
+    # произвольным потолком: при выдаче 16 фрагментов бюджет падает
+    # до 768 символов на фрагмент, а 99.8% наших чанков длиннее —
+    # 43% формул отрезается до попадания в промпт (измерено 2026-08-19).
+    # Значение обязано совпадать с --context-length у сервера инференса.
+    context_window: int = Field(default=16384, ge=512, alias="LLM_CONTEXT_WINDOW")
     timeout_seconds: float = Field(default=300.0, gt=0, alias="LLM_TIMEOUT_SECONDS")
     max_retries: int = Field(default=3, ge=0, le=10, alias="LLM_MAX_RETRIES")
     max_concurrency: int = Field(default=4, ge=1, le=64, alias="LLM_MAX_CONCURRENCY")
@@ -307,7 +329,12 @@ class LLMSettings(_Base):
     reasoning_effort: str = Field(default="none", alias="LLM_REASONING_EFFORT")
     # Для ответов пользователю размышление может быть полезно, поэтому оно
     # управляется отдельно и по умолчанию остаётся на усмотрение движка.
-    chat_reasoning_effort: str = Field(default="", alias="LLM_CHAT_REASONING_EFFORT")
+    # Пустое значение означало «решает модель», и Qwen3.5 решала размышлять.
+    # Измерено 2026-08-19: при лимите ответа в 768 токенов размышление
+    # съедало его целиком, ответ обрывался на середине мысли, а до метрик
+    # доходил поток рассуждений вместо ответа. Включать обратно можно,
+    # но только вместе с увеличением LLM_MAX_TOKENS.
+    chat_reasoning_effort: str = Field(default="none", alias="LLM_CHAT_REASONING_EFFORT")
 
     def reasoning_effort_for(self, purpose: LLMPurpose) -> str:
         # Размышление оставляем включаемым ровно для одного случая — финального
@@ -317,16 +344,39 @@ class LLMSettings(_Base):
         # целиком, возвращая пустой content. Отличать «служебный вызов
         # текстовой моделью» от «ответа пользователю» приходится явно, потому
         # что модель у них одна и та же.
-        return self.chat_reasoning_effort if purpose == "chat" else self.reasoning_effort
+        value = self.chat_reasoning_effort if purpose == "chat" else self.reasoning_effort
+        # `off` — единственный способ не посылать параметр вовсе: пустая строка
+        # в окружении означает «не задано» и заменяется значением по умолчанию,
+        # поэтому отключить отправку ею нельзя. Нужно для движков, которые
+        # на незнакомое поле отвечают ошибкой.
+        return "" if value == "off" else value
 
     def model_for(self, purpose: LLMPurpose) -> str:
-        if purpose == "vision":
-            return self.vision_model or self.model
-        if purpose == "extraction":
-            return self.extraction_model or self.model
-        if purpose == "judge":
-            return self.judge_model or self.model
-        return self.model
+        by_purpose = {
+            "vision": self.vision_model,
+            "extraction": self.extraction_model,
+            "judge": self.judge_model,
+            "chat": self.chat_model,
+            "utility": self.utility_model,
+        }
+        return by_purpose.get(purpose) or self.model
+
+    def base_url_for(self, purpose: LLMPurpose) -> str:
+        """Адрес сервера для назначения.
+
+        Пустое значение означает «там же, где всё остальное». Разные адреса
+        нужны ровно для одного опыта: крупная модель отвечает на вопросы,
+        мелкая обслуживает служебные вызовы. Обе разом в память карты
+        не помещаются, поэтому живут на разных серверах.
+        """
+        by_purpose = {
+            "vision": self.vision_base_url,
+            "extraction": self.extraction_base_url,
+            "judge": self.judge_base_url,
+            "chat": self.chat_base_url,
+            "utility": self.utility_base_url,
+        }
+        return (by_purpose.get(purpose) or self.base_url).rstrip("/")
 
 
 class VectorStoreSettings(_Base):
@@ -683,8 +733,20 @@ class PromptSettings(_Base):
             "и техническим дисциплинам.\n"
             "Отвечай только по предоставленному контексту. Если контекста недостаточно, "
             "прямо скажи об этом, а не додумывай.\n"
-            "Формулы приводи в LaTeX. После каждого утверждения ставь ссылку на источник "
-            "в формате [номер], соответствующий номеру фрагмента контекста."
+            "Отвечай на русском языке и сразу по существу: без вступлений, "
+            "без пересказа вопроса и без описания хода рассуждений.\n"
+            "\n"
+            "ГЛАВНОЕ ПРАВИЛО. Формулы, определения и обозначения переноси "
+            "из контекста ДОСЛОВНО, символ в символ, в исходной записи LaTeX. "
+            "Пересказывать формулу словами запрещено: «произведение матрицы "
+            "на транспонированную равно единичной» — это не ответ; ответ "
+            "выглядит как $$A A^{\\mathrm{T}} = I$$. Если в контексте есть "
+            "формула, отвечающая на вопрос, она обязана появиться в ответе "
+            "целиком и без изменений. Не переименовывай переменные, "
+            "не упрощай выражения, не опускай индексы.\n"
+            "\n"
+            "После каждого утверждения ставь ссылку на источник в формате "
+            "[номер], соответствующий номеру фрагмента контекста."
         ),
         alias="QA_SYSTEM_PROMPT",
     )
@@ -696,7 +758,38 @@ class PromptSettings(_Base):
         ),
         alias="CONTEXTUALIZE_Q_SYSTEM_PROMPT",
     )
-    prompt_version: str = Field(default="v2", alias="PROMPT_VERSION")
+    # Порядок фрагментов в контексте.
+    #
+    # `edges` ставит лучшее по краям, слабое в середине: модель хуже
+    # использует середину длинного контекста, а при выдаче 16 середина —
+    # это десяток фрагментов. По умолчанию выключено: гипотеза не проверена
+    # на нашем корпусе, а порядок влияет на всё сразу.
+    context_order: str = Field(default="relevance", alias="CONTEXT_ORDER")
+    # Во сколько раз больше символов достаётся фрагменту с формулой
+    # или таблицей. У формулы нет середины, которую можно опустить.
+    formula_budget_share: float = Field(
+        default=1.6, ge=1.0, le=4.0, alias="CONTEXT_FORMULA_BUDGET_SHARE"
+    )
+    # Какая доля окна отдана под контекст. Остальное — промпт, история
+    # и сам ответ.
+    context_window_share: float = Field(
+        default=0.5, gt=0.1, le=0.9, alias="CONTEXT_WINDOW_SHARE"
+    )
+
+    prompt_version: str = Field(default="v3", alias="PROMPT_VERSION")
+
+    def fingerprint(self) -> str:
+        """Отпечаток промптов, попадающий в файлы метрик.
+
+        Промпт можно подменить переменной окружения, и тогда замер
+        сделан не тем, чем считает читатель отчёта. Один раз это уже
+        сбило меня с толку: я разбирал промпт из локального `.env`,
+        а на сервере работал промпт по умолчанию.
+        """
+        digest = hashlib.sha256(
+            f"{self.qa_system}|{self.query_rewrite_system}".encode()
+        ).hexdigest()[:12]
+        return f"{self.prompt_version}:{digest}"
 
 
 class Settings(BaseSettings):

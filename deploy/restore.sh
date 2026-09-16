@@ -76,7 +76,7 @@ bash deploy/services.sh up || die "сервисы не поднялись"
 
 say "Жду готовности зависимостей"
 for attempt in $(seq 1 30); do
-    if uv run rag-textbook health >/dev/null 2>&1; then
+    if uv run rag-textbook health --skip-llm >/dev/null 2>&1; then
         ok "все компоненты отвечают (попытка $attempt)"
         break
     fi

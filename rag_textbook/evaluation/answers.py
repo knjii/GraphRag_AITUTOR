@@ -13,9 +13,13 @@
 ``latex_recall``     доля формул эталонного фрагмента, дословно дошедших
                      до ответа. Для учебника математики это главный признак
                      сохранности: формула либо совпадает, либо нет.
-``unsupported``      доля содержательных четвёрок слов ответа, которых нет
-                     в поданном контексте. Грубый, но независимый признак
-                     выдумки: если модель сочиняет, доля растёт.
+``опора на контекст`` доля предложений ответа, для которых в контексте
+                     нашлось предложение, разделяющее с ними больше половины
+                     содержательных слов. Прежняя мера того же назначения,
+                     ``unsupported``, оказалась негодной: она давала
+                     0.982-0.988 во всех прогонах и различать конфигурации
+                     ею было нельзя. Оставлена только для чтения старых
+                     файлов метрик.
 
 **Две судейские, с оговоркой.** Судьёй работает та же модель, что и отвечает,
 потому что другой на арендованной карте нет. Модель склонна одобрять
@@ -37,14 +41,20 @@ import re
 import statistics
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from rag_textbook.clients.llm import ChatMessage, LLMClient
 from rag_textbook.logging_setup import get_logger
-from rag_textbook.models import Answer, GoldQuestion
-from rag_textbook.utils.text import content_terms, extract_latex_fragments, truncate
+from rag_textbook.models import Answer, GoldQuestion, ScoredChunk
+from rag_textbook.utils.text import (
+    content_terms,
+    extract_latex_fragments,
+    split_sentences,
+    strip_latex,
+    truncate,
+)
 
 logger = get_logger("evaluation.answers")
 
@@ -94,6 +104,19 @@ groundedness — следует ли ответ из поданных фрагм
 
 # Признаки отказа отвечать. Список короткий намеренно: расширять его —
 # значит подгонять метрику под формулировки конкретной модели.
+# Типичные зачины рассуждения. Список короткий намеренно: он опознаёт
+# не «плохой стиль», а англоязычный поток мыслей, который модель выдаёт
+# вместо ответа.
+_REASONING_OPENERS = (
+    "the user",
+    "i need",
+    "okay",
+    "let me",
+    "we need",
+    "first,",
+    "looking at",
+)
+
 REFUSAL_MARKERS = (
     "не содержится",
     "нет данных",
@@ -110,11 +133,15 @@ class AnswerOutcome:
     question_type: str
     answer: str = ""
     refused: bool = False
+    reasoning_leak: bool = False
+    latin_share: float = 0.0
     context_size: int = 0
     # Объективные признаки
     latex_expected: int = 0
     latex_found: int = 0
-    unsupported: float = 0.0
+    unsupported: float = 0.0  # негодная мера, оставлена для чтения старых файлов
+    sentences_judged: int = 0
+    sentences_supported: int = 0
     # Судейские
     correctness: int | None = None
     groundedness: int | None = None
@@ -133,6 +160,43 @@ class AnswerOutcome:
         return payload
 
 
+def looks_like_reasoning(answer: str) -> bool:
+    """Ответ содержит размышление модели, а не ответ.
+
+    Признак понадобился задним числом: в прогоне 2026-08-19 46% ответов
+    содержали тег think, 60% начинались с английского «The user is asking».
+    Метрики считались по потоку мыслей и выглядели правдоподобно — верность
+    1.116, сохранность формул 0.05, — а причина была не в поиске и не
+    в модели, а в том, что ответа в тексте не было вовсе.
+    """
+    text = (answer or "").strip()
+    if not text:
+        return False
+    if "<think>" in text.lower():
+        return True
+    opening = text.lower()[:60]
+    return opening.startswith(_REASONING_OPENERS)
+
+
+def latin_share(answer: str) -> float:
+    """Доля латиницы среди букв ответа.
+
+    Корпус русский, вопросы русские. Ответ на английском — это не стиль,
+    а отказ работать: студент его не ждёт. Мера грубая, зато не зависит
+    ни от судьи, ни от разметки.
+
+    Формулы из подсчёта исключаются, и это исправление, а не придирка.
+    В замере 2026-09-03 мера дала 0.330 на формульных вопросах против
+    0.054 на связывающих — но правильный ответ про матрицы состоит
+    из LaTeX почти целиком, и латиницы в нём законно больше половины.
+    Мера ловила бы ровно те ответы, ради которых всё делается.
+    """
+    letters = [c for c in strip_latex(answer) if c.isalpha()]
+    if not letters:
+        return 0.0
+    return sum(1 for c in letters if "a" <= c.lower() <= "z") / len(letters)
+
+
 def is_refusal(answer: str) -> bool:
     lowered = (answer or "").lower()
     return any(marker in lowered for marker in REFUSAL_MARKERS)
@@ -144,8 +208,16 @@ def _normalize_latex(fragment: str) -> str:
     Пробелы внутри LaTeX расставляются как придётся — и парсером, и моделью, —
     поэтому дословное сравнение без нормализации занижало бы совпадение
     до нуля почти всегда.
+
+    Номер формулы убирается отдельно, и это не мелочь. В учебнике формулы
+    пронумерованы, и парсер оставляет номер внутри самой формулы:
+    ``$$p(x|t),\tag{8.24}$$``. Отвечая, модель переносит формулу без номера —
+    так и надо, — и прежнее сравнение считало это промахом. Замер 2026-09-03:
+    ответы содержали формулу дословно, а метрика показывала 0.065.
     """
-    return re.sub(r"\s+", "", fragment or "")
+    cleaned = re.sub(r"\\(?:tag|label|nonumber)\s*\{[^}]*\}", "", fragment or "")
+    cleaned = re.sub(r"\\(?:begin|end)\s*\{[a-z*]+\}", "", cleaned)
+    return re.sub(r"[\s,.]+", "", cleaned)
 
 
 def latex_overlap(reference_text: str, answer: str) -> tuple[int, int]:
@@ -167,11 +239,17 @@ def latex_overlap(reference_text: str, answer: str) -> tuple[int, int]:
 
 
 def unsupported_share(answer: str, context: str, window: int = 4) -> float:
-    """Доля содержательных четвёрок слов ответа, которых нет в контексте.
+    """Негодная мера. Оставлена, чтобы старые файлы метрик читались.
 
-    Признак грубый: перефразирование он засчитает как выдумку. Зато он
-    не зависит ни от модели-судьи, ни от языка, и потому пригоден для
-    сравнения прогонов между собой — а именно этого от него и нужно.
+    Давала 0.982-0.988 во всех прогонах при разбросе по типам вопросов
+    в сотые доли: различать конфигурации ею нельзя. Причин две. Внешняя:
+    четвёрка слов подряд совпадает только при дословном переписывании,
+    а пересказ она засчитывает как выдумку. Внутренняя, найденная позже:
+    ``content_terms`` выбрасывает повторы, поэтому «четвёрка слов подряд»
+    считалась не по тексту, а по списку уникальных терминов в порядке
+    первого появления — совпадений там не бывает почти никогда.
+
+    Заменена на :func:`sentence_support`.
     """
     answer_terms = content_terms(answer)
     if len(answer_terms) < window:
@@ -190,6 +268,53 @@ def unsupported_share(answer: str, context: str, window: int = 4) -> float:
         if tuple(answer_terms[index : index + window]) not in context_grams:
             missing += 1
     return missing / total if total else 0.0
+
+
+# Ниже порога предложение считается не опирающимся на контекст. Значение
+# выбрано по разметке: пересказ фрагмента удерживает 0.6-0.9 содержательных
+# слов исходного предложения, а привнесённое извне утверждение делит
+# с контекстом единичные термины из самого вопроса.
+SUPPORT_THRESHOLD = 0.5
+
+# Предложения короче этого числа содержательных слов не оцениваются:
+# «Итого:», «Следовательно, да.» и заголовки списков не несут утверждения,
+# которое можно было бы проверить по контексту.
+_MIN_TERMS = 3
+
+
+def sentence_support(
+    answer: str, context: str, *, threshold: float = SUPPORT_THRESHOLD
+) -> tuple[int, int]:
+    """Сколько предложений ответа опирается на контекст.
+
+    Для каждого предложения ответа берётся лучшее предложение контекста
+    и считается доля содержательных слов ответа, которые в нём есть.
+    Мера лексическая, как и прежняя, но узел зернистости другой:
+    пересказ сохраняет содержательные слова исходного предложения,
+    даже когда переставляет их и меняет связки, — а именно на перестановке
+    ломалась прежняя мера.
+
+    Возвращает пару «сколько предложений оценено, сколько опирается
+    на контекст». Пара, а не доля: при коротком ответе знаменатель
+    важен не меньше значения.
+    """
+    context_sets = [
+        set(content_terms(sentence)) for sentence in split_sentences(context)
+    ]
+    context_sets = [item for item in context_sets if item]
+    judged = 0
+    supported = 0
+    for sentence in split_sentences(answer):
+        terms = set(content_terms(sentence))
+        if len(terms) < _MIN_TERMS:
+            continue
+        judged += 1
+        if not context_sets:
+            continue
+        best = max(len(terms & item) / len(terms) for item in context_sets)
+        if best >= threshold:
+            supported += 1
+    return judged, supported
 
 
 def judge_answer(
@@ -237,16 +362,21 @@ def evaluate_answer(
     """Считает все четыре величины по одному вопросу."""
     context = "\n\n".join(item.chunk.text for item in produced.contexts)
     expected, found = latex_overlap(reference_text, produced.answer)
+    judged, supported = sentence_support(produced.answer, context)
 
     outcome = AnswerOutcome(
         question_id=question.id,
         question_type=question.question_type,
         answer=produced.answer,
         refused=is_refusal(produced.answer),
+        reasoning_leak=looks_like_reasoning(produced.answer),
+        latin_share=round(latin_share(produced.answer), 4),
         context_size=len(produced.contexts),
         latex_expected=expected,
         latex_found=found,
         unsupported=round(unsupported_share(produced.answer, context), 4),
+        sentences_judged=judged,
+        sentences_supported=supported,
         latency_ms=produced.timings_ms.get("total", 0.0),
     )
 
@@ -280,11 +410,34 @@ def summarize_answers(outcomes: Sequence[AnswerOutcome]) -> dict[str, Any]:
         result: dict[str, Any] = {
             "вопросов": len(items),
             "отказов": round(sum(1 for item in items if item.refused) / len(items), 4),
-            "выдумка": round(statistics.fmean(item.unsupported for item in items), 4),
+            # Две величины ниже — про то, ответ ли перед нами вообще.
+            # Без них качество считается по потоку мыслей модели.
+            "размышление вместо ответа": round(
+                sum(1 for item in items if item.reasoning_leak) / len(items), 4
+            ),
+            "ответ не по-русски": round(
+                sum(1 for item in items if item.latin_share > 0.5) / len(items), 4
+            ),
         }
+        # Доля предложений ответа, опирающихся на контекст. Знаменатель
+        # выводится рядом: при коротких ответах он важен не меньше.
+        judged_total = sum(item.sentences_judged for item in items)
+        if judged_total:
+            result["опора на контекст"] = round(
+                sum(item.sentences_supported for item in items) / judged_total, 4
+            )
+            result["предложений оценено"] = judged_total
         if with_latex:
             result["формулы дошли"] = round(
                 statistics.fmean(item.latex_recall or 0.0 for item in with_latex), 4
+            )
+            # Главная величина из двух. Доля выше требует, чтобы в ответ попали
+            # ВСЕ формулы эталонного фрагмента, а их там медианно четыре: на
+            # странице учебника формул несколько, и хороший ответ приводит
+            # ту, о которой спрашивали. Эта же считает вопросы, где до ответа
+            # дошла хотя бы одна, и именно её надо читать как «дошло или нет».
+            result["хотя бы одна формула"] = round(
+                sum(1 for item in with_latex if item.latex_found) / len(with_latex), 4
             )
             result["вопросов с формулами"] = len(with_latex)
         if judged:
@@ -314,6 +467,7 @@ def run_answer_evaluation(
     chunks: dict[str, Any] | None = None,
     judge: bool = True,
     max_workers: int = 2,
+    frozen_contexts: dict[str, Sequence[str]] | None = None,
 ) -> tuple[dict[str, Any], list[AnswerOutcome]]:
     """Прогоняет вопросы через генерацию и оценивает ответы.
 
@@ -323,8 +477,37 @@ def run_answer_evaluation(
     """
     judge_llm = context.llm if judge else None
 
+    def answer_one(question: GoldQuestion) -> Answer:
+        """Ответ на вопрос: обычным путём либо по замороженному контексту.
+
+        Замороженный контекст берётся из слепка и нужен для сравнения
+        генераторов: все модели отвечают по одному и тому же материалу,
+        поэтому разница относится к генератору, а не к тому, что кому
+        досталось при поиске.
+        """
+        if frozen_contexts is None:
+            return context.generator.answer(question.question, history=[])
+
+        chunk_ids = frozen_contexts.get(question.id, ())
+        picked = [
+            ScoredChunk(chunk=chunks[chunk_id], score=1.0)
+            for chunk_id in chunk_ids
+            if chunks and chunk_id in chunks
+        ]
+        if not picked:
+            logger.warning("Вопрос %s: замороженный контекст пуст", question.id)
+        ordered, text, generation_ms = context.generator.answer_from_context(
+            question.question, picked
+        )
+        return Answer(
+            question=question.question,
+            answer=text,
+            contexts=ordered,
+            timings_ms={"generation": round(generation_ms, 1), "total": round(generation_ms, 1)},
+        )
+
     def evaluate_one(question: GoldQuestion) -> AnswerOutcome:
-        produced = context.generator.answer(question.question, history=[])
+        produced = answer_one(question)
         reference_text = ""
         if chunks:
             reference_text = "\n".join(
@@ -336,7 +519,10 @@ def run_answer_evaluation(
         )
 
     logger.info(
-        "Оценка ответов: вопросов=%s, судья=%s", len(questions), "да" if judge else "нет"
+        "Оценка ответов: вопросов=%s, судья=%s, контекст=%s",
+        len(questions),
+        "да" if judge else "нет",
+        "из слепка" if frozen_contexts is not None else "из поиска",
     )
     if max_workers <= 1:
         outcomes = [evaluate_one(item) for item in questions]

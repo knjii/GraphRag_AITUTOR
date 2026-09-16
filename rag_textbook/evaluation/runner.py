@@ -140,6 +140,12 @@ def save_evaluation(
             "graph_rel_types": list(settings.graph.expansion_rel_types),
             "embedding_model": settings.embedding.model,
             "min_graph_docs": settings.retrieval.min_graph_docs,
+            # Переписывание вопроса и маршрут задаются промптами,
+            # а промпт подменяется переменной окружения. Однажды это
+            # уже сбило разбор причин: числа сравнивались как
+            # полученные одним и тем же кодом.
+            "prompt_fingerprint": settings.prompts.fingerprint(),
+            "utility_model": settings.llm.model_for("utility"),
         },
         "metrics": metrics.as_dict(),
         "outcomes": [
