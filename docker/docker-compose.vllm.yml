@@ -89,6 +89,11 @@ services:
       # Отдельный том под GGUF: файлы по 13-17 ГБ, и скачивать их заново
       # при каждой пересборке контейнера — это оплаченное время карты.
       - gguf_models:/models
+      # Обученные веса лежат на хосте: после GRPO адаптер вплавляется
+      # в копию базовой модели (scripts/merge_adapter.py), и сервис
+      # поднимается на ней как на обычных весах —
+      #   bash deploy/model-swap.sh /runs/<каталог>
+      - ${TRAINED_MODELS_DIR:-./runs}:/runs:ro
     environment:
       HUGGING_FACE_HUB_TOKEN: "${HF_TOKEN:-}"
     # SGLANG_EXTRA пусто для обычных весов safetensors. Для GGUF туда идёт

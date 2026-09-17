@@ -25,7 +25,14 @@ param(
     # baseline в 14.5 часа. Иначе ускорение не с чем будет сравнивать.
     [string[]]$Pdfs = @(
         "documents\pdf_docs\Dayzenrot_Feyzal_On_Matematika_v_mashinnom_obuchen_241126_230954.pdf"
-    )
+    ),
+    # Откуда брать данные (кэши, корпус, библиотеку, эпизоды RL). Код ветки
+    # agents/dev лежит в отдельном рабочем каталоге, а данные — в основном:
+    #   .\deploy\upload.ps1 -ServerIp ... -WithCaches -WithLibrary -DataRoot C:\python\rag_textbook
+    [string]$DataRoot = ".",
+    # Библиотека книг (documents\library) и эпизоды RL (artifacts\rl) —
+    # для дня аренды docs/SERVER-DAY-1.md.
+    [switch]$WithLibrary
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,7 +65,7 @@ Write-Host "`n==> Копирую код" -ForegroundColor Cyan
 # scripts — офлайн-разборы; они мелкие, а искать их потом дороже.
 $codePaths = @(
     "rag_textbook", "tests", "docker", "deploy", "docs", "scripts", "capture",
-    "pyproject.toml", ".env.example", "README.md"
+    "tasks", "pyproject.toml", ".env.example", "README.md"
 )
 foreach ($path in $codePaths) {
     if (-not (Test-Path $path)) {
@@ -85,6 +92,7 @@ if ($WithCaches) {
         @{ Local = "evaluation\goldsets";  Remote = "evaluation" }
     )
     foreach ($item in $cachePaths) {
+        $item.Local = Join-Path $DataRoot $item.Local
         if (-not (Test-Path $item.Local)) {
             Write-Host "    пропускаю отсутствующий $($item.Local)" -ForegroundColor DarkYellow
             continue
@@ -101,8 +109,38 @@ if ($WithCaches) {
     Write-Host "      rag-textbook ingest --stages graph --force" -ForegroundColor DarkGray
 }
 
+# Манифест библиотеки и ручные сверки награды — данные эксперимента,
+# их место в evaluation рядом с эталоном.
+Invoke-Remote "mkdir -p $RemoteDir/evaluation"
+foreach ($path in @("evaluation\library", "evaluation\reward_checks")) {
+    if (Test-Path $path) {
+        & scp @scpArgs -r -q $path "${target}:${RemoteDir}/evaluation/"
+        if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать $path" }
+    }
+}
+
+if ($WithLibrary) {
+    Write-Host "`n==> Копирую библиотеку и эпизоды RL" -ForegroundColor Cyan
+    Invoke-Remote "mkdir -p $RemoteDir/documents $RemoteDir/artifacts"
+    $libraryPaths = @(
+        @{ Local = "documents\library"; Remote = "documents" },
+        @{ Local = "artifacts\rl";      Remote = "artifacts" }
+    )
+    foreach ($item in $libraryPaths) {
+        $local = Join-Path $DataRoot $item.Local
+        if (-not (Test-Path $local)) { throw "Нет ${local}: см. docs/SERVER-DAY-1.md, раздел «До аренды»" }
+        $sizeMb = [math]::Round((Get-ChildItem $local -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
+        Write-Host "    $local ($sizeMb МБ)"
+        & scp @scpArgs -r -q $local "${target}:${RemoteDir}/$($item.Remote)/"
+        if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать $local" }
+    }
+    # Контрольные суммы: книга на сервере должна быть той же, что проверена здесь.
+    Invoke-Remote "cd $RemoteDir/documents/library && sha256sum -c --quiet SHA256SUMS"
+}
+
 Write-Host "`n==> Копирую корпус" -ForegroundColor Cyan
 foreach ($pdf in $Pdfs) {
+    $pdf = Join-Path $DataRoot $pdf
     if (-not (Test-Path $pdf)) {
         Write-Host "    ФАЙЛ НЕ НАЙДЕН: $pdf" -ForegroundColor Red
         continue

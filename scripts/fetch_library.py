@@ -33,15 +33,28 @@ def plan(books: list[dict], only: set[str]) -> list[dict]:
             continue
         if not only and book["status"] != "ready":
             continue
-        if book["url"].startswith("https://github.com/") and "/tree/" in book["url"]:
-            # Каталог, а не файл: скачивать нечего, нужен ручной выбор.
+        if "/tree/" in book["url"] and not book.get("files"):
+            # Каталог, а не файл: скачивать нечего, нужен список files.
             continue
         selected.append(book)
     return selected
 
 
-def target_path(base: Path, book: dict) -> Path:
-    return base / book["lang"] / f"{book['id']}.pdf"
+def targets(base: Path, book: dict) -> list[tuple[str, Path]]:
+    """(адрес, путь) по книге; книга из нескольких файлов — каждый отдельно.
+
+    Лекции Соколова индексируются как отдельные документы: имя файла
+    несёт номер лекции, по нему фрагмент находит свой источник.
+    ``subdir`` отделяет книги, которым нужен другой метод разбора
+    (MinerU задаёт метод на весь запуск).
+    """
+    folder = base / book.get("subdir", book["lang"])
+    if book.get("files"):
+        return [
+            (url, folder / f"{book['id']}-{url.rsplit('/', 1)[-1]}")
+            for url in book["files"]
+        ]
+    return [(book["url"], folder / f"{book['id']}.pdf")]
 
 
 def download(url: str, path: Path) -> str:
@@ -54,7 +67,8 @@ def download(url: str, path: Path) -> str:
             for block in response.iter_bytes():
                 digest.update(block)
                 handle.write(block)
-    head = partial.read_bytes()[:5]
+    with partial.open("rb") as handle:
+        head = handle.read(5)
     if head != b"%PDF-":
         partial.unlink()
         raise RuntimeError(f"{url}: не PDF (начало файла {head!r})")
@@ -74,28 +88,30 @@ def main() -> int:
     selected = plan(manifest["books"], set(args.only))
     skipped = [b["id"] for b in manifest["books"] if b not in selected]
     for book in selected:
-        print(f"{book['id']:28s} → {target_path(base, book)}\n    {book['url']}")
+        pairs = targets(base, book)
+        extra = f" (и ещё {len(pairs) - 1})" if len(pairs) > 1 else ""
+        print(f"{book['id']:28s} -> {pairs[0][1]}{extra}")
     if skipped:
         print(f"пропущены (status=check или каталог): {', '.join(skipped)}")
     if not args.download:
-        print("\nтолько план; для скачивания добавьте --download")
+        print("только план; для скачивания добавьте --download")
         return 0
 
     sums = base / "SHA256SUMS"
     lines = sums.read_text(encoding="utf-8").splitlines() if sums.exists() else []
     failed = 0
     for book in selected:
-        path = target_path(base, book)
-        try:
-            checksum = download(book["url"], path)
-        except Exception as error:  # noqa: BLE001 — один сбой не должен останавливать остальные
-            print(f"ОШИБКА {book['id']}: {error}", file=sys.stderr)
-            failed += 1
-            continue
-        relative = path.relative_to(base).as_posix()
-        lines = [line for line in lines if not line.endswith(f"  {relative}")]
-        lines.append(f"{checksum}  {relative}")
-        print(f"{book['id']}: {path.stat().st_size / 2**20:.1f} МБ, sha256 {checksum[:12]}")
+        for url, path in targets(base, book):
+            try:
+                checksum = download(url, path)
+            except Exception as error:  # noqa: BLE001 — один сбой не должен останавливать остальные
+                print(f"ОШИБКА {book['id']} ({url}): {error}", file=sys.stderr)
+                failed += 1
+                continue
+            relative = path.relative_to(base).as_posix()
+            lines = [line for line in lines if not line.endswith(f"  {relative}")]
+            lines.append(f"{checksum}  {relative}")
+            print(f"{path.name}: {path.stat().st_size / 2**20:.1f} МБ, sha256 {checksum[:12]}")
     sums.parent.mkdir(parents=True, exist_ok=True)
     sums.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 1 if failed else 0

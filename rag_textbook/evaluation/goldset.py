@@ -18,6 +18,7 @@ import random
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -159,8 +160,13 @@ class GoldsetBuilder:
         graph_store: Any = None,
         max_lexical_overlap: float = 0.12,
         min_ordinal_distance: int = 10,
+        workers: int = 1,
     ) -> None:
         self.llm = llm
+        # Параллельные обращения к модели. Последовательная сборка 2500
+        # вопросов для RL-обучения заняла бы 2.5–3 часа арендованной карты;
+        # порядок и отбор от числа потоков не зависят.
+        self.workers = max(1, workers)
         self.random = random.Random(seed)
         # Хранилище графа нужно только для отбора пар, связанных структурно,
         # а не лексически. Без него сборка работает как раньше.
@@ -180,6 +186,25 @@ class GoldsetBuilder:
         без единой записи в журнале, стоила прогона впустую и не дала понять,
         сломан ли промпт, разбор ответа или сама модель.
         """
+        produced, reason = self._ask_once(prompt)
+        self.failures[reason] += 1
+        return produced
+
+    def _ask_many(self, prompts: Sequence[str]) -> list[tuple[str, str] | None]:
+        """Обращения к модели в ``workers`` потоков; результаты — в порядке запросов.
+
+        Счётчик исходов обновляется здесь, в одном потоке.
+        """
+        if self.workers == 1:
+            return [self._ask(prompt) for prompt in prompts]
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+            outcomes = list(pool.map(self._ask_once, prompts))
+        for _, reason in outcomes:
+            self.failures[reason] += 1
+        return [produced for produced, _ in outcomes]
+
+    def _ask_once(self, prompt: str) -> tuple[tuple[str, str] | None, str]:
+        """Одно обращение: пара или None и причина исхода. Без общего состояния."""
         try:
             raw = self.llm.chat(
                 [ChatMessage(role="user", content=prompt)],
@@ -192,31 +217,25 @@ class GoldsetBuilder:
                 max_tokens=400,
             )
         except Exception as exc:  # noqa: BLE001
-            self.failures["llm_error"] += 1
             logger.warning("Генерация вопроса не удалась: %s", exc)
-            return None
+            return None, "llm_error"
         if not str(raw or "").strip():
-            self.failures["empty_response"] += 1
-            return None
+            return None, "empty_response"
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError:
             match = re.search(r"\{.*\}", raw, re.DOTALL)
             if not match:
-                self.failures["not_json"] += 1
-                return None
+                return None, "not_json"
             try:
                 payload = json.loads(match.group(0))
             except json.JSONDecodeError:
-                self.failures["not_json"] += 1
-                return None
+                return None, "not_json"
         question = str(payload.get("question") or "").strip()
         answer = str(payload.get("answer") or "").strip()
         if not question:
-            self.failures["no_question_field"] += 1
-            return None
-        self.failures["ok"] += 1
-        return question, answer
+            return None, "no_question_field"
+        return (question, answer), "ok"
 
     @staticmethod
     def _classify(chunk: Chunk) -> str:
@@ -400,8 +419,10 @@ class GoldsetBuilder:
 
         selected = self._select_single(chunks, single_count)
         logger.info("Генерация одношаговых вопросов: %s фрагментов", len(selected))
-        for chunk in selected:
-            produced = self._ask(SINGLE_PROMPT.format(text=truncate(chunk.text, max_chars)))
+        answers = self._ask_many(
+            [SINGLE_PROMPT.format(text=truncate(chunk.text, max_chars)) for chunk in selected]
+        )
+        for chunk, produced in zip(selected, answers, strict=True):
             if produced is None:
                 continue
             question, answer = produced
@@ -439,13 +460,14 @@ class GoldsetBuilder:
             len(pairs),
             len(graph_linked),
         )
-        for left, right in pairs:
-            produced = self._ask(
-                MULTIHOP_PROMPT.format(
-                    text_a=truncate(left.text, max_chars // 2),
-                    text_b=truncate(right.text, max_chars // 2),
-                )
+        pair_answers = self._ask_many([
+            MULTIHOP_PROMPT.format(
+                text_a=truncate(left.text, max_chars // 2),
+                text_b=truncate(right.text, max_chars // 2),
             )
+            for left, right in pairs
+        ])
+        for (left, right), produced in zip(pairs, pair_answers, strict=True):
             if produced is None:
                 continue
             question, answer = produced

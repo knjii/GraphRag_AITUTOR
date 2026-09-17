@@ -458,6 +458,9 @@ def goldset_build(
             ),
         ),
     ] = False,
+    workers: Annotated[
+        int, typer.Option(help="Параллельных обращений к модели (порядок вопросов не меняется)")
+    ] = 1,
     exclude_doc: Annotated[
         list[str] | None,
         typer.Option(
@@ -497,7 +500,9 @@ def goldset_build(
         # Граф передаётся, чтобы часть многошаговых пар отбиралась по связям,
         # а не по общим словам: на лексически похожих парах вклад графа
         # принципиально неизмерим.
-        builder = GoldsetBuilder(context.llm, seed=seed, graph_store=context.graph_store)
+        builder = GoldsetBuilder(
+            context.llm, seed=seed, graph_store=context.graph_store, workers=workers
+        )
         verifier = None
         if verify:
             by_id = {chunk.id: chunk for chunk in chunks}

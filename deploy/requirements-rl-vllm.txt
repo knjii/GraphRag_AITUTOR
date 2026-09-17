@@ -1,0 +1,34 @@
+# Связка обучения с быстрой генерацией: TRL + vLLM, БЕЗ Unsloth.
+# Проверка версий 2026-09-17 (задачи 014, 017): именно Unsloth закрывал
+# дорогу к vLLM (trl<=0.24.0, transformers<=5.5.0, torch<2.13). Без него
+# метаданные сходятся. GPU-прогон этим файлом не проверен — это делает
+# шаг P1 дня аренды.
+#
+#   uv venv .venv-rl-vllm && uv pip install -p .venv-rl-vllm \
+#       -r deploy/requirements-rl-vllm.txt -r deploy/requirements-rl-app.txt
+#   .venv-rl-vllm/bin/python scripts/train_grpo.py --backend hf --vllm ...
+
+# colocate по умолчанию, vllm_enable_sleep_mode, chat_template_kwargs,
+# loss_type=dr_grpo, scale_rewards=none; max_prompt_length удалён — скрипт
+# подставляет только существующие поля.
+# https://pypi.org/pypi/trl/1.13.0/json
+# https://github.com/huggingface/trl/blob/v1.13.0/trl/trainer/grpo_config.py
+trl==1.13.0
+
+# Верхняя граница extra trl[vllm]: >=0.19.1,<=0.28.0. Требует
+# transformers>=5.5.3 и torch==2.13.0.
+# https://pypi.org/pypi/vllm/0.28.0/json
+vllm==0.28.0
+
+# Удовлетворяет и vLLM (>=5.5.3), и TRL (>=4.56.2).
+# https://pypi.org/pypi/transformers/5.10.4/json
+transformers==5.10.4
+
+# Закрепляется vLLM.
+torch==2.13.0
+
+# https://pypi.org/pypi/peft/0.18.1/json
+peft==0.18.1
+# TRL 1.13 требует datasets>=4.7.0.
+datasets==4.7.0
+accelerate==1.12.0

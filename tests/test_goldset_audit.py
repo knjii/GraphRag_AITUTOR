@@ -201,3 +201,32 @@ def test_accepted_question_is_marked_verified():
 
     assert [item.verified for item in produced] == [True]
     assert "абляция" in produced[0].notes
+
+
+class _EchoLLM:
+    """Вопрос зависит от фрагмента: порядок ответов проверяем по содержанию."""
+
+    def chat(self, messages, **kwargs):  # noqa: ANN001, ANN003
+        import json as _json
+        import re as _re
+        import time
+
+        text = messages[0].content
+        found = _re.search(r"номер (\d+)", text)
+        marker = found.group(1) if found else "?"
+        time.sleep(0.01 * (hash(marker) % 3))  # потоки завершаются вразнобой
+        if marker.endswith("1"):
+            return "не json"
+        return _json.dumps({"question": f"Что сказано про объект {marker}?", "answer": "…"})
+
+
+def test_parallel_build_matches_sequential():
+    chunks = [
+        _chunk(f"ф{i}", f"Содержательный фрагмент про матрицы и векторы, номер {i} " * 6, ordinal=i * 20)
+        for i in range(12)
+    ]
+    sequential = GoldsetBuilder(_EchoLLM(), seed=3).build(chunks, single_count=10, multihop_count=3)
+    parallel_builder = GoldsetBuilder(_EchoLLM(), seed=3, workers=6)
+    parallel = parallel_builder.build(chunks, single_count=10, multihop_count=3)
+    assert [(q.id, q.gold_chunk_ids) for q in parallel] == [(q.id, q.gold_chunk_ids) for q in sequential]
+    assert parallel_builder.failures["not_json"] >= 1

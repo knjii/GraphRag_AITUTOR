@@ -72,7 +72,7 @@ def main() -> int:
 
     if ranks:
         ranks.sort()
-        print(f"\nранг недостающего фрагмента в пуле:")
+        print("\nранг недостающего фрагмента в пуле:")
         print(f"  медиана   {statistics.median(ranks):.0f}")
         print(f"  четверти  {ranks[len(ranks) // 4]} / {ranks[3 * len(ranks) // 4]}")
         print(f"  минимум   {ranks[0]}, максимум {ranks[-1]}")
