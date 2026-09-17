@@ -1,0 +1,87 @@
+{
+  "note": "Комплекты книг для межкнижного графа и обучения R6 (задачи 007, 012; решение владельца 2026-09-17). Роль: train — вопросы для RL-обучения; cross — межкнижный срез графа; anchor — опорная книга. MML (RU) уже в индексе и остаётся тестом. Поле status: ready — прямой PDF известен; check — нужна проверка перед скачиванием.",
+  "target_dir": "documents/library",
+  "books": [
+    {
+      "id": "en-ml-murphy",
+      "lang": "en", "topic": "ml", "role": ["train", "cross"],
+      "title": "K. Murphy. Probabilistic Machine Learning: An Introduction (draft 2025-04-18)",
+      "url": "https://github.com/probml/pml-book/releases/latest/download/book1.pdf",
+      "license": "CC BY-NC-ND 4.0 (пометка черновика)",
+      "status": "ready",
+      "notes": "Черновик и издание MIT Press 2022 не смешивать; ND запрещает распространять производные — индекс и вопросы только для исследования."
+    },
+    {
+      "id": "en-rl-sutton-barto",
+      "lang": "en", "topic": "rl", "role": ["train", "cross"],
+      "title": "R. Sutton, A. Barto. Reinforcement Learning: An Introduction, 2nd ed.",
+      "url": "http://incompleteideas.net/book/RLbook2020.pdf",
+      "license": "не указана на авторской странице; PDF выложен авторами",
+      "status": "ready",
+      "notes": ""
+    },
+    {
+      "id": "en-la-axler",
+      "lang": "en", "topic": "la", "role": ["train", "cross"],
+      "title": "S. Axler. Linear Algebra Done Right, 4th ed.",
+      "url": "https://linear.axler.net/LADR4e.pdf",
+      "license": "CC BY-NC 4.0",
+      "status": "ready",
+      "notes": ""
+    },
+    {
+      "id": "en-prob-grinstead-snell",
+      "lang": "en", "topic": "prob", "role": ["train", "cross"],
+      "title": "C. Grinstead, J. L. Snell. Introduction to Probability",
+      "url": "https://math.dartmouth.edu/~prob/prob/prob.pdf",
+      "license": "GNU FDL (есть TeX: prob.tar.gz)",
+      "status": "ready",
+      "notes": ""
+    },
+    {
+      "id": "en-anchor-mml",
+      "lang": "en", "topic": "anchor", "role": ["cross"],
+      "title": "M. Deisenroth, A. Faisal, C. S. Ong. Mathematics for Machine Learning",
+      "url": "https://mml-book.github.io/book/mml-book.pdf",
+      "license": "авторская бесплатная версия, копирование только для личного использования",
+      "status": "check",
+      "notes": "URL не проверялся задачей 012 — сверить перед скачиванием. Оригинал русского MML в индексе: пары RU/EN по одному тексту."
+    },
+    {
+      "id": "ru-ml-sokolov",
+      "lang": "ru", "topic": "ml", "role": ["train", "cross"],
+      "title": "Е. А. Соколов. Машинное обучение, лекции ФКН ВШЭ (2019-fall)",
+      "url": "https://github.com/esokolov/ml-course-hse/tree/master/2019-fall/lecture-notes",
+      "license": "не указана (в репозитории нет LICENSE)",
+      "status": "check",
+      "notes": "В 2019-fall найдены .tex; есть ли готовые PDF — не установлено. Если только TeX — собрать PDF (нужен LaTeX) или индексировать TeX напрямую (парсера нет)."
+    },
+    {
+      "id": "ru-rl-ivanov",
+      "lang": "ru", "topic": "rl", "role": ["train", "cross"],
+      "title": "С. Иванов. Обучение с подкреплением (arXiv 2201.09746)",
+      "url": "https://arxiv.org/pdf/2201.09746",
+      "license": "CC BY-NC-SA 4.0",
+      "status": "ready",
+      "notes": "Есть TeX-исходники на arXiv."
+    },
+    {
+      "id": "ru-la-gelfand",
+      "lang": "ru", "topic": "la", "role": ["train", "cross"],
+      "title": "И. М. Гельфанд. Лекции по линейной алгебре, 5-е изд.",
+      "url": "https://mccme.ru/free-books/linalg/gelfand.pdf",
+      "license": "МЦНМО, условия C2: некоммерческое использование",
+      "status": "check",
+      "notes": "Текстовый слой не проверен — возможен скан; MinerU справится, но качество формул надо проверить на 10 страницах."
+    },
+    {
+      "id": "ru-prob-chernova",
+      "lang": "ru", "topic": "prob", "role": ["train", "cross"],
+      "title": "Н. И. Чернова. Теория вероятностей, НГУ, 2007",
+      "url": "http://tvims.nsu.ru/chernova/tv/tv_nsu07.pdf",
+      "license": "не указана; авторская страница НГУ",
+      "status": "ready",
+      "notes": "Редакция 2007, 160 с. HTML 2005 и PDF 2005 — другие редакции."
+    }
+  ]
+}

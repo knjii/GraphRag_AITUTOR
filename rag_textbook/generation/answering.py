@@ -22,7 +22,7 @@ from rag_textbook.config import Settings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Answer, Citation, ScoredChunk
 from rag_textbook.retrieval.pipeline import RetrievalPipeline, RetrievalResult
-from rag_textbook.utils.text import truncate
+from rag_textbook.utils.text import normalize_math_delimiters, truncate
 
 logger = get_logger("generation.answering")
 
@@ -95,14 +95,15 @@ def order_for_attention(chunks, mode: str) -> list:
     return head + tail[::-1]
 
 
-def build_context_block(chunks, max_chars_per_chunk) -> str:
+def build_context_block(chunks, max_chars_per_chunk, *, normalize_math: bool = False) -> str:
     """Собирает пронумерованный контекст.
 
     Номер фрагмента — это и есть якорь цитаты: модель ссылается на [1], [2],
     а мы разворачиваем их в «учебник, с. N».
 
     ``max_chars_per_chunk`` принимает и одно число (прежнее поведение),
-    и список бюджетов по фрагментам.
+    и список бюджетов по фрагментам. ``normalize_math`` сводит удвоенную
+    разметку формул «$$$$» к «$$» (см. ``PromptSettings.normalize_math_delimiters``).
     """
     if isinstance(max_chars_per_chunk, int):
         budgets = [max_chars_per_chunk] * len(chunks)
@@ -113,7 +114,8 @@ def build_context_block(chunks, max_chars_per_chunk) -> str:
         header = item.chunk.citation_label()
         if item.chunk.headers:
             header = f"{header} — {item.chunk.headers[-1]}"
-        body = truncate(item.chunk.text, budgets[index - 1])
+        text = normalize_math_delimiters(item.chunk.text) if normalize_math else item.chunk.text
+        body = truncate(text, budgets[index - 1])
         blocks.append(f"[{index}] {header}\n{body}")
     return "\n\n".join(blocks)
 
@@ -146,6 +148,68 @@ def extract_citations(answer_text: str, chunks: Sequence[ScoredChunk]) -> list[C
     return citations
 
 
+def context_budget(settings: Settings) -> int:
+    """Сколько всего символов отдано под контекст.
+
+    Грубая, но честная оценка: примерно 3 символа на токен для русского.
+    Доля окна вынесена в настройку, потому что от неё напрямую зависит,
+    доедут ли формулы: при выдаче 16 и окне 8192 на фрагмент выходило
+    768 символов, и 43% формул отрезалось.
+    """
+    share = settings.prompts.context_window_share
+    return max(800, int(settings.llm.context_window * share * 3))
+
+
+def build_answer_messages(
+    settings: Settings,
+    question: str,
+    chunks: Sequence[ScoredChunk],
+    *,
+    history: Sequence[ChatMessage] | None = None,
+) -> tuple[list[ScoredChunk], list[ChatMessage]]:
+    """Промпт генератора: упорядоченные фрагменты и сообщения для модели.
+
+    Вынесено из :meth:`AnswerGenerator.answer_from_context`, чтобы
+    RL-обучение собирало **ровно тот же** вход, что видит модель в сервисе:
+    обученная на другом промпте политика мерилась бы не на том, на чём
+    будет работать.
+    """
+    # Порядок и бюджет считаются здесь, а не в поиске: это свойства
+    # промпта, а не выдачи. Нумерация цитат идёт после упорядочивания,
+    # поэтому [3] всегда указывает на третий фрагмент в том виде,
+    # в каком его увидела модель.
+    ordered = order_for_attention(chunks, settings.prompts.context_order)
+    budget = context_budget(settings)
+    budgets = allocate_budget(
+        ordered, budget, formula_share=settings.prompts.formula_budget_share
+    )
+    truncated = sum(
+        1 for item, limit in zip(ordered, budgets, strict=True)
+        if len(item.chunk.text) > limit
+    )
+    if truncated:
+        # Молчаливое усечение однажды стоило 43% формул. Пусть будет видно.
+        logger.info(
+            "Контекст: усечено фрагментов %s из %s (бюджет %s символов)",
+            truncated,
+            len(ordered),
+            budget,
+        )
+    context_block = build_context_block(
+        ordered, budgets, normalize_math=settings.prompts.normalize_math_delimiters
+    )
+    messages: list[ChatMessage] = [
+        ChatMessage(
+            role="system",
+            content=f"{settings.prompts.qa_system}\n\nКонтекст:\n{context_block}",
+        )
+    ]
+    if history:
+        messages.extend(history[-settings.retrieval.max_history_turns * 2 :])
+    messages.append(ChatMessage(role="user", content=question))
+    return list(ordered), messages
+
+
 class AnswerGenerator:
     def __init__(
         self,
@@ -158,15 +222,7 @@ class AnswerGenerator:
         self.llm = llm
 
     def _context_budget(self) -> int:
-        """Сколько всего символов отдано под контекст.
-
-        Грубая, но честная оценка: примерно 3 символа на токен для русского.
-        Доля окна вынесена в настройку, потому что от неё напрямую зависит,
-        доедут ли формулы: при выдаче 16 и окне 8192 на фрагмент выходило
-        768 символов, и 43% формул отрезалось.
-        """
-        share = self.settings.prompts.context_window_share
-        return max(800, int(self.settings.llm.context_window * share * 3))
+        return context_budget(self.settings)
 
     def _max_chars_per_chunk(self) -> int:
         """Прежняя равная дележка. Оставлена для совместимости вызовов."""
@@ -232,40 +288,9 @@ class AnswerGenerator:
         Возвращает тройку «фрагменты в том порядке, в каком их увидела
         модель; текст ответа; время генерации в миллисекундах».
         """
-        # Порядок и бюджет считаются здесь, а не в поиске: это свойства
-        # промпта, а не выдачи. Нумерация цитат идёт после упорядочивания,
-        # поэтому [3] всегда указывает на третий фрагмент в том виде,
-        # в каком его увидела модель.
-        ordered = order_for_attention(
-            chunks, self.settings.prompts.context_order
+        ordered, messages = build_answer_messages(
+            self.settings, question, chunks, history=history
         )
-        budgets = allocate_budget(
-            ordered,
-            self._context_budget(),
-            formula_share=self.settings.prompts.formula_budget_share,
-        )
-        truncated = sum(
-            1 for item, budget in zip(ordered, budgets, strict=True)
-            if len(item.chunk.text) > budget
-        )
-        if truncated:
-            # Молчаливое усечение однажды стоило 43% формул. Пусть будет видно.
-            logger.info(
-                "Контекст: усечено фрагментов %s из %s (бюджет %s символов)",
-                truncated,
-                len(ordered),
-                self._context_budget(),
-            )
-        context_block = build_context_block(ordered, budgets)
-        messages: list[ChatMessage] = [
-            ChatMessage(
-                role="system",
-                content=f"{self.settings.prompts.qa_system}\n\nКонтекст:\n{context_block}",
-            )
-        ]
-        if history:
-            messages.extend(history[-self.settings.retrieval.max_history_turns * 2 :])
-        messages.append(ChatMessage(role="user", content=question))
 
         stage = time.perf_counter()
         try:

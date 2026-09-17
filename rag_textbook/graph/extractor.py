@@ -23,9 +23,9 @@ from typing import Any
 
 from rag_textbook.clients.llm import ChatMessage, LLMClient
 from rag_textbook.config import GraphSettings
+from rag_textbook.graph.failure_journal import FailureJournal, NullJournal, build_entry
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, Entity, ExtractionResult, Relation, content_hash
-from rag_textbook.graph.failure_journal import FailureJournal, NullJournal, build_entry
 from rag_textbook.utils.cache import ArtifactCache
 from rag_textbook.utils.text import canonicalize_entity, content_terms, truncate
 

@@ -489,6 +489,23 @@ class GoldsetBuilder:
         return questions
 
 
+def exclude_documents(chunks: Sequence[Chunk], patterns: Sequence[str]) -> list[Chunk]:
+    """Фрагменты без указанных документов (идентификатор или часть имени).
+
+    Нужен для вопросов RL-обучения: библиотека и тестовая книга лежат в одном
+    индексе, и без фильтра часть обучающих вопросов пришлась бы на MML.
+    """
+    lowered = [pattern.lower() for pattern in patterns if pattern]
+
+    def excluded(chunk: Chunk) -> bool:
+        return any(
+            pattern == chunk.doc_id.lower() or pattern in chunk.doc_name.lower()
+            for pattern in lowered
+        )
+
+    return [chunk for chunk in chunks if not excluded(chunk)]
+
+
 def merge_goldsets(
     existing: Sequence[GoldQuestion], added: Sequence[GoldQuestion]
 ) -> tuple[list[GoldQuestion], int]:

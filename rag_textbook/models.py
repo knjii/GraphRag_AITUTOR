@@ -27,6 +27,18 @@ def normalize_text(value: str) -> str:
     return _WS_RE.sub(" ", value.replace("­", "")).strip()
 
 
+_MATH_DELIMITERS_RE = re.compile(r"^\s*(?:\$\$|\\\[)\s*|\s*(?:\$\$|\\\])\s*$")
+
+
+def strip_math_delimiters(latex: str) -> str:
+    """Снимает внешнюю разметку выносной формулы.
+
+    MinerU отдаёт формулу уже с «$$»; обёртка поверх давала «$$$$ … $$$$»
+    в 66% фрагментов индекса (замер 2026-09-17).
+    """
+    return _MATH_DELIMITERS_RE.sub("", latex or "")
+
+
 def content_hash(*parts: str) -> str:
     digest = hashlib.sha256()
     for part in parts:
@@ -58,7 +70,9 @@ class Block(BaseModel):
     def is_special(self) -> bool:
         return self.type in SPECIAL_BLOCK_TYPES
 
-    def to_indexable_text(self, *, include_enrichment: bool = True) -> str:
+    def to_indexable_text(
+        self, *, include_enrichment: bool = True, strip_delimiters: bool = False
+    ) -> str:
         """Текст блока для индексации.
 
         Порядок частей выбран так, чтобы исходное представление шло первым:
@@ -68,6 +82,8 @@ class Block(BaseModel):
         parts: list[str] = []
         if self.type == "equation":
             latex = self.latex or self.text
+            if strip_delimiters:
+                latex = strip_math_delimiters(latex)
             if latex:
                 parts.append(f"$${normalize_text(latex)}$$")
         elif self.type == "table":

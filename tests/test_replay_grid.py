@@ -24,7 +24,7 @@ def test_every_grid_entry_is_replayable():
     settings = _settings()
     snapshot = snapshot_settings(settings)
 
-    for group, variants in REPLAY_GRID.items():
+    for variants in REPLAY_GRID.values():
         for overrides in variants:
             candidate = _apply_overrides(settings, overrides)
             assert_replayable(snapshot, candidate)  # не должно бросить

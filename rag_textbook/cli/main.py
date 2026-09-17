@@ -40,6 +40,7 @@ from rag_textbook.evaluation.answers import run_answer_evaluation, save_answer_e
 from rag_textbook.evaluation.audit import audit_questions, summarize_audit
 from rag_textbook.evaluation.goldset import (
     GoldsetBuilder,
+    exclude_documents,
     load_goldset,
     merge_goldsets,
     save_goldset,
@@ -457,6 +458,17 @@ def goldset_build(
             ),
         ),
     ] = False,
+    exclude_doc: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude-doc",
+            help=(
+                "Не брать фрагменты документа (идентификатор или часть имени; "
+                "можно повторять). Вопросы для RL-обучения не должны касаться "
+                "тестовой книги"
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Собирает эталонный набор из проиндексированных чанков."""
     settings = _settings()
@@ -477,6 +489,10 @@ def goldset_build(
         if not chunks:
             console.print("[red]В хранилище нет чанков. Сначала выполните ingest.[/red]")
             raise typer.Exit(code=1)
+        if exclude_doc:
+            before = len(chunks)
+            chunks = exclude_documents(chunks, exclude_doc)
+            console.print(f"Исключено фрагментов: {before - len(chunks)} ({', '.join(exclude_doc)})")
         console.print(f"Доступно чанков: {len(chunks)}")
         # Граф передаётся, чтобы часть многошаговых пар отбиралась по связям,
         # а не по общим словам: на лексически похожих парах вклад графа
@@ -492,6 +508,10 @@ def goldset_build(
         produced = builder.build(
             chunks, single_count=single, multihop_count=multihop, verifier=verifier
         )
+        # Прежде ветка «else» относилась к --verify: дозапись без приёмки
+        # затирала существующий набор новыми вопросами, а приёмка без
+        # дозаписи падала на неопределённой переменной.
+        questions = produced
         if append:
             questions, appended = merge_goldsets(existing, produced)
             console.print(
@@ -505,8 +525,6 @@ def goldset_build(
                 if name.startswith("вердикт:")
             }
             console.print(f"Приёмка абляцией: {rejected}")
-        else:
-            questions = produced
         path = save_goldset(questions, target)
     finally:
         context.close()

@@ -280,6 +280,48 @@ class OpenAICompatibleLLMClient:
             call, description=f"llm:{purpose}", attempts=self.settings.max_retries + 1
         )
 
+    async def acomplete_raw(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        purpose: str = "chat",
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> dict[str, str]:
+        """Сырой текст и причина остановки — для RL-замеров.
+
+        ``achat`` вычищает размышление и не сообщает об обрыве; награде
+        нужно и то и другое: утечка размышления и обрыв на пределе токенов
+        закрываются её воротами.
+        """
+        payload = self._payload(messages, purpose, None, max_tokens, temperature)
+        if self._asemaphore is None:
+            self._asemaphore = asyncio.Semaphore(self.settings.max_concurrency)
+
+        async def call() -> dict[str, str]:
+            assert self._asemaphore is not None
+            async with self._asemaphore:
+                response = await self._async_client().post(
+                    f"{self.settings.base_url_for(purpose)}/chat/completions",  # type: ignore[arg-type]
+                    json=payload,
+                )
+            if response.status_code >= 400:
+                raise RuntimeError(f"LLM вернул {response.status_code}: {response.text[:500]}")
+            choice = (response.json().get("choices") or [{}])[0]
+            content = (choice.get("message") or {}).get("content")
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") for part in content if isinstance(part, dict)
+                )
+            return {
+                "answer": str(content or ""),
+                "finish_reason": str(choice.get("finish_reason") or ""),
+            }
+
+        return await retry_async(
+            call, description=f"llm:{purpose}:raw", attempts=self.settings.max_retries + 1
+        )
+
 
 class FakeLLMClient:
     """Детерминированная заглушка для тестов.

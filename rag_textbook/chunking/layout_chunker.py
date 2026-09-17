@@ -68,7 +68,10 @@ class LayoutAwareChunker:
                 if header:
                     current_header = header
 
-            text = block.to_indexable_text(include_enrichment=True)
+            text = block.to_indexable_text(
+                include_enrichment=True,
+                strip_delimiters=self.settings.respect_formulas,
+            )
             if not text:
                 continue
 
@@ -173,6 +176,51 @@ class LayoutAwareChunker:
             break
         return candidate_end
 
+    def _snap_end(self, end: int, start: int, segments: list[_Segment]) -> int:
+        """Не заканчивает чанк посреди спец-объекта.
+
+        ``_adjust_for_special`` сдаётся, когда объект не влезает целиком,
+        а чанк до него слишком мал, — и мягкая граница находила пробел
+        внутри формулы. Здесь короткий чанк до объекта лучше разрезанной
+        формулы; режется только объект длиннее предела.
+        """
+        for segment in segments:
+            if segment.end <= end:
+                continue
+            if segment.start >= end:
+                break
+            if not segment.is_special:
+                return end
+            if segment.end - start <= self.max_chunk_size:
+                return segment.end
+            if segment.start > start:
+                return segment.start
+            return end
+        return end
+
+    @staticmethod
+    def _snap_start(next_start: int, previous_start: int, segments: list[_Segment]) -> int:
+        """Не начинает чанк с середины спец-объекта.
+
+        Начало следующего чанка — «конец минус перекрытие» — попадало внутрь
+        формулы: замер 2026-09-17 нашёл 323 фрагмента из 1151 с нечётным
+        числом «$$», и 287 нумерованных формул начинались в соседнем
+        фрагменте — ни поиск, ни модель, ни метрика их целиком не видели.
+        Начало сдвигается к началу объекта (перекрытие чуть растёт), а если
+        это вернуло бы назад к прежнему началу — к его концу.
+        """
+        for segment in segments:
+            if segment.end <= next_start:
+                continue
+            if segment.start >= next_start:
+                break
+            if not segment.is_special:
+                return next_start
+            if segment.start > previous_start:
+                return segment.start
+            return max(segment.end, previous_start + 1)
+        return next_start
+
     # ------------------------------------------------------------- метаданные
 
     def _metadata_for(
@@ -230,6 +278,8 @@ class LayoutAwareChunker:
                 if adjusted != candidate_end
                 else self._soft_boundary(document_text, start, candidate_end)
             )
+            if self.settings.respect_formulas:
+                end = self._snap_end(end, start, segments)
 
             if end <= start:
                 end = min(start + self.chunk_size, total)
@@ -265,7 +315,11 @@ class LayoutAwareChunker:
                 break
 
             next_start = max(end - self.chunk_overlap, start + 1)
-            start = next_start
+            start = (
+                self._snap_start(next_start, start, segments)
+                if self.settings.respect_formulas
+                else next_start
+            )
 
         logger.info(
             "Документ %s: чанков=%s, из них с формулами=%s, с таблицами=%s, с иллюстрациями=%s",

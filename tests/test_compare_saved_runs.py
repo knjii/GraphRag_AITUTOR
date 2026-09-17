@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from rag_textbook.evaluation.metrics import QueryOutcome, compare_paired
+from rag_textbook.evaluation.metrics import QueryOutcome, RetrievalMetrics, compare_paired
 from rag_textbook.evaluation.runner import load_outcomes, save_evaluation
-from rag_textbook.evaluation.metrics import RetrievalMetrics
 
 
 def _outcome(index: int, *, found: bool, question_type: str = "graph_linked") -> QueryOutcome:

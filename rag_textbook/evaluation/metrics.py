@@ -251,9 +251,6 @@ def compare_paired(
     cand_by_id = {item.question_id: item for item in candidate_outcomes}
     shared = [qid for qid in base_by_id if qid in cand_by_id]
 
-    base_shared = [base_by_id[qid] for qid in shared]
-    cand_shared = [cand_by_id[qid] for qid in shared]
-
     def _block(ids: Sequence[str]) -> dict[str, Any]:
         base_items = [base_by_id[qid] for qid in ids]
         cand_items = [cand_by_id[qid] for qid in ids]

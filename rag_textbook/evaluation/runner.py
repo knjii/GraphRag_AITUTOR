@@ -18,19 +18,19 @@ from typing import Any
 
 from rag_textbook.config import Settings
 from rag_textbook.context import AppContext, build_context
-from rag_textbook.evaluation.trace import (
-    QueryTrace,
-    TraceSet,
-    TracedCandidate,
-    snapshot_ordering,
-    snapshot_settings,
-)
 from rag_textbook.evaluation.metrics import (
     QueryOutcome,
     RetrievalMetrics,
     compare,
     compare_paired,
     evaluate_retrieval,
+)
+from rag_textbook.evaluation.trace import (
+    QueryTrace,
+    TracedCandidate,
+    TraceSet,
+    snapshot_ordering,
+    snapshot_settings,
 )
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import GoldQuestion

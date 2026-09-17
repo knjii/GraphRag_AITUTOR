@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from rag_textbook.config import Settings
 from rag_textbook.evaluation.answers import run_answer_evaluation
 from rag_textbook.generation.answering import AnswerGenerator
@@ -132,10 +134,10 @@ def test_ordinary_run_still_uses_retrieval():
     """Прежний путь обязан сохраниться: без слепка отвечаем как раньше."""
     context, chunks, retrieval = _setup()
 
-    try:
+    # Заглушка поиска намеренно падает: исключение и доказывает, что поиск
+    # был вызван. Прежний try/except/pass проходил и без вызова.
+    with pytest.raises(AssertionError):
         run_answer_evaluation(
             context, [_question()], chunks=chunks, judge=False, max_workers=1
         )
-    except AssertionError:
-        pass  # заглушка поиска намеренно падает — значит, он был вызван
     assert retrieval.calls == 1

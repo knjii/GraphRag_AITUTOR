@@ -264,6 +264,119 @@ def rank_from_passage(
     return sorted(scores, key=lambda chunk_id: -scores[chunk_id])
 
 
+PPRNode = tuple[str, str]
+
+
+class PPRGraph:
+    """Переиспользуемые переходы PPR; тип узла исключает коллизии ID.
+
+    Рёбра неориентированные. IDF умножает вес mention-ребра на idf
+    сущности, а entity-ребра — на геометрическое среднее двух idf.
+    """
+
+    def __init__(
+        self, graph: OfflineGraph, *, entity_weight: float = 1.0, use_idf: bool = False
+    ) -> None:
+        if not math.isfinite(entity_weight) or entity_weight < 0:
+            raise ValueError("Вес связей должен быть конечным и неотрицательным")
+        adjacency: dict[PPRNode, dict[PPRNode, float]] = {}
+
+        def add(left: PPRNode, right: PPRNode, weight: float) -> None:
+            adjacency.setdefault(left, {})
+            adjacency.setdefault(right, {})
+            if not math.isfinite(weight) or weight < 0:
+                raise ValueError("Вес ребра должен быть конечным и неотрицательным")
+            if weight > 0:
+                adjacency[left][right] = weight
+                adjacency[right][left] = weight
+
+        def boost(entity: str) -> float:
+            return graph.idf.get(entity, 0.0) if use_idf else 1.0
+
+        for passage, entities in graph.mentions.items():
+            adjacency.setdefault(("passage", passage), {})
+            for entity, count in entities.items():
+                if count < 0:
+                    raise ValueError("Число упоминаний не может быть отрицательным")
+                add(("passage", passage), ("entity", entity), math.log1p(count) * boost(entity))
+        for entity, neighbours in graph.neighbours.items():
+            adjacency.setdefault(("entity", entity), {})
+            for neighbour in neighbours:
+                add(
+                    ("entity", entity), ("entity", neighbour),
+                    entity_weight * math.sqrt(boost(entity) * boost(neighbour)),
+                )
+        self.nodes = sorted(adjacency)
+        self.index = {node: i for i, node in enumerate(self.nodes)}
+        self.transitions: list[list[tuple[int, float]]] = []
+        for node in self.nodes:
+            total = sum(adjacency[node].values())
+            self.transitions.append([
+                (self.index[target], weight / total)
+                for target, weight in sorted(adjacency[node].items())
+            ])
+
+    def probabilities(
+        self, seeds: dict[PPRNode, float], *, alpha: float = 0.5,
+        tolerance: float = 1e-10, max_iterations: int = 200,
+    ) -> dict[PPRNode, float]:
+        """Полная масса, включая затравки; висячие узлы возвращают её в seeds.
+
+        alpha — вероятность возврата. Критерий остановки — L1 между
+        итерациями. Несходимость явно прерывает замер вместо тихого усечения.
+        Неизвестная затравка считается изолированным узлом (например, cache miss).
+        """
+        if not 0 < alpha <= 1 or not math.isfinite(tolerance) or tolerance <= 0:
+            raise ValueError("Нужны 0 < alpha <= 1 и положительный конечный tolerance")
+        if max_iterations < 1:
+            raise ValueError("max_iterations должен быть положительным")
+        if any(not math.isfinite(w) or w < 0 for w in seeds.values()):
+            raise ValueError("Веса затравок должны быть конечными и неотрицательными")
+        positive = {node: weight for node, weight in seeds.items() if weight > 0}
+        if not positive:
+            raise ValueError("Нужна хотя бы одна положительная затравка")
+        nodes = self.nodes + sorted(node for node in positive if node not in self.index)
+        transitions = self.transitions + [[] for _ in range(len(nodes) - len(self.nodes))]
+        # Масштабирование не даёт сумме больших конечных весов переполниться.
+        scale = max(positive.values())
+        total = sum(w / scale for w in positive.values())
+        reset = [positive.get(node, 0.0) / scale / total for node in nodes]
+        current = reset[:]
+        for _ in range(max_iterations):
+            dangling = sum(current[i] for i, edges in enumerate(transitions) if not edges)
+            next_values = [(alpha + (1 - alpha) * dangling) * w for w in reset]
+            for i, edges in enumerate(transitions):
+                mass = (1 - alpha) * current[i]
+                if mass:
+                    for target, probability in edges:
+                        next_values[target] += mass * probability
+            difference = sum(abs(a - b) for a, b in zip(current, next_values, strict=True))
+            current = next_values
+            if difference <= tolerance:
+                return dict(zip(nodes, current, strict=True))
+        raise RuntimeError(f"PPR не сошёлся за {max_iterations} итераций")
+
+    def rank(self, seeds: dict[PPRNode, float], **kwargs: Any) -> list[tuple[str, float]]:
+        """Вероятности фрагментов без положительных затравок, без перенормировки."""
+        probabilities = self.probabilities(seeds, **kwargs)
+        return sorted(
+            ((node[1], probability) for node, probability in probabilities.items()
+             if node[0] == "passage" and seeds.get(node, 0) <= 0 and probability > 0),
+            key=lambda item: (-item[1], item[0]),
+        )
+
+
+def rank_ppr(
+    graph: OfflineGraph, seeds: dict[PPRNode, float], *, alpha: float = 0.5,
+    entity_weight: float = 1.0, use_idf: bool = False,
+    tolerance: float = 1e-10, max_iterations: int = 200,
+) -> list[tuple[str, float]]:
+    """Ранжирует фрагменты степенным методом, без внешних зависимостей."""
+    return PPRGraph(graph, entity_weight=entity_weight, use_idf=use_idf).rank(
+        seeds, alpha=alpha, tolerance=tolerance, max_iterations=max_iterations,
+    )
+
+
 def linked_pairs(settings: Settings, graph: OfflineGraph) -> list[tuple[str, str]]:
     """Пары фрагментов многошаговых вопросов эталонного набора."""
     goldset = load_goldset(settings.paths.goldset_dir / "goldset.json")

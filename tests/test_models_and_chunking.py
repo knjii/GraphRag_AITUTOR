@@ -110,3 +110,35 @@ def test_chunk_size_is_bounded(sample_blocks) -> None:
     assert all(len(chunk.text) <= limit for chunk in chunks), (
         "расширение под спец-объект должно быть ограничено сверху"
     )
+
+
+def test_chunk_never_starts_inside_a_formula() -> None:
+    """Регрессия 2026-09-17 (``CHUNKER_RESPECT_FORMULAS``): граница чанка
+    попадала внутрь формулы.
+
+    На книге MML так резались 333 фрагмента из 1097; после исправления — 3
+    (формулы длиннее предела чанка).
+    """
+    blocks: list[Block] = []
+    for index in range(40):
+        blocks.append(Block(index=2 * index, type="text", text="Слово " * (15 + index % 7)))
+        blocks.append(Block(index=2 * index + 1, type="equation", latex=f"$$ a_{{{index}}} = b + c + d + e + f + g + h $$"))
+    for size, overlap in [(200, 60), (240, 90), (300, 120), (260, 150)]:
+        settings = ChunkingSettings(chunk_size=size, chunk_overlap=overlap, respect_formulas=True)
+        chunks = LayoutAwareChunker(settings).chunk(blocks, doc_id="d", doc_name="D", source_path="d.pdf")
+        for chunk in chunks:
+            assert "$$$$" not in chunk.text
+            assert chunk.text.count("$$") % 2 == 0, (size, overlap, chunk.text[:80])
+
+
+def test_default_chunking_is_unchanged() -> None:
+    """Без флага нарезка прежняя: эталон ссылается на номера фрагментов MML."""
+    blocks = [
+        Block(index=0, type="text", text="Слово " * 30),
+        Block(index=1, type="equation", latex="$$ a = b $$"),
+    ]
+    assert ChunkingSettings().respect_formulas is False
+    [chunk] = LayoutAwareChunker(ChunkingSettings()).chunk(
+        blocks, doc_id="d", doc_name="D", source_path="d.pdf"
+    )
+    assert "$$$$" in chunk.text

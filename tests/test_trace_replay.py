@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from rag_textbook.config import GraphSettings, RerankerSettings, RetrievalSettings, Settings
+from rag_textbook.config import Settings
 from rag_textbook.evaluation.replay import fidelity_report, replay, replay_one
 from rag_textbook.evaluation.trace import (
     NotReplayable,
     QueryTrace,
-    TraceSet,
     TracedCandidate,
+    TraceSet,
     assert_replayable,
     snapshot_settings,
 )

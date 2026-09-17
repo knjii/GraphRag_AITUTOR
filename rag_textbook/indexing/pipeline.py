@@ -382,6 +382,7 @@ class IndexingPipeline:
                 "parsing_backend": self.settings.parsing.backend,
                 "chunk_size": self.settings.chunking.chunk_size,
                 "chunk_overlap": self.settings.chunking.chunk_overlap,
+                "chunk_respect_formulas": self.settings.chunking.respect_formulas,
                 "enrich_types": list(self.settings.chunking.enrich_types),
                 "embedding_model": self.settings.embedding.model,
                 "graph_enabled": self.settings.graph.enabled,

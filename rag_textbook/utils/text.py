@@ -199,6 +199,14 @@ def extract_latex_fragments(text: str, limit: int = 32) -> list[str]:
     return out
 
 
+_EXTRA_DOLLARS_RE = re.compile(r"\${3,}")
+
+
+def normalize_math_delimiters(text: str) -> str:
+    """«$$$$ формула $$$$» → «$$ формула $$»: разметка, обёрнутая дважды."""
+    return _EXTRA_DOLLARS_RE.sub("$$", text or "")
+
+
 def truncate(text: str, max_chars: int) -> str:
     value = (text or "").strip()
     if len(value) <= max_chars:

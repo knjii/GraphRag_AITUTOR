@@ -156,6 +156,12 @@ class ChunkingSettings(_Base):
     chunk_overlap: int = Field(default=180, ge=0, alias="CHUNK_OVERLAP")
     context_window: int = Field(default=250, ge=0, alias="CHUNKER_CONTEXT_WINDOW")
     sticky_headers: bool = Field(default=True, alias="CHUNKER_STICKY_HEADERS")
+    # Не резать формулы и не оборачивать их разметку дважды (2026-09-17).
+    # По умолчанию выключено: эталонный набор ссылается на номера фрагментов
+    # MML, а исправление сдвигает границы (на MML: 1097 → 1467 фрагментов,
+    # с разрезанной формулой 333 → 3). Включать для новых книг; MML
+    # с включённым флагом — только вместе с переносом эталона.
+    respect_formulas: bool = Field(default=False, alias="CHUNKER_RESPECT_FORMULAS")
 
     # Обогащение спец-объектов моделью зрения.
     enrich_enabled: bool = Field(default=True, alias="CHUNKER_ENRICH_ENABLED")
@@ -776,6 +782,15 @@ class PromptSettings(_Base):
         default=0.5, gt=0.1, le=0.9, alias="CONTEXT_WINDOW_SHARE"
     )
 
+    # Сводить «$$$$ … $$$$» к «$$ … $$» в контексте. До исправления
+    # ``Block.to_indexable_text`` (2026-09-17) формула разбора оборачивалась
+    # дважды — так записаны 66% фрагментов текущего индекса. Выключено
+    # по умолчанию: это меняет промпт, влияние на перенос формул меряется
+    # отдельно (сравнение по слепку контекста).
+    normalize_math_delimiters: bool = Field(
+        default=False, alias="CONTEXT_NORMALIZE_MATH_DELIMITERS"
+    )
+
     prompt_version: str = Field(default="v3", alias="PROMPT_VERSION")
 
     def fingerprint(self) -> str:
@@ -789,7 +804,8 @@ class PromptSettings(_Base):
         digest = hashlib.sha256(
             f"{self.qa_system}|{self.query_rewrite_system}".encode()
         ).hexdigest()[:12]
-        return f"{self.prompt_version}:{digest}"
+        suffix = "+math" if self.normalize_math_delimiters else ""
+        return f"{self.prompt_version}:{digest}{suffix}"
 
 
 class Settings(BaseSettings):
