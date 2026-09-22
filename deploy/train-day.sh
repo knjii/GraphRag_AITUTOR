@@ -36,6 +36,7 @@ TRACE_MML=capture/session-0819/trace-always.jsonl
 TRAIN_SET="$OUT/lib-ru-train.jsonl"
 TEST_SET="$OUT/mml-test.jsonl"
 STEPS="${STEPS:-300}"
+ENDPOINT=http://127.0.0.1:8001/v1   # SGLang из docker-compose.vllm.yml
 STACK=""; GENERATIONS=""
 
 say()  { printf '\n\033[1;34m=== %s ===\033[0m\n' "$*" | tee -a "$LOG"; }
@@ -112,10 +113,33 @@ printf '%s' "$STACK" > "$RUN/stack"; printf '%s' "$GENERATIONS" > "$RUN/generati
 STARTED=$([ -z "$FROM" ] && echo 1 || echo 0)
 should_run() {
     local code="$1"
-    [ -n "$ONLY" ] && { [ "$code" = "$ONLY" ]; return; }
+    if [ -n "$ONLY" ]; then
+        [ "$code" = "$ONLY" ] || return 1
+        invalidate_after "$code"; return 0
+    fi
     [ "$STARTED" = 0 ] && [ "$code" = "$FROM" ] && STARTED=1
     [ "$STARTED" = 1 ] || return 1
     [ -f "$RUN/done/$code" ] && { ok "$code уже выполнен"; return 1; }
+    invalidate_after "$code"
+    return 0
+}
+# Шаг, выполненный заново, делает устаревшими отметки зависящих от него:
+# иначе после переобучения M1/V1/Z9 пропускались бы как «уже выполненные»
+# и вердикт остался бы от старых весов (задача 022).
+downstream() {
+    case "$1" in
+        B0|T1|T2|T3) echo "M1 V1 Z9" ;;
+        M1) echo "V1 Z9" ;;
+        V1) echo "Z9" ;;
+    esac
+}
+# Сброс — в начале шага, а не по его завершении: упавший на середине
+# шаг уже испортил свои выходы.
+invalidate_after() {
+    local later
+    for later in $(downstream "$1"); do
+        [ -f "$RUN/done/$later" ] && { rm -f "$RUN/done/$later"; warn "$later сброшен: $1 выполняется заново"; }
+    done
     return 0
 }
 done_mark() { date '+%F %T' > "$RUN/done/$1"; ok "$1 готов ($(stamp))"; }
@@ -140,9 +164,10 @@ step_S0() {
     for kind in main random format; do
         [ -e "runs/grpo-$kind" ] && die "runs/grpo-$kind уже есть — уберите или переименуйте"
     done
-    # Обучение примерно на 12 ГиБ весов и три вплавленные копии по ~8 ГиБ.
+    # Обучение примерно на 12 ГиБ весов, упакованная база и три вплавленные
+    # копии по ~8 ГиБ.
     local free; free=$(df -BG --output=avail "$REPO_DIR" | tail -1 | tr -dc '0-9')
-    [ "${free:-0}" -ge 60 ] || die "на диске ${free} ГиБ — трём вплавленным моделям нужно ≥ 60"
+    [ "${free:-0}" -ge 70 ] || die "на диске ${free} ГиБ — упакованной базе и трём вплавленным моделям нужно ≥ 70"
     done_mark S0
 }
 
@@ -151,7 +176,18 @@ step_B0() {
     # 0.305 снята другими настройками генерации; критерий спринта задан
     # приростом, поэтому база пересчитывается здесь и сейчас.
     search_off
-    measure base-4b "$BASE_MODEL"
+    # База меряется не с хаба, а упакованной тем же путём, что и обученные
+    # модели (задача 023): SGLang поднимает только формат базы, и если
+    # упаковка сломана, это обнаружится здесь, до трёх обучений. Заодно
+    # база и кандидаты проходят один и тот же путь к весам.
+    local dir packed="runs/base-packed"; dir="$(rl_env_dir "$STACK")"
+    if ! "$dir/bin/python" scripts/merge_adapter.py --identity --base "$BASE_MODEL" \
+            --out "$packed" --is-current; then
+        rm -rf "$packed" "$packed.partial"
+        run "упаковка базы" "$dir/bin/python" scripts/merge_adapter.py \
+            --identity --base "$BASE_MODEL" --out "$packed"
+    fi
+    measure base-4b "/$packed"
     done_mark B0
 }
 
@@ -163,30 +199,54 @@ step_M1() {
     say "M1. Вплавление адаптеров и замер"
     local dir; dir="$(rl_env_dir "$STACK")"
     for kind in main random format; do
-        [ -d "runs/grpo-$kind/merged" ] || run "вплавление ($kind)" \
-            "$dir/bin/python" scripts/merge_adapter.py \
-            --adapter "runs/grpo-$kind/adapter" --out "runs/grpo-$kind/merged"
-        measure "rl-$kind" "/runs/grpo-$kind/merged"
+        local adapter="runs/grpo-$kind/adapter" merged="runs/grpo-$kind/merged"
+        # Каталог merged принимается, только если его метка называет этот
+        # же адаптер: иначе после переобучения мерялись бы старые веса
+        # (задача 021). Прерванное вплавление метки не имеет.
+        if ! "$dir/bin/python" scripts/merge_adapter.py \
+                --adapter "$adapter" --out "$merged" --is-current; then
+            [ -e "$merged" ] && { warn "$merged не от текущего адаптера — убираю"; rm -rf "$merged"; }
+            run "вплавление ($kind)" "$dir/bin/python" scripts/merge_adapter.py \
+                --adapter "$adapter" --out "$merged"
+        fi
+        measure "rl-$kind" "/$merged"
     done
     done_mark M1
 }
 
 step_V1() {
     say "V1. Вердикт по критериям, записанным до прогона"
-    run "сравнение" uv run python scripts/sprint3_verdict.py \
-        --metrics "$(uv run python -c 'from rag_textbook.config import Settings; print(Settings().paths.metrics_dir)')" \
+    local metrics rc
+    metrics="$(uv run python -c 'from rag_textbook.config import Settings; print(Settings().paths.metrics_dir)')" \
+        || die "не удалось узнать каталог метрик"
+    # Код 2 — «не принято»: это итог опыта, а не сбой, и архив Z9 нужен
+    # ровно так же. Код 1 — входы негодны, вердикта нет (задача 021).
+    uv run python scripts/sprint3_verdict.py --metrics "$metrics" \
         --base base-4b --main rl-main --controls rl-random rl-format \
-        --out "$RUN/verdict.json"
+        --out "$RUN/verdict.json" 2>&1 | clean | tee -a "$LOG"
+    rc=${PIPESTATUS[0]}
+    case "$rc" in
+        0) ok "вердикт: ПРИНЯТО" ;;
+        2) warn "вердикт: НЕ ПРИНЯТО — это результат, он записан в $RUN/verdict.json" ;;
+        *) die "вердикта нет (код $rc): входы замеров негодны, см. журнал $LOG" ;;
+    esac
+    [ -s "$RUN/verdict.json" ] || die "вердикт не записан"
     done_mark V1
 }
 
 step_Z9() {
     say "Z9. Архив"
     local archive="$RUN/sprint3-results.tar.gz"
-    tar czf "$archive" \
-        --exclude='*/merged' --exclude='*/checkpoint-*' \
+    [ -s "$RUN/verdict.json" ] || die "нет вердикта — архивировать нечего (сначала V1)"
+    # Архив собирается во временный файл и проверяется чтением: битый или
+    # неполный архив иначе выглядел бы готовым, и карту погасили бы зря.
+    run "архив" tar czf "$archive.partial" \
+        --exclude='*/merged' --exclude='*/merged.partial' --exclude='*/checkpoint-*' \
         runs/grpo-main runs/grpo-random runs/grpo-format \
-        "$RUN/verdict.json" "$LOG" 2>/dev/null
+        "$RUN/verdict.json" "$LOG"
+    run "проверка архива" tar tzf "$archive.partial"
+    run "замена архива" mv -f "$archive.partial" "$archive"
+    [ -s "$archive" ] || die "архива $archive нет после записи"
     ok "скачать: $archive ($(du -h "$archive" | cut -f1))"
     warn "карту можно гасить только после того, как архив скачан"
     done_mark Z9
@@ -202,6 +262,8 @@ train_one() {
     local kind="$1" dir out
     dir="$(rl_env_dir "$STACK")"
     out="runs/grpo-$kind"
+    # Вплавление от прошлого обучения к новому адаптеру не относится.
+    rm -rf "$out/merged" "$out/merged.partial"
     local extra=()
     [ "$STACK" = vllm ] && extra=(--backend hf --vllm --vllm-memory 0.3)
     run "обучение ($kind)" "$dir/bin/python" scripts/train_grpo.py \
@@ -215,10 +277,23 @@ train_one() {
 
 # Замер обученной модели на тестовых эпизодах MML по слепку контекста:
 # поиск не выполняется, сравниваются именно генераторы.
+#
+# Пустые LLM_CHAT_MODEL и LLM_CHAT_BASE_URL в окружении перекрывают .env:
+# model-swap.sh меняет только LLM_MODEL, и заданная в .env модель ответа
+# тихо отправила бы запросы не туда (задача 021). Перед замером сервис
+# обязан назвать ту самую модель, иначе меряется не то.
 measure() {
-    local label="$1" model="$2"
+    local label="$1" model="$2" served
     serve "$model"
-    run "замер ответов ($label)" uv run rag-textbook eval answers \
+    served="$(curl -sf "$ENDPOINT/models")" || die "сервис не отвечает на $ENDPOINT/models"
+    # Сверка по полю id разобранного JSON, а не подстрокой: экранированный
+    # «/» или имя в другом поле обманули бы grep (задача 022).
+    printf '%s' "$served" | python3 -c 'import json, sys; ids = [m.get("id") for m in json.load(sys.stdin).get("data", [])]; sys.exit(0 if sys.argv[1] in ids else 1)' "$model" \
+        || die "сервис отдаёт не $model: $(printf '%s' "$served" | head -c 300)"
+    # Модель и адрес задаются явно, а назначения chat обнуляются: иначе
+    # экспортированные LLM_* или значения .env отправили бы запросы не туда.
+    LLM_MODEL="$model" LLM_BASE_URL="$ENDPOINT" LLM_CHAT_MODEL="" LLM_CHAT_BASE_URL="" \
+        run "замер ответов ($label)" uv run rag-textbook eval answers \
         --label "$label" --from-trace "$TRACE_MML" --no-judge
 }
 

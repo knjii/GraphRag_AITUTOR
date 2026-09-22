@@ -13,7 +13,9 @@
 param(
     [ValidateSet("done", "server", "off", "blocked", "info")]
     [string]$Kind = "info",
-    [Parameter(Mandatory = $true)][string]$Text
+    [Parameter(Mandatory = $true)][string]$Text,
+    # Необязательный файл (например, PDF отчёта) — уходит документом с текстом в подписи.
+    [string]$File = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,8 +45,25 @@ $chatId = (New-Object PSCredential "chat", $secret.ChatId).GetNetworkCredential(
 
 $payload = [Text.Encoding]::UTF8.GetBytes((@{ chat_id = $chatId; text = $body } | ConvertTo-Json -Compress))
 try {
-    [void](Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" `
-        -Method Post -Body $payload -ContentType "application/json; charset=utf-8" -TimeoutSec 30)
+    if ($File) {
+        # Документ уходит через sendDocument; подпись у Telegram не длиннее 1024 знаков.
+        Add-Type -AssemblyName System.Net.Http
+        $caption = if ($body.Length -gt 1000) { $body.Substring(0, 1000) + "…" } else { $body }
+        $client = New-Object System.Net.Http.HttpClient
+        $client.Timeout = [TimeSpan]::FromSeconds(120)
+        $form = New-Object System.Net.Http.MultipartFormDataContent
+        $form.Add((New-Object System.Net.Http.StringContent($chatId)), "chat_id")
+        $form.Add((New-Object System.Net.Http.StringContent($caption, [Text.Encoding]::UTF8)), "caption")
+        $bytes = [IO.File]::ReadAllBytes((Resolve-Path $File))
+        $part = New-Object System.Net.Http.ByteArrayContent(, $bytes)
+        $form.Add($part, "document", [IO.Path]::GetFileName($File))
+        $resp = $client.PostAsync("https://api.telegram.org/bot$token/sendDocument", $form).Result
+        $client.Dispose()
+        if (-not $resp.IsSuccessStatusCode) { throw "HTTP $([int]$resp.StatusCode)" }
+    } else {
+        [void](Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" `
+            -Method Post -Body $payload -ContentType "application/json; charset=utf-8" -TimeoutSec 30)
+    }
     Write-Host "Уведомление отправлено ($Kind)." -ForegroundColor Green
     $code = 0
 } catch {

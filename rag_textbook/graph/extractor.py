@@ -119,8 +119,82 @@ PROMPT_TEMPLATE = """Ты извлекаешь граф знаний из фра
 {text}"""
 
 
+# Версия v4 (гипотезы К2 и К3, docs/HYPOTHESES.md): у каждой сущности
+# роль во фрагменте и отдельный список вводимых обозначений. Промпт v3
+# оставлен как был: смена версии инвалидирует кэш, и графы разных версий
+# должны строиться каждый своим промптом.
+ROLES_PROMPT_VERSION = "v4"
+MENTION_ROLES: tuple[str, ...] = ("defines", "uses", "mentions")
+# Если модель назвала одну сущность дважды с разными ролями, остаётся
+# сильнейшая: определение важнее использования.
+_ROLE_RANK = {"defines": 3, "uses": 2, "mentions": 1, "": 0}
+NOTATION_LABEL = "обозначает"
+NOTATION_MAX_SYMBOL = 32
+
+EXTRACTION_SCHEMA_V4: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "entities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string", "enum": list(MENTION_ROLES)},
+                },
+                "required": ["name", "role"],
+            },
+        },
+        "relations": EXTRACTION_SCHEMA["properties"]["relations"],
+        "notation": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string"},
+                    "meaning": {"type": "string"},
+                },
+                "required": ["symbol", "meaning"],
+            },
+        },
+    },
+    "required": ["entities", "relations", "notation"],
+}
+
+PROMPT_TEMPLATE_V4 = """Ты извлекаешь граф знаний из фрагмента учебника по математике.
+
+Извлеки:
+1. entities — ключевые математические понятия, методы, объекты. Только термины,
+   не общие слова. Не более {max_entities}. Для каждой укажи role:
+   - defines — фрагмент вводит или определяет это понятие
+     («назовём», «называется», «определение», формулировка теоремы о нём);
+   - uses — фрагмент опирается на понятие, введённое раньше;
+   - mentions — понятие лишь названо.
+2. relations — связи между извлечёнными сущностями. Не более {max_relations}.
+3. notation — обозначения, которые фрагмент вводит: symbol — сам символ
+   в записи LaTeX без знаков $, meaning — понятие, которое он обозначает.
+   Только явные: «обозначим через», «где x — …», «будем писать». Если
+   обозначений нет, верни пустой список.
+
+Поле relation выбирай СТРОГО из списка:
+{labels}
+
+Правила:
+- source и target обязаны присутствовать в списке entities;
+- не выдумывай связи и обозначения, которых нет в тексте;
+- если связей нет, верни пустой список relations.
+
+Фрагмент:
+{text}"""
+
+
+def _uses_roles(settings: GraphSettings) -> bool:
+    return settings.extraction_prompt_version == ROLES_PROMPT_VERSION
+
+
 def _build_prompt(text: str, settings: GraphSettings) -> str:
-    return PROMPT_TEMPLATE.format(
+    template = PROMPT_TEMPLATE_V4 if _uses_roles(settings) else PROMPT_TEMPLATE
+    return template.format(
         max_entities=settings.max_entities_per_chunk,
         max_relations=settings.max_relations_per_chunk,
         labels="\n".join(f"- {label}" for label in RELATION_LABELS),
@@ -232,8 +306,13 @@ class EntityExtractor:
             entity = self._make_entity(str(name or ""))
             if entity is None:
                 continue
+            role = str(item.get("role") or "") if isinstance(item, dict) else ""
+            entity.role = role if role in MENTION_ROLES else ""
             if entity.canonical in by_canonical:
-                by_canonical[entity.canonical].count += 1
+                existing = by_canonical[entity.canonical]
+                existing.count += 1
+                if _ROLE_RANK[entity.role] > _ROLE_RANK[existing.role]:
+                    existing.role = entity.role
             else:
                 by_canonical[entity.canonical] = entity
             alias_to_canonical[str(name).strip().lower()] = entity.canonical
@@ -281,10 +360,65 @@ class EntityExtractor:
             if len(relations) >= self.settings.max_relations_per_chunk:
                 break
 
+        notations = self._parse_notation(payload.get("notation"), by_canonical, chunk, relations)
+
         status = "ok" if (by_canonical or relations) else "empty"
         return ExtractionResult(
-            entities=list(by_canonical.values()), relations=relations, status=status
+            entities=list(by_canonical.values()) + notations, relations=relations, status=status
         )
+
+    def _parse_notation(
+        self,
+        raw: Any,
+        by_canonical: dict[str, Entity],
+        chunk: Chunk,
+        relations: list[Relation],
+    ) -> list[Entity]:
+        """Обозначения (К3): узел «символ := понятие» и ребро к понятию.
+
+        Символ сам по себе не узел: $x$ в разных главах значит разное,
+        и узел по одному символу связал бы всё со всем. Поэтому узел —
+        пара символа и понятия. Понятие, которого нет среди сущностей,
+        добавляется с ролью mentions: фрагмент его называет.
+        """
+        if not isinstance(raw, list):
+            return []
+        notations: dict[str, Entity] = {}
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            symbol = str(item.get("symbol") or "").strip().strip("$").strip()
+            meaning = self._make_entity(str(item.get("meaning") or ""))
+            if not symbol or len(symbol) > NOTATION_MAX_SYMBOL or meaning is None:
+                continue
+            if meaning.canonical not in by_canonical:
+                meaning.role = "mentions"
+                by_canonical[meaning.canonical] = meaning
+            canonical = f"{symbol} := {meaning.canonical}"
+            if canonical in notations:
+                continue
+            notation = Entity(
+                id=Entity.make_id(f"notation:{canonical}"),
+                name=symbol,
+                canonical=canonical,
+                count=1,
+                kind="notation",
+                role="defines",
+            )
+            notations[canonical] = notation
+            relations.append(
+                Relation(
+                    source_id=notation.id,
+                    target_id=meaning.id,
+                    label=NOTATION_LABEL,
+                    chunk_id=chunk.id,
+                    doc_id=chunk.doc_id,
+                    weight=1.0,
+                )
+            )
+            if len(notations) >= self.settings.max_entities_per_chunk:
+                break
+        return list(notations.values())
 
     # ------------------------------------------------- связи между фрагментами
 
@@ -410,7 +544,7 @@ class EntityExtractor:
             raw = self.llm.chat(
                 [ChatMessage(role="user", content=prompt)],
                 purpose="extraction",
-                json_schema=EXTRACTION_SCHEMA,
+                json_schema=EXTRACTION_SCHEMA_V4 if _uses_roles(self.settings) else EXTRACTION_SCHEMA,
                 temperature=0.0,
                 max_tokens=self.settings.extraction_max_tokens,
             )

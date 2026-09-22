@@ -13,13 +13,15 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from rag_textbook.config import Settings
-from rag_textbook.evaluation.goldset import load_goldset
+from rag_textbook.evaluation.goldset import load_goldset, looks_leaky, references_numbering
+from rag_textbook.evaluation.verdicts import USABLE, VerdictSet
 from rag_textbook.generation.answering import build_answer_messages
 from rag_textbook.models import Chunk, ScoredChunk
 from rag_textbook.rewards.composite import RewardConfig, compute_reward
@@ -132,6 +134,34 @@ def split_by_docs(
     for example in examples:
         (test if set(example.doc_ids) & test_doc_ids else train).append(example)
     return train, test
+
+
+def drop_unfit(
+    examples: Iterable[Example], verdicts: VerdictSet | None = None
+) -> tuple[list[Example], Counter[str]]:
+    """Эпизоды, годные для обучения, и счётчик причин отбраковки.
+
+    Генератор вопросов проверяет утечки при создании, но импортированный
+    набор этих проверок не проходил (задача 019): вопрос с отсылкой к тексту
+    («в данном фрагменте») или к номеру формулы учит политику зависеть
+    от конкретного источника. Отклонённые вручную — тоже вон.
+
+    Применяется к обучению, а не к тесту: тестовый набор фиксирован,
+    и база с обученной моделью меряются на одних и тех же вопросах.
+    """
+    kept: list[Example] = []
+    reasons: Counter[str] = Counter()
+    for example in examples:
+        verdict = verdicts.verdicts.get(example.question_id) if verdicts else None
+        if verdict is not None and verdict.verdict not in USABLE:
+            reasons[f"вердикт:{verdict.verdict}"] += 1
+        elif looks_leaky(example.question):
+            reasons["отсылка к тексту"] += 1
+        elif references_numbering(example.question):
+            reasons["номер формулы или раздела"] += 1
+        else:
+            kept.append(example)
+    return kept, reasons
 
 
 def save_jsonl(examples: Iterable[Example], path: Path) -> int:

@@ -42,7 +42,7 @@ from rag_textbook.rl.env import completion_text, load_jsonl  # noqa: E402
 
 
 def build_reward(kind: str, *, seed: int, max_completion_tokens: int, samples_path: Path | None,
-                 sample_every: int):
+                 sample_every: int, stop_ids: set[int] | None = None):
     config = RewardConfig()
     state = {"calls": 0}
 
@@ -50,10 +50,11 @@ def build_reward(kind: str, *, seed: int, max_completion_tokens: int, samples_pa
                question=None, completion_ids=None, **_):
         state["calls"] += 1
         texts = [completion_text(item) for item in completions]
-        # Обрыв по пределу токенов виден только по длине сгенерированного.
-        # Новые версии TRL передают completion_ids; если нет — ловят ворота длины.
+        # Обрыв — предел токенов достигнут, а ответ не закончен. Ответ,
+        # закончившийся EOS ровно на пределе, законен (задача 019: он
+        # получал −1). Без completion_ids обрыв ловят только ворота длины.
         truncated = (
-            [len(ids) >= max_completion_tokens for ids in completion_ids]
+            [is_truncated(ids, max_completion_tokens, stop_ids) for ids in completion_ids]
             if completion_ids is not None else [False] * len(texts)
         )
         keys = question_id or [str(i) for i in range(len(texts))]
@@ -69,7 +70,9 @@ def build_reward(kind: str, *, seed: int, max_completion_tokens: int, samples_pa
             elif kind == "random":
                 value = random_reward(text, seed=seed, key=f"{key}:{state['calls']}")
             elif kind == "format":
-                value = format_reward(text, config=config)
+                # Контроль проходит те же ворота, что и основная награда,
+                # включая обрыв: иначе он поощрял бы петли до предела.
+                value = format_reward(text, config=config, truncated=cut)
             else:
                 raise ValueError(f"неизвестная награда {kind}")
             values.append(value)
@@ -89,6 +92,24 @@ def build_reward(kind: str, *, seed: int, max_completion_tokens: int, samples_pa
 
     reward.__name__ = f"reward_{kind}"
     return reward
+
+
+def is_truncated(ids: Any, limit: int, stop_ids: set[int] | None) -> bool:
+    """Предел достигнут и последний токен — не конец ответа."""
+    ids = list(ids)
+    if len(ids) < limit:
+        return False
+    return not (stop_ids and ids and ids[-1] in stop_ids)
+
+
+def stop_token_ids(tokenizer: Any) -> set[int]:
+    """EOS, PAD и конец реплики чата — всё, чем законно кончается ответ."""
+    found = {tokenizer.eos_token_id, tokenizer.pad_token_id}
+    for token in ("<|im_end|>", "<|endoftext|>"):
+        value = tokenizer.convert_tokens_to_ids(token)
+        if isinstance(value, int) and value != getattr(tokenizer, "unk_token_id", None):
+            found.add(value)
+    return {value for value in found if isinstance(value, int)}
 
 
 def dry_run(args) -> int:
@@ -131,10 +152,10 @@ def train(args) -> int:
     examples = load_jsonl(args.dataset)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    reward = build_reward(args.reward, seed=args.seed, max_completion_tokens=args.max_completion_length,
-                          samples_path=out / "samples.jsonl", sample_every=args.sample_every)
-
     model, tokenizer, peft_config = load_model(args)
+    reward = build_reward(args.reward, seed=args.seed, max_completion_tokens=args.max_completion_length,
+                          samples_path=out / "samples.jsonl", sample_every=args.sample_every,
+                          stop_ids=stop_token_ids(tokenizer))
     # TRL 0.24.0 не меняет сторону обрезки переданного токенизатора;
     # длинные эпизоды отбрасываются ниже, это страховка контракта.
     tokenizer.truncation_side = "left"
@@ -190,18 +211,30 @@ def train(args) -> int:
         "vllm_enable_sleep_mode": args.vllm_mode == "colocate",
     }
     config = GRPOConfig(**_supported(GRPOConfig, settings))
+    # Итоговые настройки и версии — рядом с адаптером: какие значения
+    # по умолчанию подставила установленная TRL, иначе не узнать.
+    _write_run_config(out / "run-config.json", config)
     trainer = GRPOTrainer(
         model=model, processing_class=tokenizer, reward_funcs=[reward],
         args=config, train_dataset=dataset, peft_config=peft_config,
     )
+    try:
+        import torch
+
+        torch.cuda.reset_peak_memory_stats()
+    except Exception:  # noqa: BLE001
+        pass
     started = time.perf_counter()
     trainer.train()
     elapsed = time.perf_counter() - started
+    done_steps = int(getattr(trainer.state, "global_step", 0) or args.steps)
     prompt_tokens = sorted(len(tokenizer(r["prompt"], add_special_tokens=False)["input_ids"])
                            for r in rows[: min(64, len(rows))])
     summary = {
-        "steps": args.steps, "seconds": round(elapsed, 1),
-        "seconds_per_step": round(elapsed / max(1, args.steps), 2),
+        # Время — только trainer.train(): без загрузки модели и сохранения
+        # адаптера. Шаги — фактические, не запрошенные.
+        "steps": done_steps, "steps_requested": args.steps, "seconds": round(elapsed, 1),
+        "seconds_per_step": round(elapsed / max(1, done_steps), 2),
         # Условия пробы: без них две пробы нельзя ни сравнить между собой,
         # ни вычесть одну из другой ради доли генерации.
         "stack": "vllm" if args.vllm else args.backend,
@@ -211,8 +244,14 @@ def train(args) -> int:
         "grad_accum": args.grad_accum,
         "max_completion_length": args.max_completion_length,
         "max_seq_length": args.max_seq_length,
+        # Медиана по первым 64 эпизодам — оценка, а не перепись набора.
         "prompt_tokens_median": prompt_tokens[len(prompt_tokens) // 2] if prompt_tokens else 0,
         "episodes": len(rows),
+        # Пик памяти — этого процесса. В режиме server движок vLLM живёт
+        # в другом процессе (обычно на другой карте), и его память сюда
+        # не входит: суммой двух карт это число не является.
+        "memory_scope": "training process" + (
+            " (vLLM server excluded)" if args.vllm and args.vllm_mode == "server" else ""),
     }
     try:
         import torch
@@ -231,19 +270,47 @@ def train(args) -> int:
     return 0
 
 
+# Без этих полей обучение идёт не тем методом, а не «чуть иначе»:
+# пропуск loss_type вернул бы нормировку на длину ответа, пропуск
+# scale_rewards — деление на разброс группы (Dr. GRPO, 2503.20783).
+CRITICAL_FIELDS = frozenset({
+    "loss_type", "scale_rewards", "beta", "num_generations", "max_completion_length",
+    "use_vllm", "vllm_mode",
+})
+
+
 def _supported(config_class, settings: dict[str, Any]) -> dict[str, Any]:
     """Оставляет только те поля, что есть в установленной версии TRL.
 
-    Версии расходятся сильнее, чем кажется: `max_prompt_length` в TRL 1.13
-    удалён, а `vllm_mode` и `vllm_enable_sleep_mode` появились только в 1.x
-    (задача 014, 017). Передать лишнее — упасть на конструкторе уже
-    на оплаченной карте.
+    Версии расходятся: `max_prompt_length` в TRL 1.13 удалён (задача 014,
+    017), и передать лишнее — упасть на конструкторе уже на оплаченной
+    карте. Но молча выбросить можно только необязательное: пропажа
+    критического поля — отказ, а не печать (задача 019).
     """
     known = {field.name for field in dataclasses.fields(config_class)}
     dropped = sorted(set(settings) - known)
+    critical = sorted(set(dropped) & CRITICAL_FIELDS)
+    if not settings.get("use_vllm"):
+        critical = [name for name in critical if name != "vllm_mode"]
+    if critical:
+        raise SystemExit(f"в установленной TRL нет обязательных настроек: {', '.join(critical)}")
     if dropped:
         print(f"настройки, которых нет в этой версии TRL: {', '.join(dropped)}")
     return {name: value for name, value in settings.items() if name in known}
+
+
+def _write_run_config(path: Path, config: Any) -> None:
+    import importlib.metadata as metadata
+
+    versions = {}
+    for package in ("trl", "transformers", "peft", "torch", "vllm", "unsloth", "accelerate"):
+        try:
+            versions[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            versions[package] = None
+    settings = config.to_dict() if hasattr(config, "to_dict") else dataclasses.asdict(config)
+    payload = {"versions": versions, "config": settings}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
 
 
 def load_model(args):

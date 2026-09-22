@@ -27,6 +27,7 @@ from rag_textbook.graph.failure_journal import JsonlFailureJournal
 from rag_textbook.logging_setup import configure_logging, get_logger
 from rag_textbook.retrieval.graph_retriever import GraphRetriever
 from rag_textbook.retrieval.pipeline import RetrievalPipeline
+from rag_textbook.stores.graph_file import MemoryGraphStore
 from rag_textbook.stores.graph_store import GraphStore
 from rag_textbook.stores.vector_store import VectorStore, build_vector_store
 from rag_textbook.utils.cache import ArtifactCache
@@ -219,7 +220,13 @@ def build_context(settings: Settings | None = None) -> AppContext:
     graph_store: GraphStore | None = None
     graph_retriever: GraphRetriever | None = None
     if settings.graph.enabled:
-        graph_store = GraphStore(settings.graph)
+        if settings.graph.backend == "memory" and settings.graph.graph_file is not None:
+            # Граф из файла только читается: сборка графа по-прежнему идёт в Neo4j,
+            # поэтому код записи получает хранилище без методов записи и падает
+            # громко, а не пишет в пустоту.
+            graph_store = MemoryGraphStore.from_file(settings.graph.graph_file)  # type: ignore[assignment]
+        else:
+            graph_store = GraphStore(settings.graph)
         if settings.graph.retrieval_enabled:
             graph_retriever = GraphRetriever(settings.graph, graph_store)
 

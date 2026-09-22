@@ -250,6 +250,13 @@ class Entity(BaseModel):
     canonical: str
     aliases: list[str] = Field(default_factory=list)
     count: int = 0
+    # Тип узла (гипотезы К1, К3): понятие или обозначение. Старые выгрузки
+    # и кэши извлечения его не знают — для них это понятие.
+    kind: str = "concept"
+    # Роль во фрагменте, из которого извлечена (К2): defines, uses, mentions.
+    # Это свойство упоминания, а не узла: у сущности, собранной из многих
+    # фрагментов, поле не имеет смысла и в узел не пишется.
+    role: str = ""
 
     @staticmethod
     def make_id(canonical: str) -> str:
@@ -328,6 +335,9 @@ class GoldQuestion(BaseModel):
         "single_chunk", "multi_hop", "graph_linked", "relation", "formula_table"
     ] = "single_chunk"
     expected_hops: int = 1
+    pair_source: str = ""
+    slice: str = ""
+    split: str = ""
     generator_model: str = ""
     verified: bool = False
     notes: str = ""

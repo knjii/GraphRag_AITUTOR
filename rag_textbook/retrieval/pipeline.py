@@ -23,6 +23,7 @@ from rag_textbook.clients.reranker import RerankerClient
 from rag_textbook.config import Settings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import ScoredChunk
+from rag_textbook.retrieval import selection
 from rag_textbook.retrieval.diversity import apply_diversity
 from rag_textbook.retrieval.fusion import (
     deduplicate,
@@ -181,6 +182,14 @@ class RetrievalPipeline:
         self.graph_retriever = graph_retriever
         self.llm = llm
         self.router = QueryRouter(settings.retrieval, llm)
+        # Отбор К6–К8 проверяется при создании: режим без нужного ему
+        # инструмента молча выродился бы в обычный порядок.
+        self.pair_scorer = (
+            selection.PairScorer(reranker) if settings.reranker.enabled else None
+        )
+        self.link_store = graph_retriever.store if graph_retriever is not None else None
+        if settings.retrieval.selection_mode != "off":
+            selection.check_ready(settings.retrieval, self.pair_scorer, self.link_store)
 
     # --------------------------------------------------------- разложение
 
@@ -328,6 +337,9 @@ class RetrievalPipeline:
         # неработающей. Ровно так уже вышло с RETRIEVAL_MIN_GRAPH_DOCS,
         # который добросовестно показывал ноль изменённых вопросов.
         if self.settings.retrieval.diversity_mode != "off" and items:
+            return max(width, items)
+        # То же для отбора К6–К7: он переставляет пул, и пул нужен целиком.
+        if self.settings.retrieval.selection_mode not in ("off", "closure") and items:
             return max(width, items)
         return width
 
@@ -485,13 +497,27 @@ class RetrievalPipeline:
 
         # Разнообразие применяется ПОСЛЕ реранкинга и ДО отсечки: раньше
         # реранкера ему нечего переупорядочивать, позже отсечки — уже поздно.
-        diversified = apply_diversity(reranked, self.settings, top_k=top_k)
+        stage = time.perf_counter()
+        selected = selection.reorder(
+            reranked,
+            rewritten,
+            self.settings.retrieval,
+            top_k,
+            scorer=self.pair_scorer,
+            store=self.link_store,
+        )
+        diversified = apply_diversity(selected, self.settings, top_k=top_k)
 
         final = enforce_minimum_graph_documents(
             diversified,
             minimum=self.settings.retrieval.min_graph_docs,
             top_k=top_k,
         )
+        final = selection.complete(
+            final, self.settings.retrieval, top_k, store=self.link_store
+        )
+        if self.settings.retrieval.selection_mode != "off":
+            timings["selection"] = (time.perf_counter() - stage) * 1000
 
         timings["total"] = (time.perf_counter() - started) * 1000
         result = RetrievalResult(

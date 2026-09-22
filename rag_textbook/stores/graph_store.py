@@ -27,6 +27,7 @@ from typing import Any
 from rag_textbook.config import GraphSettings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, Entity, Relation
+from rag_textbook.stores.graph_file import GraphFile
 
 logger = get_logger("stores.graph")
 
@@ -202,6 +203,7 @@ class GraphStore:
                 "canonical": entity.canonical,
                 "aliases": entity.aliases,
                 "count": entity.count,
+                "kind": entity.kind,
             }
             for entity in entities
         ]
@@ -212,6 +214,7 @@ class GraphStore:
             ON CREATE SET e.created_at = timestamp(), e.count = 0
             SET e.name = row.name,
                 e.canonical = row.canonical,
+                e.kind = row.kind,
                 e.count = coalesce(e.count, 0) + row.count,
                 e.aliases = CASE
                     WHEN e.aliases IS NULL THEN row.aliases
@@ -236,6 +239,7 @@ class GraphStore:
             MERGE (p)-[m:MENTIONS]->(e)
             SET m.count = row.count,
                 m.doc_id = row.doc_id,
+                m.role = coalesce(row.role, ''),
                 m.updated_at = timestamp()
             """,
             list(mentions),
@@ -546,6 +550,81 @@ class GraphStore:
                 limit=int(limit),
             ).data()
         return rows
+
+    def export_graph(self, variant: str = "neo4j") -> GraphFile:
+        """Выгружает граф в файл для хранилища в памяти (``graph_file.py``).
+
+        Выгружается всё, что читают четыре метода графового канала: фрагменты
+        (их число входит в IDF), сущности, упоминания и связи между
+        сущностями любых типов. Порядок строк фиксирован по id, чтобы две
+        выгрузки одного графа давали один и тот же файл.
+        """
+        graph = GraphFile(variant=variant, meta={"source": "neo4j", "uri": self.settings.uri})
+        with self._session() as session:
+            for row in self._run(
+                session,
+                """
+                MATCH (p:Passage)
+                RETURN p.id AS id, p.doc_id AS doc_id, p.doc_name AS doc_name,
+                       p.ordinal AS ordinal, p.text AS text, p.pages AS pages
+                ORDER BY id
+                """,
+            ):
+                graph.add_passage(
+                    str(row["id"]),
+                    doc_id=str(row["doc_id"] or ""),
+                    doc_name=str(row["doc_name"] or ""),
+                    ordinal=int(row["ordinal"] or 0),
+                    text=str(row["text"] or ""),
+                    pages=row["pages"] or [],
+                )
+            for row in self._run(
+                session,
+                """
+                MATCH (e:Entity)
+                RETURN e.id AS id, e.canonical AS canonical, e.name AS name,
+                       coalesce(e.count, 1) AS count, coalesce(e.kind, 'concept') AS kind
+                ORDER BY id
+                """,
+            ):
+                graph.add_entity(
+                    str(row["id"]),
+                    canonical=str(row["canonical"] or ""),
+                    name=str(row["name"] or ""),
+                    count=int(row["count"] or 0),
+                    kind=str(row["kind"] or "concept"),
+                )
+            for row in self._run(
+                session,
+                """
+                MATCH (p:Passage)-[m:MENTIONS]->(e:Entity)
+                RETURN p.id AS passage, e.id AS entity, coalesce(m.count, 1) AS count,
+                       coalesce(m.role, '') AS role
+                ORDER BY passage, entity
+                """,
+            ):
+                graph.add_mention(
+                    str(row["passage"]), str(row["entity"]), int(row["count"]), str(row["role"])
+                )
+            for row in self._run(
+                session,
+                """
+                MATCH (a:Entity)-[r]->(b:Entity)
+                RETURN a.id AS source, b.id AS target, type(r) AS rel_type,
+                       coalesce(r.label, '') AS label,
+                       coalesce(r.weight, r.pmi, 1.0) AS weight
+                ORDER BY source, target, rel_type, label
+                """,
+            ):
+                graph.add_relation(
+                    str(row["source"]),
+                    str(row["target"]),
+                    str(row["rel_type"]),
+                    str(row["label"]),
+                    float(row["weight"]),
+                )
+        logger.info("Граф выгружен: %s", graph.summary())
+        return graph
 
     def stats(self) -> dict[str, int]:
         with self._session() as session:

@@ -78,22 +78,42 @@ class GraphRetriever:
             logger.debug("Графовый канал: стартовые сущности не найдены (режим %s)", mode)
             return []
 
+        # Запрашиваем с запасом: опорные фрагменты из выдачи исключаются,
+        # иначе канал вернёт то, что уже найдено векторным поиском.
+        requested = (limit or self.settings.passage_limit) + len(exclude)
+        if self.settings.ranker == "ppr":
+            # PPR получает те же затравки, что и обход, но без расширения:
+            # расширение на шаг — часть обхода, а PPR распространяет вес сам.
+            try:
+                rows = self.store.ppr_passages(  # type: ignore[attr-defined]
+                    weights,
+                    requested,
+                    alpha=self.settings.ppr_alpha,
+                    rel_types=list(self.settings.expansion_rel_types),
+                    use_idf=self.settings.passage_idf_enabled,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("PPR по графу не удался: %s", exc)
+                return []
+            return self._to_results(rows, exclude, mode, len(weights))
+
         try:
             weights = self._expand(weights)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Расширение графа не удалось: %s", exc)
 
         try:
-            # Запрашиваем с запасом: опорные фрагменты из выдачи исключаются,
-            # иначе канал вернёт то, что уже найдено векторным поиском.
-            requested = (limit or self.settings.passage_limit) + len(exclude)
             rows = self.store.find_passages(
                 weights, requested, use_idf=self.settings.passage_idf_enabled
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Поиск пассажей в графе не удался: %s", exc)
             return []
+        return self._to_results(rows, exclude, mode, len(weights))
 
+    def _to_results(
+        self, rows: Sequence[dict], exclude: set[str], mode: str, entity_count: int
+    ) -> list[ScoredChunk]:
         results: list[ScoredChunk] = []
         for row in rows:
             if str(row.get("chunk_id") or "") in exclude:
@@ -123,7 +143,7 @@ class GraphRetriever:
         logger.debug(
             "Графовый канал (%s): сущностей %s, пассажей %s",
             mode,
-            len(weights),
+            entity_count,
             len(results),
         )
         return results

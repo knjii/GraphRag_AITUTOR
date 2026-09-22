@@ -121,3 +121,28 @@ def test_reward_function_uses_dataset_columns():
     )
     assert values[0] > 0 > values[1]
 
+
+
+def test_unfit_questions_are_kept_out_of_training():
+    """Задача 019: импортированный набор обходил проверки утечек."""
+    from rag_textbook.evaluation.verdicts import QuestionVerdict, VerdictSet
+    from rag_textbook.rl.env import drop_unfit
+
+    def ex(qid, question):
+        return Example(qid, "t", question, [], "", "", True, ["d"])
+
+    verdicts = VerdictSet()
+    verdicts.add(QuestionVerdict("bad", "unanswerable"))
+    verdicts.add(QuestionVerdict("good", "ok"))
+    kept, reasons = drop_unfit(
+        [
+            ex("good", "Как определяется ортогональная матрица?"),
+            ex("bad", "Что такое ранг матрицы?"),
+            ex("leak", "Что сказано в данном отрывке о базисе?"),
+            ex("num", "Как записана формула (8.24)?"),
+        ],
+        verdicts,
+    )
+    assert [e.question_id for e in kept] == ["good"]
+    assert reasons == {"вердикт:unanswerable": 1, "отсылка к тексту": 1,
+                       "номер формулы или раздела": 1}

@@ -541,6 +541,97 @@ def goldset_build(
     )
 
 
+@goldset_app.command("pairs")
+def goldset_pairs(
+    out: Annotated[Path, typer.Option(help="Файл пар JSONL")],
+    per_source: Annotated[int, typer.Option(min=0, help="Квота каждого источника")] = 50,
+    vectors: Annotated[Path | None, typer.Option(help="JSON: id фрагмента → вектор")] = None,
+    parsed: Annotated[Path | None, typer.Option(help="Каталог разобранных фрагментов для офлайн-работы")] = None,
+    seed: Annotated[int, typer.Option(help="Зерно отбора")] = 20260814,
+) -> None:
+    """Отбирает пары без модели и графа; --parsed позволяет работать без Qdrant."""
+    from dataclasses import asdict
+
+    from rag_textbook.evaluation.pairgen import sample_pairs, summarize_pairs
+    from rag_textbook.stores.vector_store import build_vector_store
+
+    settings = _settings()
+    if parsed is not None:
+        chunks = [Chunk.model_validate(item)
+                  for path in sorted(parsed.glob("*_chunks.json"))
+                  for item in json.loads(path.read_text(encoding="utf-8"))]
+    else:
+        # Тот же корпус, что у build, без создания клиентов моделей и графа.
+        store = build_vector_store(settings.vector_store)
+        chunks = list(store.iter_chunks())
+    if not chunks:
+        console.print("[red]Нет фрагментов для отбора.[/red]")
+        raise typer.Exit(code=1)
+    vector_data = json.loads(vectors.read_text(encoding="utf-8")) if vectors else None
+    pairs = sample_pairs(chunks, per_source, seed, vectors=vector_data)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(json.dumps(asdict(p), ensure_ascii=False) + "\n" for p in pairs), encoding="utf-8")
+    summary = summarize_pairs(pairs, per_source, vectors_available=bool(vector_data))
+    console.print_json(data=summary)
+    console.print(f"Сохранено {len(pairs)} пар в {out}")
+
+
+@goldset_app.command("build-v2")
+def goldset_build_v2(
+    pairs: Annotated[Path, typer.Option(help="Входные пары JSONL")],
+    out: Annotated[Path, typer.Option(help="Файл эталона")],
+    single: Annotated[int, typer.Option(min=0, help="Одношаговые вопросы")] = 100,
+    formula: Annotated[int, typer.Option(min=0, help="Формульные вопросы")] = 50,
+    ablate: Annotated[bool, typer.Option("--ablate", help="Проверить необходимость обоих фрагментов")] = False,
+    parsed: Annotated[Path | None, typer.Option(help="Каталог разобранных фрагментов вместо Qdrant")] = None,
+    seed: Annotated[int, typer.Option(help="Зерно отбора и разбиения")] = 20260814,
+    workers: Annotated[int, typer.Option(min=1, help="Параллельные запросы к модели")] = 1,
+) -> None:
+    """Собирает вопросы по независимым парам и при необходимости проверяет абляцией."""
+    from rag_textbook.clients.llm import build_llm_client
+    from rag_textbook.evaluation.pairgen import (
+        PairCandidate,
+        assign_split,
+        build_v2,
+        keep_two_hop,
+    )
+    from rag_textbook.stores.vector_store import build_vector_store
+
+    settings = _settings()
+    candidates = [PairCandidate(**json.loads(line))
+                  for line in pairs.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if parsed is not None:
+        chunks = [Chunk.model_validate(item)
+                  for path in sorted(parsed.glob("*_chunks.json"))
+                  for item in json.loads(path.read_text(encoding="utf-8"))]
+    else:
+        store = build_vector_store(settings.vector_store)
+        chunks = list(store.iter_chunks())
+    if not chunks:
+        console.print("[red]Нет фрагментов для сборки.[/red]")
+        raise typer.Exit(code=1)
+    llm = build_llm_client(settings.llm)
+    try:
+        builder = GoldsetBuilder(llm, seed=seed, workers=workers)
+        questions = build_v2(builder, chunks, candidates, single, formula, seed)
+        if ablate:
+            results = run_ablation(llm, [q for q in questions if q.expected_hops > 1],
+                                   {c.id: c for c in chunks}, max_workers=workers)
+            verdict_path = Path(str(out) + ".ablation.jsonl")
+            verdict_path.parent.mkdir(parents=True, exist_ok=True)
+            verdict_path.write_text("".join(
+                json.dumps(r.as_dict(), ensure_ascii=False) + "\n" for r in results
+            ), encoding="utf-8")
+            questions = keep_two_hop(questions, results)
+        questions = assign_split(questions, seed)
+        save_goldset(questions, out)
+    finally:
+        close = getattr(llm, "close", None)
+        if close is not None:
+            close()
+    console.print(f"Сохранено {len(questions)} вопросов в {out}")
+
+
 @goldset_app.command("stats")
 def goldset_stats(
     path: Annotated[Path | None, typer.Option(help="Путь к набору")] = None,
@@ -1061,6 +1152,26 @@ REPLAY_GRID: dict[str, list[dict[str, dict]]] = {
         {"graph": {"weight": 0.6}},
         {"retrieval": {"dedup_similarity": 0.85}},
     ],
+    # Серия К, отбор (docs/HYPOTHESES.md). Слепок только отсеивает:
+    # выжившее повторяется онлайн, К8 — только онлайн. Нужны --links-graph
+    # (К6б, К7) и --rerank-pairs (К6), иначе строки отказываются считаться.
+    "К6-условный": [
+        {"retrieval": {"selection_mode": "conditional", "selection_lambda": 0.3}},
+        {"retrieval": {"selection_mode": "conditional", "selection_lambda": 0.5}},
+        {"retrieval": {"selection_mode": "conditional", "selection_lambda": 0.7}},
+        {"retrieval": {"selection_mode": "conditional", "selection_condition_items": 2}},
+    ],
+    "К6-пары": [
+        {"retrieval": {"selection_mode": "pairs", "selection_lambda": 0.3}},
+        {"retrieval": {"selection_mode": "pairs", "selection_lambda": 0.5}},
+        {"retrieval": {"selection_mode": "pairs", "selection_lambda": 0.7}},
+    ],
+    "К7-распространение": [
+        {"retrieval": {"selection_mode": "diffusion", "selection_alpha": 0.1}},
+        {"retrieval": {"selection_mode": "diffusion", "selection_alpha": 0.3}},
+        {"retrieval": {"selection_mode": "diffusion", "selection_alpha": 0.6}},
+        {"retrieval": {"selection_mode": "diffusion", "selection_alpha": 1.0}},
+    ],
 }
 
 
@@ -1089,6 +1200,15 @@ def eval_replay(
         Path | None, typer.Option(help="Файл фрагментов; по умолчанию ищется в artifacts/parsed")
     ] = None,
     group: Annotated[str, typer.Option(help="Какую группу гипотез перебрать")] = "",
+    links_graph: Annotated[
+        Path | None, typer.Option(help="Файл варианта графа: рёбра между фрагментами для К6б и К7")
+    ] = None,
+    rerank_pairs: Annotated[
+        bool, typer.Option("--rerank-pairs", help="Досчитывать баллы пар реранкером (К6)")
+    ] = False,
+    pair_cache: Annotated[
+        Path | None, typer.Option(help="Кэш баллов пар реранкера, JSONL")
+    ] = None,
 ) -> None:
     """Пересчитывает отбор по слепку и перебирает настройки офлайн.
 
@@ -1158,6 +1278,19 @@ def eval_replay(
     top_k = settings.retrieval.top_k
     console.print(f"Точка отсчёта: recall@{top_k} = {base_metrics.per_k[top_k]['recall']:.3f}")
 
+    link_store = None
+    if links_graph is not None:
+        from rag_textbook.stores.graph_file import MemoryGraphStore, file_hash
+
+        link_store = MemoryGraphStore.from_file(links_graph)
+        console.print(f"[dim]Рёбра отбора: {links_graph}, sha256 {file_hash(links_graph)[:12]}[/dim]")
+    scorer = None
+    if rerank_pairs:
+        from rag_textbook.clients.reranker import build_reranker_client
+        from rag_textbook.retrieval.selection import PairScorer
+
+        scorer = PairScorer(build_reranker_client(settings.reranker), cache_path=pair_cache)
+
     groups = {group: REPLAY_GRID[group]} if group else REPLAY_GRID
     for name, variants in groups.items():
         table = Table(title=name)
@@ -1172,7 +1305,9 @@ def eval_replay(
         for overrides in variants:
             try:
                 candidate = _apply_overrides(settings, overrides)
-                outcomes = replay(traces, candidate, corpus, gold)
+                outcomes = replay(
+                    traces, candidate, corpus, gold, scorer=scorer, link_store=link_store
+                )
             except (NotReplayable, ValueError) as error:
                 table.add_row(_describe(overrides), "—", "—", "—", "—", str(error)[:40])
                 continue

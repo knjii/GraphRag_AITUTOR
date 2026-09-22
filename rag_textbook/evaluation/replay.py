@@ -18,9 +18,15 @@ from collections.abc import Sequence
 
 from rag_textbook.config import Settings
 from rag_textbook.evaluation.metrics import QueryOutcome
-from rag_textbook.evaluation.trace import QueryTrace, TraceSet, assert_replayable
+from rag_textbook.evaluation.trace import (
+    NotReplayable,
+    QueryTrace,
+    TraceSet,
+    assert_replayable,
+)
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, ScoredChunk
+from rag_textbook.retrieval import selection
 from rag_textbook.retrieval.diversity import apply_diversity
 from rag_textbook.retrieval.fusion import (
     deduplicate,
@@ -99,7 +105,12 @@ def _rerank_from_trace(
 
 
 def replay_one(
-    trace: QueryTrace, settings: Settings, chunks: dict[str, Chunk]
+    trace: QueryTrace,
+    settings: Settings,
+    chunks: dict[str, Chunk],
+    *,
+    scorer: selection.PairScorer | None = None,
+    link_store: object | None = None,
 ) -> list[ScoredChunk]:
     """Пересчитывает выдачу по одному вопросу."""
     top_k = settings.retrieval.top_k_for(trace.used_graph)
@@ -125,13 +136,17 @@ def replay_one(
     )
 
     width = max(settings.reranker.top_n, top_k) + settings.retrieval.min_graph_docs
-    if settings.retrieval.diversity_mode != "off":
-        # См. комментарий в конвейере: разнообразию нужен запас сверх top_k,
-        # иначе оно не может ничего переставить.
+    if settings.retrieval.diversity_mode != "off" or settings.retrieval.selection_mode != "off":
+        # См. комментарий в конвейере: разнообразию и отбору нужен запас
+        # сверх top_k, иначе они не могут ничего переставить.
         width = max(width, len(candidates))
     reranked = _rerank_from_trace(trace, candidates, settings, width)
 
-    diversified = apply_diversity(reranked, settings, top_k=top_k)
+    question = trace.rewritten_question or trace.question
+    selected = selection.reorder(
+        reranked, question, settings.retrieval, top_k, scorer=scorer, store=link_store
+    )
+    diversified = apply_diversity(selected, settings, top_k=top_k)
 
     return enforce_minimum_graph_documents(
         diversified, minimum=settings.retrieval.min_graph_docs, top_k=top_k
@@ -143,6 +158,9 @@ def replay(
     settings: Settings,
     chunks: dict[str, Chunk],
     gold: dict[str, Sequence[str]] | None = None,
+    *,
+    scorer: selection.PairScorer | None = None,
+    link_store: object | None = None,
 ) -> list[QueryOutcome]:
     """Пересчитывает выдачу по всему слепку.
 
@@ -150,6 +168,14 @@ def replay(
     не посчитать, но выдачу посмотреть можно.
     """
     assert_replayable(traces.settings_snapshot, settings)
+    if settings.retrieval.selection_mode in selection.MODES_LEAVING_POOL:
+        # Замыкание приносит фрагменты не из пула: слепок их не содержит,
+        # и воспроизведение мерило бы не ту систему (условие 3 допуска).
+        raise NotReplayable(
+            f"Отбор {settings.retrieval.selection_mode} выходит за пул кандидатов "
+            "и проверяется только прогоном на сервере"
+        )
+    selection.check_ready(settings.retrieval, scorer, link_store)
     if settings.reranker.candidates > traces.rerank_window > 0:
         raise ValueError(
             f"Окно кандидатов {settings.reranker.candidates} шире снятого "
@@ -159,7 +185,7 @@ def replay(
 
     outcomes: list[QueryOutcome] = []
     for trace in traces.traces:
-        final = replay_one(trace, settings, chunks)
+        final = replay_one(trace, settings, chunks, scorer=scorer, link_store=link_store)
         retrieved = [item.chunk.id for item in final]
         outcomes.append(
             QueryOutcome(

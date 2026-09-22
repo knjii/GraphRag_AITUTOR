@@ -76,6 +76,7 @@ src/app.py
 src/backfill_graph_from_chroma.py
 src/preflight.py
 successful_indexing.txt
+tasks/
 venv/
 Отчет_1курс_ссылки.tex
 учебники_для_оценки/

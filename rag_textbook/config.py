@@ -551,6 +551,29 @@ class GraphSettings(_Base):
     # выдачи релевантность уже низкая, и их сущности вносят шум.
     seed_passages: int = Field(default=3, ge=1, le=20, alias="GRAPH_SEED_PASSAGES")
 
+    # Где лежит граф. `memory` — файл варианта графа, собранный заранее
+    # (`graph_file.py`). Так варианты серии К сравниваются одной настройкой,
+    # без пересборки Neo4j. Замер на файле засчитывается, только если
+    # выгрузка нынешнего графа совпадает с Neo4j (scripts/graph_fidelity.py).
+    backend: Literal["neo4j", "memory"] = Field(default="neo4j", alias="GRAPH_BACKEND")
+    graph_file: Path | None = Field(default=None, alias="GRAPH_FILE")
+    # Как ранжируются фрагменты по весам стартовых узлов. `walk` — нынешний
+    # обход на шаг с затуханием. `ppr` — персонализированный PageRank по
+    # всему графу (HippoRAG 2, гипотеза К4). Затравки у обоих одни и те же:
+    # в одной книге весь прирост PPR дали затравки, а не сам алгоритм,
+    # поэтому сравнивается только ранжирование. PPR доступен лишь на
+    # графе из файла: ему нужен граф целиком.
+    ranker: Literal["walk", "ppr"] = Field(default="walk", alias="GRAPH_RANKER")
+    ppr_alpha: float = Field(default=0.5, gt=0.0, le=1.0, alias="GRAPH_PPR_ALPHA")
+
+    @model_validator(mode="after")
+    def _memory_backend_needs_file(self) -> GraphSettings:
+        if self.backend == "memory" and self.graph_file is None:
+            raise ValueError("GRAPH_BACKEND=memory требует GRAPH_FILE — путь к файлу графа")
+        if self.ranker == "ppr" and self.backend != "memory":
+            raise ValueError("GRAPH_RANKER=ppr работает только с GRAPH_BACKEND=memory")
+        return self
+
     @field_validator("expansion_rel_types", mode="before")
     @classmethod
     def _split_rel_types(cls, value: object) -> object:
@@ -590,6 +613,42 @@ class RetrievalSettings(_Base):
     # Сколько последних мест выдачи отдать непохожим фрагментам в режиме reserve.
     diversity_reserve_slots: int = Field(
         default=2, ge=0, le=16, alias="RETRIEVAL_DIVERSITY_RESERVE_SLOTS"
+    )
+    # Отбор после реранкера, гипотезы К6–К8 (docs/HYPOTHESES.md). Выключен:
+    # значение по умолчанию меняется только после онлайн-прогона.
+    #   conditional — К6а: следующий фрагмент оценивается при уже выбранном;
+    #   pairs       — К6б: пары вдоль рёбер графа оцениваются как единица;
+    #   diffusion   — К7: балл соседа по графу внутри пула поднимает слабого;
+    #   closure     — К8: к выбранному добавляется место определения. Выходит
+    #                 за пул, поэтому по слепку не проверяется.
+    selection_mode: Literal["off", "conditional", "pairs", "diffusion", "closure"] = Field(
+        default="off", alias="RETRIEVAL_SELECTION"
+    )
+    # Вес собственного балла против условного (К6а) или парного (К6б).
+    selection_lambda: float = Field(
+        default=0.5, ge=0.0, le=1.0, alias="RETRIEVAL_SELECTION_LAMBDA"
+    )
+    # Сколько знаков выбранного фрагмента идёт в условие или в пару: реранкер
+    # режет длинный вход, и без обрезки условие вытеснило бы сам кандидат.
+    selection_excerpt_chars: int = Field(
+        default=400, ge=50, le=4000, alias="RETRIEVAL_SELECTION_EXCERPT_CHARS"
+    )
+    # Сколько последних выбранных фрагментов входит в условие К6а.
+    selection_condition_items: int = Field(
+        default=1, ge=1, le=4, alias="RETRIEVAL_SELECTION_CONDITION_ITEMS"
+    )
+    # Сила распространения К7: балл = свой + α · max(сосед × вес ребра).
+    selection_alpha: float = Field(
+        default=0.3, ge=0.0, le=2.0, alias="RETRIEVAL_SELECTION_ALPHA"
+    )
+    # Рёбра между фрагментами: общие узлы или зависимость «использует →
+    # определяет» (нужны роли из К2).
+    selection_links: Literal["shared", "dependency"] = Field(
+        default="shared", alias="RETRIEVAL_SELECTION_LINKS"
+    )
+    # Бюджет К8: сколько последних мест можно отдать местам определений.
+    selection_max_replacements: int = Field(
+        default=2, ge=0, le=16, alias="RETRIEVAL_SELECTION_MAX_REPLACEMENTS"
     )
     dedup_enabled: bool = Field(default=True, alias="RETRIEVAL_DEDUP_ENABLED")
     dedup_similarity: float = Field(
@@ -833,9 +892,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _cross_checks(self) -> Settings:
-        if self.graph.enabled and not self.graph.password.get_secret_value():
+        if (
+            self.graph.enabled
+            and self.graph.backend == "neo4j"
+            and not self.graph.password.get_secret_value()
+        ):
             # Не падаем: без пароля просто отключаем графовый слой, чтобы
-            # локальный запуск и тесты работали без Neo4j.
+            # локальный запуск и тесты работали без Neo4j. Графу из файла
+            # пароль не нужен — ради него файл и заведён.
             object.__setattr__(self.graph, "enabled", False)
             object.__setattr__(self.graph, "retrieval_enabled", False)
         if self.reranker.candidates < self.retrieval.top_k:

@@ -28,9 +28,34 @@
 * «повторять одно и то же с косметическими правками» — повторы ищутся
   по канонической форме формул и нормализованному тексту предложений;
 * «оговорка "нет данных" внутри полного ответа» — отказом считается
-  только короткий ответ.
+  ответ без формул, в котором маркер стоит в первом предложении или
+  который короткий; длинное вежливое продолжение отказ отказом
+  не отменяет (задача 019: так снимался штраф −0.5);
+* «повторить вопрос» — предложения, пересказывающие вопрос, в опору
+  не засчитываются (задача 019: вопрос вместо ответа получал 0.3);
+* «формула из памяти вместо отказа» — ожидаются только эталонные
+  формулы, видимые в контексте (``formula.score_formulas``);
+* «провалить ворота нарочно» — сумма не опускается ниже штрафа ворот:
+  иначе очень плохой ответ (до −2.7) был хуже пустого (−1).
 
-Атаки оформлены тестами в ``tests/test_rewards_attacks.py``.
+* «переписать подходящий фрагмент контекста» — штраф за слова, дословно
+  взятые из контекста (восьмёрками слов), сверх допуска. Без него дамп
+  фрагмента выигрывал у ответа с ручной оценкой 3 в 8 вопросах из 10
+  (задача 020). Честные ответы ручной сверки берут дословно до 93 слов,
+  лучшие дампы — от 114;
+* «вопрос с формулой вместо ответа», «отказ плюс $z$» — повтором вопроса
+  считается и вопросительное предложение с формулой, а отказ не
+  отменяется формулой короче порога значимости (задача 020).
+
+Предел: ответность по-прежнему не проверяется — пересказ фрагмента своими
+словами штраф за копирование обходит. Доля дословно скопированных
+предложений пишется в разбор (``diagnostics["copied"]``).
+
+Атаки оформлены тестами в ``tests/test_rewards_attacks.py``,
+``tests/test_rewards_review019.py`` и ``tests/test_rewards_review020.py``
+(независимые ревью, задачи 019 и 020).
+После любой правки награды — ``scripts/reward_recheck.py``: закрытый
+эксплойт не должен ломать порядок на ответах с ручной оценкой.
 
 Веса — начальные, их подбор входит в абляции спринта 5.
 """
@@ -53,6 +78,7 @@ from rag_textbook.rewards.formula import (
     canonical_tokens,
     extract_math,
     score_formulas,
+    significant,
     strip_math,
 )
 from rag_textbook.utils.text import content_terms, split_sentences
@@ -172,6 +198,13 @@ class RewardConfig:
     # полное — от этой доли. Без этого переписанные предложения контекста
     # не по вопросу получали полную опору.
     question_coverage_full: float = 0.5
+    # Дословное копирование: слова ответа, входящие в восьмёрку слов подряд
+    # из контекста. Допуск — выше максимума честных ответов ручной сверки
+    # (93 слова), штраф растёт до полного за copy_saturation слов сверх него.
+    copy_ngram: int = 8
+    copy_free_words: int = 100
+    copy_saturation: int = 50
+    copy_weight: float = 1.0
 
 
 @dataclass
@@ -182,6 +215,8 @@ class RewardBreakdown:
     support_judged: int = 0
     support_ok: int = 0
     parts: dict[str, float] = field(default_factory=dict)
+    # Наблюдения, не входящие в сумму: видны в разборе генераций.
+    diagnostics: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -206,6 +241,83 @@ def _prose_share(answer: str) -> float:
     letters = sum(1 for c in strip_math(answer) if c.isalpha())
     total = sum(1 for c in answer if not c.isspace())
     return letters / total if total else 0.0
+
+
+def _normalized(sentence: str) -> str:
+    return " ".join(_WORD_RE.findall(sentence.lower().replace("ё", "е")))
+
+
+def looks_like_refusal(text: str, cfg: RewardConfig) -> bool:
+    """Отказ — маркер без формул, в первом предложении или в коротком ответе.
+
+    Прежде отказом был только ответ до 400 знаков, и вежливое продолжение
+    длиной 456 знаков снимало штраф −0.5 за отказ при видимом эталоне.
+    Ответ с формулами — не отказ: оговорка внутри полного ответа законна.
+    """
+    if not is_refusal(text):
+        return False
+    short = len(text) <= cfg.max_refusal_chars
+    # В коротком ответе формула ниже порога значимости («$z$») отказ не
+    # отменяет: «Недостаточно информации. $z$» получал 0 вместо −0.5
+    # (задача 020). В длинном — отменяет: ручная сверка, ответ 14B (оценка 3)
+    # объясняет по контексту, почему связи нет, с формулами $\theta$.
+    if significant(extract_math(text)) or (not short and extract_math(text)):
+        return False
+    first = next(iter(split_sentences(text)), text)
+    return short or is_refusal(first)
+
+
+def without_question_echo(answer: str, question: str) -> str:
+    """Ответ без предложений, повторяющих вопрос.
+
+    Опора на контекст лексическая, а вопрос составлен из слов контекста:
+    ответ «Как определяется скалярное произведение?» получал опору 0.3
+    (задача 019). Повтором считается предложение без единого своего
+    содержательного слова и без значимой формулы, а также вопросительное
+    предложение из слов вопроса с любой формулой: «Как определяется …
+    $$s=…$$?» получал полную награду (задача 020). Порог «почти все слова из вопроса»
+    (0.8) выбрасывал верные короткие ответы: «Первое ненулевое значение
+    в строке ступенчатой матрицы называется ведущим» — это вопрос плюс одно
+    слово ответа, и ручная оценка 3 превращалась в награду 0.
+    """
+    asked = set(content_terms(question))
+    if not asked:
+        return answer
+    kept = []
+    for sentence in split_sentences(answer):
+        terms = set(content_terms(strip_math(sentence)))
+        if terms and terms <= asked and (
+            sentence.rstrip().endswith("?") or not significant(extract_math(sentence))
+        ):
+            continue
+        kept.append(sentence)
+    return " ".join(kept)
+
+
+def copied_share(answer: str, context: str) -> float:
+    """Доля предложений ответа, дословно взятых из контекста (без формул)."""
+    sentences = [_normalized(item) for item in split_sentences(strip_math(answer))]
+    sentences = [item for item in sentences if len(item) > 20]
+    if not sentences:
+        return 0.0
+    source = _normalized(strip_math(context))
+    return sum(1 for item in sentences if item in source) / len(sentences)
+
+
+def copied_words(answer: str, context: str, ngram: int = 8) -> int:
+    """Слова ответа (без формул), входящие в ``ngram`` слов подряд из контекста.
+
+    Не по предложениям: замена одного слова в предложении иначе снимала бы
+    совпадение целиком.
+    """
+    source = _WORD_RE.findall(strip_math(context).lower().replace("ё", "е"))
+    grams = {tuple(source[i : i + ngram]) for i in range(len(source) - ngram + 1)}
+    words = _WORD_RE.findall(strip_math(answer).lower().replace("ё", "е"))
+    covered = [False] * len(words)
+    for start in range(len(words) - ngram + 1):
+        if tuple(words[start : start + ngram]) in grams:
+            covered[start : start + ngram] = [True] * ngram
+    return sum(covered)
 
 
 def _leaks_reasoning(text: str) -> bool:
@@ -245,12 +357,22 @@ def compute_reward(
         if failed:
             return RewardBreakdown(total=cfg.gate_penalty, gate=reason)
 
-    if is_refusal(text) and len(text) <= cfg.max_refusal_chars:
+    if looks_like_refusal(text, cfg):
         value = cfg.refusal_reward if not gold_in_context else cfg.refusal_penalty
         return RewardBreakdown(total=value, gate="отказ", parts={"refusal": value})
 
     formula = score_formulas(reference, text, context)
-    judged, supported = sentence_support(text, context)
+    first = next(iter(split_sentences(text)), text)
+    if is_refusal(first) and formula.answer_formulas and formula.foreign == formula.answer_formulas:
+        # Отказ с одними выдуманными формулами — отказ плюс выдумка: иначе
+        # формула после «недостаточно информации» поднимала отказ −0.5
+        # до −0.44 (задача 020), а при невидимом эталоне оплачивалась бы +0.5.
+        value = (cfg.refusal_reward if not gold_in_context else cfg.refusal_penalty)
+        value -= cfg.foreign_weight
+        return RewardBreakdown(
+            total=value, gate="отказ", formula=formula, parts={"refusal": value}
+        )
+    judged, supported = sentence_support(without_question_echo(text, question), context)
     parts: dict[str, float] = {}
 
     if formula.expected:
@@ -270,7 +392,16 @@ def compute_reward(
         parts["foreign"] = -cfg.foreign_weight * formula.foreign_share
         offtarget = formula.answer_formulas - formula.relevant - formula.foreign
         excess = max(0, offtarget - max(cfg.offtarget_allowance, formula.expected))
-        if excess:
+        # «Вне эталона» не определено, если эталона модель не видела: тогда
+        # любая формула контекста — «лишняя», и честный ответ по контексту
+        # штрафовался сильнее пустого (ручная сверка, вопрос 6: оценки 2
+        # получали награду ниже оценки 0). Лучшим ответом здесь остаётся
+        # отказ (+0.5), а выдумку ловит штраф за чужие формулы.
+        # Задача 020 предлагала штрафовать и при частично видимом эталоне
+        # (дамп 1.3 против 1.15 у честного частичного ответа). Проверено
+        # и отвергнуто: на ручной сверке ответы по формулам контекста
+        # в вопросах 6 и 9 (оценки 2–3) теряли до 0.3, согласие падало.
+        if excess and gold_in_context:
             parts["offtarget"] = -cfg.offtarget_weight * min(1.0, excess / cfg.offtarget_saturation)
         if cfg.no_prose_penalty and _prose_share(text) < cfg.min_prose_share:
             parts["no_prose"] = -cfg.no_prose_penalty
@@ -281,16 +412,27 @@ def compute_reward(
     repeated = repetition_share(text)
     if repeated > cfg.max_repetition:
         parts["repetition"] = -cfg.repetition_weight * min(1.0, repeated / 0.5)
+    words_copied = copied_words(text, context, cfg.copy_ngram)
+    over = words_copied - cfg.copy_free_words
+    if over > 0:
+        parts["copied"] = -cfg.copy_weight * min(1.0, over / cfg.copy_saturation)
     if len(text) > cfg.soft_max_chars:
         overflow = (len(text) - cfg.soft_max_chars) / (cfg.hard_max_chars - cfg.soft_max_chars)
         parts["length"] = -cfg.length_weight * min(1.0, overflow)
 
     return RewardBreakdown(
-        total=round(sum(parts.values()), 6),
+        # Пройти ворота и ответить плохо не должно быть хуже, чем провалить
+        # их нарочно: иначе пустой ответ выгоднее попытки (задача 019).
+        total=round(max(cfg.gate_penalty, sum(parts.values())), 6),
         formula=formula,
         support_judged=judged,
         support_ok=supported,
         parts={key: round(value, 6) for key, value in parts.items()},
+        # Сколько слов до порога штрафа — видно при чтении генераций.
+        diagnostics={
+            "copied": round(copied_share(text, context), 3),
+            "copied_words": words_copied,
+        },
     )
 
 
@@ -312,12 +454,15 @@ def random_reward(answer: str, *, seed: int, key: str) -> float:
     return rng.choice((0.0, 1.0))
 
 
-def format_reward(answer: str, *, config: RewardConfig | None = None) -> float:
+def format_reward(
+    answer: str, *, config: RewardConfig | None = None, truncated: bool = False
+) -> float:
     """Только ворота формата, без содержания: 1 за «приличный» ответ."""
     cfg = config or RewardConfig()
     text = (answer or "").strip()
     if (
         not text
+        or truncated
         or _leaks_reasoning(text)
         or latin_share(text) > cfg.max_latin_share
         or len(text) > cfg.hard_max_chars

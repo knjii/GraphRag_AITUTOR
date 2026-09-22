@@ -46,6 +46,12 @@ COMPOSITION_FIELDS: tuple[str, ...] = (
     "graph.seed_passages",
     "graph.expansion_rel_types",
     "graph.retrieval_enabled",
+    # Вариант графа меняет кандидатов так же, как любая настройка обхода.
+    # Путь к файлу у каждой машины свой, поэтому пишется хэш содержимого.
+    "graph.backend",
+    "graph.graph_file_hash",
+    "graph.ranker",
+    "graph.ppr_alpha",
     "retrieval.dense_candidates",
     "retrieval.sparse_candidates",
     "retrieval.decompose_enabled",
@@ -74,6 +80,13 @@ ORDERING_FIELDS: tuple[str, ...] = (
     "retrieval.diversity_mode",
     "retrieval.diversity_lambda",
     "retrieval.diversity_reserve_slots",
+    "retrieval.selection_mode",
+    "retrieval.selection_lambda",
+    "retrieval.selection_excerpt_chars",
+    "retrieval.selection_condition_items",
+    "retrieval.selection_alpha",
+    "retrieval.selection_links",
+    "retrieval.selection_max_replacements",
     "reranker.enabled",
     "reranker.mode",
     "reranker.blend_alpha",
@@ -204,8 +217,27 @@ class TraceSet:
         return result
 
 
+# Значения полей, которых нет в слепках, снятых до их появления: тогда
+# всё работало на Neo4j обходом. Без этого слепок старого графа молча
+# «подтвердил» бы замер варианта из файла.
+LEGACY_DEFAULTS: dict[str, Any] = {
+    "graph.backend": "neo4j",
+    "graph.graph_file_hash": "",
+    "graph.ranker": "walk",
+    "graph.ppr_alpha": 0.5,
+}
+
+
 def read_setting(settings: Settings, path: str) -> Any:
     """Достаёт значение настройки по пути вида ``graph.hop_decay``."""
+    if path == "graph.graph_file_hash":
+        # Не настройка, а производная от неё: хэш файла варианта графа.
+        graph = settings.graph
+        if graph.backend != "memory" or graph.graph_file is None:
+            return ""
+        from rag_textbook.stores.graph_file import file_hash
+
+        return file_hash(graph.graph_file)
     current: Any = settings
     for part in path.split("."):
         current = getattr(current, part, None)
@@ -240,7 +272,10 @@ def assert_replayable(snapshot: dict[str, Any], settings: Settings) -> None:
     Здесь такая попытка заканчивается ошибкой, а не правдоподобным числом.
     """
     changed: list[str] = []
-    for path, recorded in snapshot.items():
+    expected = dict(snapshot)
+    for path, legacy in LEGACY_DEFAULTS.items():
+        expected.setdefault(path, legacy)
+    for path, recorded in expected.items():
         current = read_setting(settings, path)
         if isinstance(current, tuple):
             current = list(current)
@@ -289,6 +324,10 @@ def align_to_snapshot(settings: Settings, snapshot: dict[str, Any]) -> tuple[Set
     for path, recorded in snapshot.items():
         section, _, field_name = path.partition(".")
         if not field_name or not hasattr(aligned, section):
+            continue
+        if path == "graph.graph_file_hash":
+            # Хэш не выставить настройкой: файл либо тот же, либо проверка
+            # ``assert_replayable`` откажет.
             continue
         current = read_setting(aligned, path)
         if isinstance(current, tuple):

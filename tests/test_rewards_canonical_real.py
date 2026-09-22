@@ -99,6 +99,19 @@ SAME = [
     ),
 ]
 
+# Структура, сохранённая после задачи 019, не должна ломать сведение
+# одинаковых записей.
+SAME += [
+    pytest.param(r"y = \dfrac { a b } { c }", r"y=\frac{ab}{c}", id="dfrac-и-frac"),
+    pytest.param(r"\frac { 1 } { 2 } \| w \| ^ { 2 }", r"\frac 1 2 \|w\|^2", id="дробь-без-скобок"),
+    pytest.param(r"A = \begin{bmatrix} a & b \\ c & d \\ \end{bmatrix}",
+                 r"A = \begin{bmatrix} a & b \\ c & d \end{bmatrix}", id="перевод-строки-перед-концом"),
+    pytest.param(r"A = \begin{pmatrix} a & b \\ c & d \end{pmatrix}",
+                 r"A = \left( \begin{matrix} a & b \\ c & d \end{matrix} \right)", id="pmatrix-и-matrix"),
+    pytest.param(r"\begin{aligned} a & = b \\ c & = d \end{aligned}",
+                 r"a = b c = d", id="выравнивание-не-структура"),
+]
+
 DIFFERENT = [
     pytest.param(r"{ \pmb A } = { \pmb L } { \pmb U } ^ { \mathrm { T } }",
                  r"{ \pmb A } = { \pmb L } { \pmb L } ^ { \mathrm { T } }", id="LU-и-LL"),
@@ -113,13 +126,16 @@ DIFFERENT = [
     pytest.param(r"p ( { \boldsymbol { x } } )", r"p(\boldsymbol{y})", id="разные-переменные"),
     pytest.param(r"\mathcal { N } ( 0 , \pmb { I } )", r"\mathcal { N } ( 0 , \Sigma )",
                  id="разная-ковариация"),
-    pytest.param(r"\frac { a b } { c }", r"\frac { a } { b c }", id="дробь-разные-группы",
-                 marks=pytest.mark.xfail(
-                     strict=True,
-                     reason="группирующие скобки сняты — цена за устойчивость к разбору",
-                 )),
-    pytest.param(r"\sqrt { x + 1 }", r"\sqrt x + 1", id="корень-разные-группы",
-                 marks=pytest.mark.xfail(strict=True, reason="та же причина, что у дроби")),
+    # Задача 019: неверная дробь и матрица другой формы получали полный балл.
+    pytest.param(r"\frac { a b } { c }", r"\frac { a } { b c }", id="дробь-разные-группы"),
+    pytest.param(r"\sqrt { x + 1 }", r"\sqrt x + 1", id="корень-разные-группы"),
+    pytest.param(r"\frac { \frac { a } { b } } { c }", r"\frac { a } { \frac { b } { c } }",
+                 id="вложенные-дроби"),
+    pytest.param(r"y = \binom { n + 1 } { k }", r"y = \binom { n } { 1 + k }", id="биномиальный"),
+    pytest.param(r"A = \begin{bmatrix} a & b \\ c & d \end{bmatrix}",
+                 r"A = \begin{bmatrix} a & b & c & d \end{bmatrix}", id="матрица-2x2-и-1x4"),
+    pytest.param(r"A = \begin{bmatrix} a & b \\ c & d \end{bmatrix}",
+                 r"A = \begin{bmatrix} a & c \\ b & d \end{bmatrix}", id="матрица-и-транспонированная"),
     pytest.param(r"x ^ { T } A y", r"x ^ { t } A y", id="T-и-t"),
 ]
 
@@ -185,3 +201,17 @@ def test_chain_is_not_flipped():
     gold = r"$$ a + b = c + d = e + f $$"
     answer = r"$$ e + f = c + d = a + b $$"
     assert score_formulas(gold, answer, gold).carried == 0
+
+
+def test_two_display_blocks_without_a_gap():
+    """«$$A$$$$B$$» — стык двух блоков, а не двойная обёртка (задача 019)."""
+    formulas = extract_math(r"$$a+b=c$$$$d+e=f$$")
+    assert [canonical_tokens(f) for f in formulas] == [
+        canonical_tokens("a+b=c"), canonical_tokens("d+e=f"),
+    ]
+
+
+def test_single_russian_word_between_dollars_is_not_a_formula():
+    """Потерян открывающий «$$»: союз между парой не должен вытеснить формулу."""
+    formulas = extract_math(r"a+b=c$$ и $$d+e=f$$")
+    assert [canonical_tokens(f) for f in formulas] == [canonical_tokens("d+e=f")]

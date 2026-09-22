@@ -29,7 +29,13 @@ def main() -> int:
     parser.add_argument("--prompt", type=Path, required=True, help="текст системного промпта")
     parser.add_argument("--window", type=int, default=16384)
     parser.add_argument("--test-docs", nargs="*", default=[])
+    parser.add_argument("--verdicts", type=Path, default=None,
+                        help="вердикты ручной проверки; отклонённые не идут в обучение")
     args = parser.parse_args()
+    # Загрузчик вердиктов молча возвращает пустой набор, если файла нет:
+    # опечатка в пути выключила бы ручную отбраковку без следа (задача 020).
+    if args.verdicts is not None and not args.verdicts.is_file():
+        parser.error(f"нет файла вердиктов: {args.verdicts}")
 
     # Промпт и окно задаются явно: RL учит политику на конкретном промпте,
     # и тот же промпт должен стоять в сервисе. Значение по умолчанию из
@@ -38,8 +44,10 @@ def main() -> int:
     os.environ["LLM_CONTEXT_WINDOW"] = str(args.window)
 
     from rag_textbook.config import Settings
+    from rag_textbook.evaluation.verdicts import VerdictSet
     from rag_textbook.rl.env import (
         build_examples,
+        drop_unfit,
         load_chunks,
         load_trace,
         save_jsonl,
@@ -51,6 +59,9 @@ def main() -> int:
         settings, load_trace(args.trace), load_chunks(settings.paths.parsed_dir), args.goldset
     )
     train, test = split_by_docs(examples, set(args.test_docs))
+    train, dropped = drop_unfit(train, VerdictSet.load(args.verdicts) if args.verdicts else None)
+    for reason, count in dropped.most_common():
+        print(f"из обучения исключено ({reason}): {count}")
     stem = str(args.out.with_suffix(""))
     n_train = save_jsonl(train, Path(f"{stem}-train.jsonl"))
     n_test = save_jsonl(test, Path(f"{stem}-test.jsonl"))

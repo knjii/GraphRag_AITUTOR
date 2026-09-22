@@ -254,6 +254,7 @@ class GraphBuilder:
                         "entity_id": entity.id,
                         "doc_id": chunk.doc_id,
                         "count": int(entity.count),
+                        "role": entity.role,
                     }
                 )
 

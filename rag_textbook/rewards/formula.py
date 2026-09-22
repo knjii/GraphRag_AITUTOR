@@ -17,9 +17,16 @@
   ``^{\\mathrm{T}}`` → одно;
 * жирный шрифт снимается совсем: разбор и модели ставят его
   непоследовательно;
-* группирующие фигурные скобки снимаются (кроме индексов и степеней).
+* группирующие фигурные скобки снимаются (кроме индексов, степеней
+  и аргументов ``\\frac``, ``\\sqrt``, ``\\binom``);
+* внутри матриц сохраняются границы столбцов и строк.
 
 Пары записей из реальных ответов — ``tests/test_rewards_canonical_real.py``.
+
+Структура, которую снимать нельзя (задача 019): без скобок аргументов
+``\\frac{ab}{c}`` и ``\\frac{a}{bc}`` сливались, а без ``&`` и ``\\\\``
+матрица 2×2 совпадала со строкой 1×4 — неверная формула получала полный
+балл, и обучение могло бы менять знаменатель без потери награды.
 
 **Чего версия 2 не делает.** Не проверяет алгебраическую эквивалентность:
 ``ab`` и ``ba``, ``x+y`` и ``y+x`` для неё разные формулы. Для переноса
@@ -33,6 +40,11 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+# Ровно четыре доллара подряд — стык двух выносных блоков «$$A$$$$B$$»
+# или двойная обёртка разбора «$$$$ A $$$$». Оба прочтения даёт замена
+# на «$$ $$»: пустая пара отбрасывается выбором чётности. Прежнее
+# сведение к «$$» теряло границу, и вторая формула стыка пропадала.
+_FOUR_DOLLARS_RE = re.compile(r"(?<!\$)\${4}(?!\$)")
 _EXTRA_DOLLARS_RE = re.compile(r"\${3,}")
 _CYRILLIC_WORD_RE = re.compile(r"[а-яёА-ЯЁ]{3,}")
 
@@ -138,6 +150,31 @@ def _is_prose(body: str) -> bool:
     return len(_CYRILLIC_WORD_RE.findall(_TEXT_ARGUMENT_RE.sub(" ", body))) >= 2
 
 
+# Русские слова только в начале или только в конце — вокруг формулы.
+_PROSE_EDGES_RE = re.compile(
+    r"^[\s,.;:а-яёА-ЯЁ-]*?(?=[^\sа-яёА-ЯЁ,.;:-])(.*?[^\sа-яёА-ЯЁ,.;:-])[\s,.;:а-яёА-ЯЁ-]*$",
+    re.DOTALL,
+)
+_CYRILLIC_RE = re.compile(r"[а-яёА-ЯЁ]")
+
+
+def _formula_inside_prose(body: str) -> str | None:
+    """Формула с русскими словами по краям: «z=\\omega+\\psi неверная формула».
+
+    Такой блок целиком считался прозой и выпадал из оценки, а с ним —
+    и штраф за выдуманную формулу (задача 020). Формулой признаётся
+    середина без кириллицы и со знаком «=»: проза, захваченная между
+    сбитыми долларами, перемежает слова и знаки и сюда не проходит.
+    """
+    match = _PROSE_EDGES_RE.match(body)
+    if not match:
+        return None
+    core = match.group(1)
+    if _CYRILLIC_RE.search(_TEXT_ARGUMENT_RE.sub(" ", core)) or "=" not in core:
+        return None
+    return core
+
+
 def _math_spans(text: str) -> tuple[list[str], str]:
     """Формулы по порядку и текст без них.
 
@@ -149,7 +186,7 @@ def _math_spans(text: str) -> tuple[list[str], str]:
     нумерованной формулы учебника. Если между парой «$$» проза, первый
     считается закрывающим, и разбор сдвигается на один.
     """
-    text = _EXTRA_DOLLARS_RE.sub("$$", text or "")
+    text = _EXTRA_DOLLARS_RE.sub("$$", _FOUR_DOLLARS_RE.sub("$$ $$", text or ""))
     positions = [match.start() for match in _DISPLAY_RE.finditer(text)]
     # Чётность выбирается по всему фрагменту: между соседними формулами
     # «$$ A $$ $$ B $$» или «$$ A $$ (2.6) $$ B $$» сдвинутая пара прозы
@@ -177,7 +214,10 @@ def _math_spans(text: str) -> tuple[list[str], str]:
     return [body for _, body in found], "".join(rest)
 
 
-_NOT_A_FORMULA_RE = re.compile(r"^[\s().,;:\d]*$")
+# Между «$$» нет формулы: только знаки, числа или русские слова. Одно
+# слово («$$ и $$» при потерянном открывающем) проверка прозы не ловит —
+# ей нужно два слова, — и союз извлекался как формула вместо настоящей.
+_NOT_A_FORMULA_RE = re.compile(r"^[\s().,;:\dа-яёА-ЯЁ]*$")
 
 
 def _pair_display(
@@ -190,7 +230,9 @@ def _pair_display(
     while index + 1 < len(positions):
         start, end = positions[index] + 2, positions[index + 1]
         body = text[start:end]
-        if _is_prose(body) or _NOT_A_FORMULA_RE.match(body):
+        if _is_prose(body):
+            body = _formula_inside_prose(body) or ""
+        if not body or _NOT_A_FORMULA_RE.match(body):
             suspicious += 1
             index += 1
             continue
@@ -203,7 +245,9 @@ def _inline_math(segment: str, offset: int) -> list[tuple[int, str]]:
     result = []
     for match in _OTHER_MATH_RE.finditer(segment):
         body = next(group for group in match.groups() if group is not None)
-        if not _is_prose(body):
+        if _is_prose(body):
+            body = _formula_inside_prose(body) or ""
+        if body:
             result.append((offset + match.start(), body))
     return result
 
@@ -213,7 +257,8 @@ def canonical_tokens(formula: str) -> tuple[str, ...]:
     text = re.sub(r"\\(?:tag|label)\*?\s*\{[^}]*\}", " ", formula or "")
     # Спецификация столбцов («{ l l l }») — вёрстка, а не формула: разбор
     # и модель расходятся в числе букв.
-    text = re.sub(r"\\begin\s*\{(?:array|tabular)\}\s*\{[^{}]*\}", " ", text)
+    text = re.sub(r"\\begin\s*\{(array|tabular)\}\s*\{[^{}]*\}", r"\\begin{\1}", text)
+    text = _MATRIX_BODY_RE.sub(_mark_matrix_cells, text)
     text = re.sub(
         r"\\(begin|end)\s*\{([A-Za-z]+)\}",
         lambda m: " {} ".format(
@@ -233,6 +278,8 @@ def canonical_tokens(formula: str) -> tuple[str, ...]:
         # командой; «$» остаётся от сбитой разметки.
         if token in _DROP or token in {",", ".", ";", "&", "$", r"\ldots"} or token == r"\\":
             continue
+        if token == _ROW and tokens and tokens[-1] == _ROW:
+            continue
         if token in _UNWRAP:
             # \mathrm{d}x → d x; скобки аргумента снимаются ниже как одиночные.
             continue
@@ -242,11 +289,98 @@ def canonical_tokens(formula: str) -> tuple[str, ...]:
         tokens.append(token)
 
     # Висящий знак в конце — перенос строки при разборе, не часть формулы.
-    while tokens and tokens[-1] in {"-", "+", "="}:
+    while tokens and tokens[-1] in {"-", "+", "=", _ROW}:
         tokens.pop()
+    tokens = _drop_trailing_rows(tokens)
     # Транспонирование — после снятия скобок: ``^{\mathrm{T}}`` превращается
     # в ``^ T`` только тогда.
-    return tuple(_normalize_transpose(list(_strip_single_braces(_drop_grouping_braces(tokens)))))
+    tokens = _drop_grouping_braces(_mark_arguments(tokens))
+    return tuple(_normalize_transpose(list(_strip_single_braces(tokens))))
+
+
+_MATRIX_ENVS = "|".join((*_MATRIX_BRACKETS, "matrix", "smallmatrix", "array"))
+_MATRIX_BODY_RE = re.compile(
+    r"(\\begin\s*\{(" + _MATRIX_ENVS + r")\})(.*?)(\\end\s*\{\2\})", re.DOTALL
+)
+# Границы ячеек матрицы — отдельные токены: «&» и «\\» вне матриц остаются
+# оформлением (выравнивание в align), внутри — структурой.
+_COL = r"\matcol"
+_ROW = r"\matrow"
+
+
+def _mark_matrix_cells(match: re.Match[str]) -> str:
+    body = match.group(3).replace("\\\\", f" {_ROW} ").replace("&", f" {_COL} ")
+    return f"{match.group(1)}{body}{match.group(4)}"
+
+
+def _drop_trailing_rows(tokens: list[str]) -> list[str]:
+    """Перевод строки перед закрытием матрицы — вёрстка: «a \\\\ b \\\\ ]»."""
+    return [
+        token for index, token in enumerate(tokens)
+        if not (token == _ROW and index + 1 < len(tokens)
+                and tokens[index + 1] in {"]", ")", "|", r"\|"})
+    ]
+
+
+# Команды, аргументы которых несут структуру: без границ \frac{ab}{c}
+# и \frac{a}{bc} — одна последовательность.
+_STRUCTURED_ARGS = {r"\frac": 2, r"\binom": 2, r"\sqrt": 1}
+# Границы аргумента — свои токены: одиночные скобки снимаются
+# (``_strip_single_braces``), а у аргумента граница нужна всегда.
+_ARG_OPEN = r"\argopen"
+_ARG_CLOSE = r"\argclose"
+
+
+def _group_end(tokens: Sequence[str], start: int, opening: str, closing: str) -> int:
+    """Индекс парной закрывающей скобки (или конец, если её нет)."""
+    depth = 0
+    for index in range(start, len(tokens)):
+        if tokens[index] == opening:
+            depth += 1
+        elif tokens[index] == closing:
+            depth -= 1
+            if depth == 0:
+                return index
+    return len(tokens)
+
+
+def _mark_arguments(tokens: list[str]) -> list[str]:
+    """Аргументы ``\\frac``, ``\\binom``, ``\\sqrt`` — в явных границах.
+
+    Первая версия (задача 019) хранила только фигурные скобки сразу после
+    команды. Аргумент без скобок и индекс корня она не видела:
+    ``\\frac1a b`` совпадал с ``\\frac1{ab}``, ``\\sqrt[3]a b`` —
+    с ``\\sqrt[3]{ab}`` (задача 020). По правилам TeX аргумент без скобок —
+    один токен, а у числа — одна цифра: ``\\frac12`` — это ½.
+    """
+    tokens = list(tokens)
+    result: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        result.append(token)
+        index += 1
+        if token not in _STRUCTURED_ARGS:
+            continue
+        if token == r"\sqrt" and index < len(tokens) and tokens[index] == "[":
+            end = _group_end(tokens, index, "[", "]")
+            result.extend(["[", *_mark_arguments(tokens[index + 1 : end]), "]"])
+            index = end + 1
+        for _ in range(_STRUCTURED_ARGS[token]):
+            if index >= len(tokens):
+                break
+            if tokens[index] == "{":
+                end = _group_end(tokens, index, "{", "}")
+                inner = tokens[index + 1 : end]
+                index = end + 1
+            elif tokens[index][0].isdigit() and len(tokens[index]) > 1:
+                inner = [tokens[index][0]]
+                tokens[index] = tokens[index][1:]
+            else:
+                inner = [tokens[index]]
+                index += 1
+            result.extend([_ARG_OPEN, *_mark_arguments(inner), _ARG_CLOSE])
+    return result
 
 
 def _drop_grouping_braces(tokens: list[str]) -> list[str]:
@@ -255,15 +389,14 @@ def _drop_grouping_braces(tokens: list[str]) -> list[str]:
     Разбор PDF и модели расставляют группирующие скобки по-разному:
     ``{ \\mathbb R } ^ n`` и ``\\mathbb{R}^n`` — одна формула. Скобки после
     ``^`` и ``_`` несут структуру (``x^{ab}`` не ``x^a b``), остальные —
-    почти никогда. Цена упрощения: ``\\frac{ab}{c}`` и ``\\frac{a}{bc}``
-    сливаются; для переноса формулы из учебника это редкий случай.
+    почти никогда. Аргументы команд отмечены раньше (``_mark_arguments``).
     """
     keep: set[int] = set()
     stack: list[tuple[int, bool]] = []
     for index, token in enumerate(tokens):
         if token == "{":
-            significant_group = index > 0 and tokens[index - 1] in {"^", "_"}
-            stack.append((index, significant_group))
+            previous = tokens[index - 1] if index > 0 else ""
+            stack.append((index, previous in {"^", "_"}))
         elif token == "}" and stack:
             start, significant_group = stack.pop()
             if significant_group:
@@ -404,7 +537,7 @@ FOREIGN_SYMBOLS = 0.3
 # Структура, которая есть в любой формуле и ничего не говорит о её источнике.
 _STRUCTURAL = {
     "{", "}", "^", "_", "(", ")", "[", "]", "=", "+", "-", "|", ":", "/", "<", ">",
-    r"\ldots", r"\cdot", r"\vdots", r"\ddots",
+    r"\ldots", r"\cdot", r"\vdots", r"\ddots", _COL, _ROW, _ARG_OPEN, _ARG_CLOSE,
 }
 
 
@@ -435,9 +568,9 @@ def _flip_equation(tokens: tuple[str, ...]) -> tuple[str, ...] | None:
     depth = 0
     positions = []
     for index, token in enumerate(tokens):
-        if token in {"{", "(", "["}:
+        if token in {"{", "(", "[", _ARG_OPEN}:
             depth += 1
-        elif token in {"}", ")", "]"}:
+        elif token in {"}", ")", "]", _ARG_CLOSE}:
             depth -= 1
         elif token == "=" and depth == 0:
             positions.append(index)
@@ -451,7 +584,9 @@ def _flip_equation(tokens: tuple[str, ...]) -> tuple[str, ...] | None:
 
 
 def _split_dumps(
-    answer_forms: Sequence[tuple[str, ...]], pool: Sequence[tuple[str, ...]]
+    answer_forms: Sequence[tuple[str, ...]],
+    pool: Sequence[tuple[str, ...]],
+    vocabulary: set[str] | frozenset[str] = frozenset(),
 ) -> list[tuple[str, ...]]:
     """Формула ответа, склеенная из нескольких формул источника, — это они.
 
@@ -469,15 +604,71 @@ def _split_dumps(
             other for other in inside
             if not any(len(bigger) > len(other) and _contains(bigger, other) for bigger in inside)
         ]
-        units.extend(inside if len(inside) >= 2 else [item])
+        rest = _uncovered(item, inside) if inside else item
+        # Непокрытая часть склейки — тоже формула ответа: иначе выдуманный
+        # хвост «$$A \\quad B \\quad выдумка$$» исчезал из оценки вместе
+        # со склейкой (задача 019), и штраф за чужое его не видел. То же
+        # при одной известной формуле: «$$A; z=\\omega+\\psi$$» принимался
+        # целиком по вхождению A (задача 020). При одной вложенной — только
+        # остаток из чужих символов: продолжение известной формулы своими
+        # символами контекста законно, и его выделение в отдельную «лишнюю»
+        # формулу роняло согласие с ручной оценкой (ответ 10A, 0.796 → 0.776).
+        single_foreign = (
+            len(inside) == 1
+            and _is_formula_rest(rest)
+            and _unknown_share(rest, vocabulary) > FOREIGN_SYMBOLS
+        )
+        if len(inside) < 2 and not single_foreign:
+            units.append(item)
+            continue
+        units.extend(inside)
+        if _is_formula_rest(rest):
+            units.append(rest)
     return list(dict.fromkeys(units))
 
 
+# Остаток склейки короче этого — связки между формулами («=», «,»), не формула.
+_REST_MIN_TOKENS = 3
+
+
+def _is_formula_rest(rest: Sequence[str]) -> bool:
+    """Остаток — самостоятельная формула, а не связка вроде «= d»."""
+    meaningful = sum(1 for token in rest if token not in _STRUCTURAL)
+    # «\\omega=\\psi» — два символа и отношение: уже утверждение.
+    return meaningful >= _REST_MIN_TOKENS or (meaningful >= 2 and "=" in rest)
+
+
+def _uncovered(item: tuple[str, ...], parts: Sequence[tuple[str, ...]]) -> tuple[str, ...]:
+    covered = [False] * len(item)
+    for part in parts:
+        size = len(part)
+        for start in range(len(item) - size + 1):
+            if item[start:start + size] == part:
+                covered[start:start + size] = [True] * size
+    return tuple(token for token, hit in zip(item, covered, strict=True) if not hit)
+
+
 def score_formulas(reference_text: str, answer: str, context: str) -> FormulaScore:
-    """Сравнивает формулы ответа с эталоном и с контекстом."""
-    expected = significant(extract_math(reference_text, limit=None))
-    raw_answer_forms = significant(extract_math(answer))
+    """Сравнивает формулы ответа с эталоном и с контекстом.
+
+    Ожидаются только эталонные формулы, которые модель видела: эталон
+    берётся из фрагментов целиком, а контекст мог их усечь или не содержать
+    вовсе. Иначе формула из памяти модели оплачивалась выше честного
+    отказа (задача 019: +1.0 против +0.5 за отказ).
+    """
     context_forms = significant(extract_math(context, limit=None))
+    # Видимость — та же точная эквивалентность, что и перенос: включая
+    # перестановку сторон равенства. Иначе ``x_1y_1+x_2y_2=s`` в контексте
+    # не делал видимой эталонную ``s=x_1y_1+x_2y_2`` (задача 020).
+    expected = [
+        gold for gold in significant(extract_math(reference_text, limit=None))
+        if any(
+            _contains(seen, form)
+            for form in (gold, _flip_equation(gold)) if form is not None
+            for seen in context_forms
+        )
+    ]
+    raw_answer_forms = significant(extract_math(answer))
 
     carried = 0
     partial = 0.0
@@ -492,15 +683,17 @@ def score_formulas(reference_text: str, answer: str, context: str) -> FormulaSco
         elif raw_answer_forms:
             partial += max(similarity(gold, item) for item in raw_answer_forms)
 
-    answer_forms = _split_dumps(raw_answer_forms, list(dict.fromkeys((*expected, *context_forms))))
-
-    relevant = sum(1 for item in answer_forms if _matches(item, expected))
     # «Не из контекста» — не «нет такой строки»: модель законно пересказывает
     # формулы своими обозначениями. Выдуманной считается формула, заметная
     # доля символов которой не встречается ни в одной формуле контекста
     # и эталона. Первая версия проверки (по совпадению строк) помечала
     # 280–370 формул на модель, в основном пересказ.
     vocabulary = {token for form in (*context_forms, *expected) for token in form}
+    answer_forms = _split_dumps(
+        raw_answer_forms, list(dict.fromkeys((*expected, *context_forms))), vocabulary
+    )
+
+    relevant = sum(1 for item in answer_forms if _matches(item, expected))
     foreign = sum(
         1 for item in answer_forms
         if not _matches(item, context_forms)
