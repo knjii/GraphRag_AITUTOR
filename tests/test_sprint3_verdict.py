@@ -58,6 +58,8 @@ def run_file(
                         "промпт": prompt,
                         "окно контекста": 16384,
                         "контекст": "из слепка",
+                        "sha256 слепка/контекста": "a" * 64,
+                        "sha256 эталона": "b" * 64,
                     },
                 },
                 "outcomes": outcomes,
@@ -246,3 +248,17 @@ def test_control_equal_to_base_is_refused_without_traceback(tmp_path: Path, caps
             "--controls", "base", "random"]
     assert verdict.main(argv) == 1
     assert "различаться" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("field", ["sha256 слепка/контекста", "sha256 эталона"])
+@pytest.mark.parametrize("value", [None, "", "wrong", "c" * 64])
+def test_content_provenance_is_required_and_must_match(tmp_path: Path, field: str, value):
+    path = scenario(tmp_path, [1] * 45 + [0] * 55)
+    runs = {label: verdict.load(path, label) for label in ("base", "main", "random", "control")}
+    if value is None:
+        for run in runs.values():
+            run["summary"]["чем сделано"].pop(field)
+    else:
+        runs["main"]["summary"]["чем сделано"][field] = value
+    with pytest.raises(verdict.BadInputs, match=field):
+        verdict.validate(runs, ["random", "control"])

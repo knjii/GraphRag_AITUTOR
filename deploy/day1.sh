@@ -85,7 +85,7 @@ ensure_4b() {
         model_4b_with_search
     fi
 }
-model_9b_alone() { run "переключение на 9B" bash deploy/model-swap.sh Qwen/Qwen3.5-9B 0.85; }
+model_9b_alone() { run "переключение на 9B" bash deploy/model-swap.sh Qwen/Qwen3.5-9B 0.7; }
 llm_off() {
     run "остановка SGLang" docker compose --env-file .env \
         -f docker/docker-compose.vllm.yml --profile sglang stop sglang
@@ -349,7 +349,7 @@ from pathlib import Path
 from rag_textbook.config import Settings
 
 expected = {p.stem for p in Path("documents/library").rglob("*.pdf")}
-parsed = {d.name.split("__", 1)[0] for d in Path(Settings().paths.parsed_dir).glob("*/blocks.json")}
+parsed = {d.parent.name.split("__", 1)[0] for d in Path(Settings().paths.parsed_dir).glob("*/blocks.json")}
 missing = sorted(expected - {p for p in parsed})
 print(f"книг в каталоге {len(expected)}, разобрано {len(expected) - len(missing)}")
 if missing:

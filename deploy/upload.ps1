@@ -43,13 +43,40 @@ if (-not (Test-Path $KeyPath)) {
 
 # Порт задаётся разными ключами: у ssh это -p, у scp -p означает «сохранить
 # время файла», а порт — -P. Общий массив аргументов здесь использовать нельзя.
-$sshArgs = @("-i", $KeyPath, "-p", $Port)
-$scpArgs = @("-i", $KeyPath, "-P", $Port)
+# Keep-alive: без него длинная передача рвалась (Broken pipe).
+$keepAlive = @("-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8")
+$sshArgs = @("-i", $KeyPath, "-p", $Port) + $keepAlive
+$scpArgs = @("-i", $KeyPath, "-P", $Port) + $keepAlive
 $target  = "${User}@${ServerIp}"
 
 function Invoke-Remote([string]$Command) {
     & ssh @sshArgs $target $Command
     if ($LASTEXITCODE -ne 0) { throw "Команда на сервере завершилась с ошибкой: $Command" }
+}
+
+# Большой каталог — одним архивом и с повтором. scp -r по тысячам мелких
+# файлов рвался посреди разбора (Broken pipe, 2026-09-22), а повтор
+# с начала стоил бы всей передачи заново.
+function Copy-DirArchive([string]$Local, [string]$RemoteParent) {
+    $name = Split-Path $Local -Leaf
+    $archive = Join-Path $env:TEMP "rag-upload-$name.tar"
+    Remove-Item $archive -ErrorAction SilentlyContinue
+    & tar -cf $archive -C (Split-Path $Local -Parent) $name
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось упаковать $Local" }
+    $remoteArchive = "/tmp/rag-upload-$name.tar"
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        # В PowerShell 5.1 сообщение scp в stderr при Stop — исключение,
+        # и до повтора дело не дошло бы.
+        $saved = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        & scp @scpArgs -q $archive "${target}:$remoteArchive" 2>&1 | Out-Host
+        $code = $LASTEXITCODE; $ErrorActionPreference = $saved
+        if ($code -eq 0) { break }
+        Write-Host "    обрыв передачи $name, попытка $attempt из 3" -ForegroundColor DarkYellow
+        if ($attempt -eq 3) { throw "Не удалось скопировать $Local" }
+        Start-Sleep -Seconds 10
+    }
+    Invoke-Remote "mkdir -p $RemoteParent && tar -xf $remoteArchive -C $RemoteParent && rm -f $remoteArchive"
+    Remove-Item $archive -ErrorAction SilentlyContinue
 }
 
 Write-Host "`n==> Проверяю связь с сервером" -ForegroundColor Cyan
@@ -83,13 +110,12 @@ if ($WithCaches) {
     #   parsed    — результат MinerU и готовые чанки, снимает стадию разбора;
     #   cache     — описания иллюстраций и извлечённые сущности со связями;
     #   manifests — отметки о выполненных стадиях;
-    #   goldsets  — измеритель, без него нечем сравнивать конфигурации.
+    #   (эталоны едут вместе с кодом ниже — из каталога ветки).
     Invoke-Remote "mkdir -p $RemoteDir/artifacts $RemoteDir/evaluation"
     $cachePaths = @(
         @{ Local = "artifacts\parsed";     Remote = "artifacts" },
         @{ Local = "artifacts\cache";      Remote = "artifacts" },
-        @{ Local = "artifacts\manifests";  Remote = "artifacts" },
-        @{ Local = "evaluation\goldsets";  Remote = "evaluation" }
+        @{ Local = "artifacts\manifests";  Remote = "artifacts" }
     )
     foreach ($item in $cachePaths) {
         $item.Local = Join-Path $DataRoot $item.Local
@@ -101,22 +127,31 @@ if ($WithCaches) {
             (Get-ChildItem $item.Local -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1
         )
         Write-Host "    $($item.Local) ($sizeMb МБ)"
-        & scp @scpArgs -r -q $item.Local "${target}:${RemoteDir}/$($item.Remote)/"
-        if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать $($item.Local)" }
+        Copy-DirArchive $item.Local "${RemoteDir}/$($item.Remote)"
     }
     Write-Host "    после развёртывания восстановите индекс двумя командами:" -ForegroundColor DarkGray
     Write-Host "      rag-textbook ingest --stages parse,chunk,embed --force" -ForegroundColor DarkGray
     Write-Host "      rag-textbook ingest --stages graph --force" -ForegroundColor DarkGray
 }
 
-# Манифест библиотеки и ручные сверки награды — данные эксперимента,
-# их место в evaluation рядом с эталоном.
+# Эталоны, манифест библиотеки и ручные сверки награды — данные эксперимента,
+# их место в evaluation. Берутся из рабочего каталога ветки, а не из -DataRoot:
+# они отслеживаются git, а перенесённый эталон (goldset-r2) есть только
+# в ветке — из основного каталога уехал бы прежний, с номерами старой нарезки.
 Invoke-Remote "mkdir -p $RemoteDir/evaluation"
-foreach ($path in @("evaluation\library", "evaluation\reward_checks")) {
+foreach ($path in @("evaluation\goldsets", "evaluation\library", "evaluation\reward_checks")) {
     if (Test-Path $path) {
         & scp @scpArgs -r -q $path "${target}:${RemoteDir}/evaluation/"
         if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать $path" }
     }
+}
+# Нарезка MML, на которую перенесён goldset-r2 (1247 фрагментов, отпечаток
+# в goldset-r2.migration.json). Сервер режет сам и сверяет отпечаток;
+# при расхождении deploy/day2.sh ставит этот файл, а не останавливает день.
+if (Test-Path "artifacts\goldset-r2") {
+    Invoke-Remote "mkdir -p $RemoteDir/artifacts"
+    & scp @scpArgs -r -q "artifacts\goldset-r2" "${target}:${RemoteDir}/artifacts/"
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать artifacts\goldset-r2" }
 }
 
 if ($WithLibrary) {
@@ -131,8 +166,7 @@ if ($WithLibrary) {
         if (-not (Test-Path $local)) { throw "Нет ${local}: см. docs/SERVER-DAY-1.md, раздел «До аренды»" }
         $sizeMb = [math]::Round((Get-ChildItem $local -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
         Write-Host "    $local ($sizeMb МБ)"
-        & scp @scpArgs -r -q $local "${target}:${RemoteDir}/$($item.Remote)/"
-        if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать $local" }
+        Copy-DirArchive $local "${RemoteDir}/$($item.Remote)"
     }
     # Контрольные суммы: книга на сервере должна быть той же, что проверена здесь.
     Invoke-Remote "cd $RemoteDir/documents/library && sha256sum -c --quiet SHA256SUMS"

@@ -92,6 +92,10 @@ def validate(runs: dict[str, dict[str, Any]], controls: list[str]) -> None:
         for field in ("промпт", "контекст", "модель ответа", "модель по настройке"):
             if not isinstance(made.get(field), str) or not made[field].strip():
                 raise BadInputs(f"{label}: в провенансе нет «{field}»")
+        for field in ("sha256 слепка/контекста", "sha256 эталона"):
+            value = made.get(field)
+            if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+                raise BadInputs(f"{label}: нет корректного «{field}»; повторите замер с хэшами")
         window = made.get("окно контекста")
         if isinstance(window, bool) or not isinstance(window, int) or window <= 0:
             raise BadInputs(f"{label}: «окно контекста» не целое: {window!r}")
@@ -100,7 +104,7 @@ def validate(runs: dict[str, dict[str, Any]], controls: list[str]) -> None:
         if ids != first:
             raise BadInputs(f"{label}: другой набор вопросов ({len(ids)} против {len(first)})")
     made = {label: run["summary"]["чем сделано"] for label, run in runs.items()}
-    for field in ("промпт", "контекст", "окно контекста"):
+    for field in ("промпт", "контекст", "окно контекста", "sha256 слепка/контекста", "sha256 эталона"):
         values = {label: info.get(field) for label, info in made.items()}
         if len(set(values.values())) != 1:
             raise BadInputs(f"замеры сделаны с разным «{field}»: {values}")

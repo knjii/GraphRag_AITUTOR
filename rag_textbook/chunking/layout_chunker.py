@@ -198,6 +198,14 @@ class LayoutAwareChunker:
             return end
         return end
 
+    def _min_step(self, start: int, end: int) -> int:
+        """Наименьший шаг между началами фрагментов при ``respect_formulas``.
+
+        Не меньше половины текущего фрагмента и не меньше четверти размера:
+        иначе соседние фрагменты повторяют друг друга почти целиком.
+        """
+        return max(1, min((end - start) // 2, self.chunk_size // 4))
+
     @staticmethod
     def _snap_start(next_start: int, previous_start: int, segments: list[_Segment]) -> int:
         """Не начинает чанк с середины спец-объекта.
@@ -269,6 +277,7 @@ class LayoutAwareChunker:
         chunks: list[Chunk] = []
         start = 0
         ordinal = 0
+        previous_end = 0
 
         while start < total:
             candidate_end = min(start + self.chunk_size, total)
@@ -285,6 +294,14 @@ class LayoutAwareChunker:
                 end = min(start + self.chunk_size, total)
                 if end <= start:
                     break
+
+            if self.settings.respect_formulas and end <= previous_end:
+                # Фрагмент не продвинул конец — он целиком внутри прежнего.
+                # Так бывает перед формулой длиннее предела: оба кончаются
+                # на её начале. Следующий начинается с прежнего конца.
+                start = previous_end
+                continue
+            previous_end = end
 
             text = document_text[start:end].strip()
             if text:
@@ -315,11 +332,17 @@ class LayoutAwareChunker:
                 break
 
             next_start = max(end - self.chunk_overlap, start + 1)
-            start = (
-                self._snap_start(next_start, start, segments)
-                if self.settings.respect_formulas
-                else next_start
-            )
+            if self.settings.respect_formulas:
+                snapped = self._snap_start(next_start, start, segments)
+                # Короткий фрагмент (обрезан перед формулой длиннее предела) или
+                # откат к началу формулы почти до прежнего начала давали шаг
+                # в несколько символов: следующий фрагмент снова кончался там
+                # же, и на MML 306 из 1561 фрагмента были почти дублями.
+                # Малый шаг заменяется началом с конца: перекрытия нет, но
+                # _snap_end уже не оставил формулы на границе.
+                start = end if snapped - start < self._min_step(start, end) else snapped
+            else:
+                start = next_start
 
         logger.info(
             "Документ %s: чанков=%s, из них с формулами=%s, с таблицами=%s, с иллюстрациями=%s",

@@ -36,6 +36,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import statistics
@@ -46,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from rag_textbook.clients.llm import ChatMessage, LLMClient
+from rag_textbook.clients.llm_json import loads_llm_json
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Answer, GoldQuestion, ScoredChunk
 from rag_textbook.utils.text import (
@@ -351,7 +353,7 @@ def judge_answer(
         logger.warning("Судья не ответил: %s", error)
         return {}
     try:
-        parsed = json.loads(str(raw).strip().removeprefix("```json").removesuffix("```"))
+        parsed = loads_llm_json(str(raw).strip().removeprefix("```json").removesuffix("```"))
     except json.JSONDecodeError:
         logger.warning("Судья вернул невалидный JSON: %.120s", raw)
         return {}
@@ -482,6 +484,7 @@ def run_answer_evaluation(
     а остальные — считаются.
     """
     judge_llm = context.llm if judge else None
+    used_contexts: dict[str, list[dict[str, Any]]] = {}
 
     def answer_one(question: GoldQuestion) -> Answer:
         """Ответ на вопрос: обычным путём либо по замороженному контексту.
@@ -514,6 +517,8 @@ def run_answer_evaluation(
 
     def evaluate_one(question: GoldQuestion) -> AnswerOutcome:
         produced = answer_one(question)
+        used_contexts[question.id] = [item.chunk.model_dump(mode="json")
+                                      for item in produced.contexts]
         reference_text = ""
         if chunks:
             reference_text = "\n".join(
@@ -536,7 +541,22 @@ def run_answer_evaluation(
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             outcomes = list(pool.map(evaluate_one, questions))
 
-    return summarize_answers(outcomes), outcomes
+    def digest(value: Any) -> str:
+        return hashlib.sha256(json.dumps(
+            value, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
+
+    # Эталон включает тексты фрагментов: те же ID не гарантируют те же формулы.
+    reference = [{"question": question.model_dump(mode="json"), "texts": [
+        getattr((chunks or {}).get(chunk_id), "text", "")
+        for chunk_id in question.gold_chunk_ids
+    ]} for question in sorted(questions, key=lambda item: item.id)]
+    summary = summarize_answers(outcomes)
+    summary["чем сделано"] = {
+        "sha256 слепка/контекста": digest({"frozen": frozen_contexts, "used": used_contexts}),
+        "sha256 эталона": digest(reference),
+    }
+    return summary, outcomes
 
 
 def save_answer_evaluation(

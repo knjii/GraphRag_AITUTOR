@@ -202,6 +202,7 @@ def replay(
                     if final
                     else 0.0
                 ),
+                context_chars=[len(item.chunk.text) for item in final],
             )
         )
     return outcomes

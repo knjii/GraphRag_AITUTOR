@@ -89,3 +89,29 @@ def test_missing_chunks_are_reported_not_swallowed(indexed, caplog):
     assert any("нет чанков на входе" in message for message in messages), (
         f"пустой вход прошёл молча, в логе: {messages}"
     )
+
+
+def test_chunk_stage_alone_reads_parsed_blocks(indexed, sample_blocks, monkeypatch):
+    """`ingest --stages chunk` без parse берёт готовый разбор с диска.
+
+    День 2, 2026-09-22: после сброса отметок нарезки все 15 книг русского
+    блока нарезались в ноль — блоки читала только стадия разбора, а она не
+    была выбрана. Книги отметились нарезанными, проверка коллекции прошла.
+    """
+    pipeline, source, expected = indexed
+    monkeypatch.setattr(pipeline.parser, "load_cached", lambda path: sample_blocks)
+
+    report = pipeline.run(sources=[source], stages=["chunk"], force=True)
+
+    assert report.documents[0].chunks == expected
+
+
+def test_chunk_stage_without_parsed_blocks_fails_loudly(indexed, monkeypatch):
+    pipeline, source, _ = indexed
+    monkeypatch.setattr(pipeline.parser, "load_cached", lambda path: None)
+
+    report = pipeline.run(sources=[source], stages=["chunk"], force=True)
+
+    document = report.documents[0]
+    assert document.status == "failed"
+    assert "Нет блоков разбора" in (document.error or "")

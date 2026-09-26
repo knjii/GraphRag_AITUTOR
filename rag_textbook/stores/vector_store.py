@@ -298,6 +298,25 @@ class QdrantVectorStore:
             if offset is None:
                 break
 
+    def iter_vectors(self, batch_size: int = 256) -> Iterable[tuple[str, list[float]]]:
+        """Плотные векторы фрагментов: источник пар ``dense`` эталона v2."""
+        offset = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=self.settings.collection,
+                limit=batch_size,
+                offset=offset,
+                with_payload=["chunk_id"],
+                with_vectors=[DENSE_VECTOR],
+            )
+            for point in points:
+                chunk_id = str((point.payload or {}).get("chunk_id") or "")
+                vector = point.vector.get(DENSE_VECTOR) if isinstance(point.vector, dict) else point.vector
+                if chunk_id and vector:
+                    yield chunk_id, [float(value) for value in vector]
+            if offset is None:
+                break
+
     def count(self) -> int:
         return int(self.client.count(self.settings.collection, exact=True).count)
 
@@ -434,6 +453,9 @@ class InMemoryVectorStore:
 
     def iter_chunks(self, batch_size: int = 256) -> Iterable[Chunk]:
         yield from self._chunks.values()
+
+    def iter_vectors(self, batch_size: int = 256) -> Iterable[tuple[str, list[float]]]:
+        yield from ((cid, list(vector)) for cid, vector in self._vectors.items())
 
     def count(self) -> int:
         return len(self._chunks)

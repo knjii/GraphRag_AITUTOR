@@ -28,6 +28,18 @@ def recall_at_k(retrieved: Sequence[str], relevant: Sequence[str], k: int) -> fl
     return hits / len(set(relevant))
 
 
+def full_at_k(retrieved: Sequence[str], relevant: Sequence[str], k: int) -> float:
+    """1, если в top-k пришли **все** эталонные фрагменты вопроса.
+
+    Главная мера серии К (аналог Full@k из NaturalProofs): связывающему
+    вопросу половина пары не помогает, а recall засчитывает её как 0.5.
+    """
+    if not relevant:
+        return 0.0
+    top = set(retrieved[:k])
+    return 1.0 if all(item in top for item in set(relevant)) else 0.0
+
+
 def precision_at_k(retrieved: Sequence[str], relevant: Sequence[str], k: int) -> float:
     if k <= 0:
         return 0.0
@@ -79,6 +91,10 @@ class QueryOutcome:
     # Доля фрагментов, которых без графового канала в контексте не было бы.
     graph_only_share: float = 0.0
     latency_ms: float = 0.0
+    # Длина текста каждого выданного фрагмента, в знаках, по порядку выдачи.
+    # Нужна, чтобы уравнять бюджет контекста: при равном числе мест вариант,
+    # выдающий длинные фрагменты, получает больше текста (SetCE, табл. 1).
+    context_chars: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -140,7 +156,14 @@ def evaluate_retrieval(
             "hit_rate": statistics.fmean(
                 hit_rate_at_k(item.retrieved, item.relevant, k) for item in outcomes
             ),
+            "full": statistics.fmean(
+                full_at_k(item.retrieved, item.relevant, k) for item in outcomes
+            ),
         }
+        if any(item.context_chars for item in outcomes):
+            result.per_k[k]["chars"] = statistics.fmean(
+                sum(item.context_chars[:k]) for item in outcomes
+            )
 
     result.mrr = statistics.fmean(mrr(item.retrieved, item.relevant) for item in outcomes)
 
@@ -160,6 +183,9 @@ def evaluate_retrieval(
                 ndcg_at_k(item.retrieved, item.relevant, main_k) for item in items
             ),
             "mrr": statistics.fmean(mrr(item.retrieved, item.relevant) for item in items),
+            "full": statistics.fmean(
+                full_at_k(item.retrieved, item.relevant, main_k) for item in items
+            ),
         }
 
     result.graph_usage = {
@@ -185,6 +211,7 @@ _METRIC_FUNCS: dict[str, Any] = {
     "precision": precision_at_k,
     "ndcg": ndcg_at_k,
     "hit_rate": hit_rate_at_k,
+    "full": full_at_k,
 }
 
 
@@ -255,7 +282,7 @@ def compare_paired(
         base_items = [base_by_id[qid] for qid in ids]
         cand_items = [cand_by_id[qid] for qid in ids]
         block: dict[str, Any] = {}
-        for name in ("recall", "precision", "ndcg", "hit_rate", "mrr"):
+        for name in ("recall", "full", "precision", "ndcg", "hit_rate", "mrr"):
             base_values = _per_question(base_items, name, k)
             cand_values = _per_question(cand_items, name, k)
             differences = [cand_values[qid] - base_values[qid] for qid in ids]
@@ -273,6 +300,13 @@ def compare_paired(
                 "improved": sum(1 for value in differences if value > 1e-9),
                 "worsened": sum(1 for value in differences if value < -1e-9),
                 "unchanged": sum(1 for value in differences if abs(value) <= 1e-9),
+            }
+        # Бюджет контекста — не мера качества, а условие честного сравнения:
+        # прирост при заметно большем тексте надо проверять при равных знаках.
+        if any(base_by_id[qid].context_chars or cand_by_id[qid].context_chars for qid in ids):
+            block["chars"] = {
+                "baseline": round(statistics.fmean(sum(item.context_chars[:k]) for item in base_items), 1),
+                "candidate": round(statistics.fmean(sum(item.context_chars[:k]) for item in cand_items), 1),
             }
         return block
 
@@ -306,7 +340,7 @@ def compare(baseline: RetrievalMetrics, candidate: RetrievalMetrics, k: int) -> 
     cand = candidate.per_k.get(k, {})
     deltas = {
         name: round(cand.get(name, 0.0) - base.get(name, 0.0), 4)
-        for name in ("recall", "precision", "ndcg", "hit_rate")
+        for name in ("recall", "full", "precision", "ndcg", "hit_rate")
     }
     deltas["mrr"] = round(candidate.mrr - baseline.mrr, 4)
 

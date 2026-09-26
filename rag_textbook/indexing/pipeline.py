@@ -561,6 +561,17 @@ class IndexingPipeline:
                 chunks_by_doc[doc_id] = self._load_chunks(doc_id)
                 doc_report.chunks = len(chunks_by_doc[doc_id])
                 continue
+            if doc_id not in blocks_by_doc:
+                # `ingest --stages chunk` без parse: блоки лежат на диске. Пока
+                # их здесь не читали, нарезка шла по пустому списку и отмечала
+                # книгу нарезанной с нулём фрагментов (день 2, 2026-09-22).
+                blocks = self.parser.load_cached(source) or []
+            if not blocks:
+                doc_report.status = "failed"
+                doc_report.error = "Нет блоков разбора: нарезать нечего (запустите стадию parse)"
+                logger.error("%s: %s", doc_report.doc_name, doc_report.error)
+                alive.remove(doc_id)
+                continue
             started = time.perf_counter()
             images_dir = self.parser.images_dir_for(source)
             with self.monitor.stage("enrich", doc_report.doc_name):

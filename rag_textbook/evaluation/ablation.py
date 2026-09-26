@@ -38,6 +38,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from rag_textbook.clients.llm import ChatMessage, LLMClient
+from rag_textbook.clients.llm_json import loads_llm_json
 from rag_textbook.evaluation.answers import is_refusal
 from rag_textbook.evaluation.verdicts import QuestionVerdict
 from rag_textbook.logging_setup import get_logger
@@ -151,7 +152,7 @@ def answers_match(llm: LLMClient, *, question: str, reference: str, candidate: s
         logger.warning("Абляция: судья не ответил (%s)", error)
         return False
     try:
-        payload = json.loads(str(raw).strip().removeprefix("```json").removesuffix("```"))
+        payload = loads_llm_json(str(raw).strip().removeprefix("```json").removesuffix("```"))
     except json.JSONDecodeError:
         logger.warning("Абляция: судья вернул не JSON: %.120s", raw)
         return False

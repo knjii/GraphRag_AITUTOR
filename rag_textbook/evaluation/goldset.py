@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from rag_textbook.clients.llm import ChatMessage, LLMClient
+from rag_textbook.clients.llm_json import loads_llm_json
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, GoldQuestion, content_hash
 from rag_textbook.utils.text import content_terms, truncate
@@ -228,13 +229,13 @@ class GoldsetBuilder:
         if not str(raw or "").strip():
             return None, "empty_response"
         try:
-            payload = json.loads(raw)
+            payload = loads_llm_json(raw)
         except json.JSONDecodeError:
             match = re.search(r"\{.*\}", raw, re.DOTALL)
             if not match:
                 return None, "not_json"
             try:
-                payload = json.loads(match.group(0))
+                payload = loads_llm_json(match.group(0))
             except json.JSONDecodeError:
                 return None, "not_json"
         question = str(payload.get("question") or "").strip()

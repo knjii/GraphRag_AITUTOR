@@ -302,6 +302,18 @@ def check_ready(settings: RetrievalSettings, scorer: PairScorer | None, store: o
             f"Отбор {mode} требует рёбра между фрагментами: нужен граф в памяти "
             "(GRAPH_BACKEND=memory и GRAPH_FILE)"
         )
+    # Замыкание и рёбра зависимости держатся на ролях «defines» (К2).
+    # На графе без ролей (выгрузка v3) они вернули бы пустоту, и замер
+    # молча совпал бы с обычным отбором.
+    needs_roles = mode == "closure" or (
+        mode in MODES_NEEDING_GRAPH and settings.selection_links == "dependency"
+    )
+    has_role = getattr(store, "has_role", None)
+    if needs_roles and callable(has_role) and not has_role("defines"):
+        raise ValueError(
+            f"Отбор {mode} по зависимостям: в графе нет ролей «defines» — "
+            "нужна выгрузка извлечения v4"
+        )
 
 
 def reorder(

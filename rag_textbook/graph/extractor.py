@@ -166,9 +166,13 @@ PROMPT_TEMPLATE_V4 = """Ты извлекаешь граф знаний из ф�
 Извлеки:
 1. entities — ключевые математические понятия, методы, объекты. Только термины,
    не общие слова. Не более {max_entities}. Для каждой укажи role:
-   - defines — фрагмент вводит или определяет это понятие
-     («назовём», «называется», «определение», формулировка теоремы о нём);
-   - uses — фрагмент опирается на понятие, введённое раньше;
+   - defines — в САМОМ фрагменте дано определение этого понятия: текст
+     говорит, что оно такое («назовём», «называется», «определение»,
+     «обозначим … и будем называть»). Понятие, которое фрагмент применяет,
+     вычисляет или о котором доказывает, — не defines. Обычно фрагмент
+     определяет 0–2 понятия, часто ни одного;
+   - uses — фрагмент опирается на понятие, введённое раньше. Это роль
+     по умолчанию: если сомневаешься между defines и uses, ставь uses;
    - mentions — понятие лишь названо.
 2. relations — связи между извлечёнными сущностями. Не более {max_relations}.
 3. notation — обозначения, которые фрагмент вводит: symbol — сам символ
@@ -265,14 +269,20 @@ class EntityExtractor:
         return str(getattr(llm_settings, "reasoning_effort", ""))
 
     def _cache_key(self, chunk: Chunk, model: str) -> str:
-        return content_hash(
+        parts = [
             chunk.text_hash or content_hash(chunk.text),
             model,
             self._llm_variant(),
             self.settings.extraction_prompt_version,
             str(self.settings.max_entities_per_chunk),
             str(self.settings.max_relations_per_chunk),
-        )
+        ]
+        # Текст промпта v4 входит в ключ: правка формулировки роли после
+        # пробы G0 (2026-09-22) иначе вернула бы прежние ответы из кэша.
+        # У v3 ключ прежний — его кэш стоит часов работы модели.
+        if _uses_roles(self.settings):
+            parts.append(content_hash(PROMPT_TEMPLATE_V4))
+        return content_hash(*parts)
 
     # ------------------------------------------------------------- нормализация
 

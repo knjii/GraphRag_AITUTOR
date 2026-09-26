@@ -565,6 +565,12 @@ class GraphSettings(_Base):
     # графе из файла: ему нужен граф целиком.
     ranker: Literal["walk", "ppr"] = Field(default="walk", alias="GRAPH_RANKER")
     ppr_alpha: float = Field(default=0.5, gt=0.0, le=1.0, alias="GRAPH_PPR_ALPHA")
+    # Куда ведёт сущность. `comention` — во все фрагменты, где она упомянута
+    # (нынешний обход). `dependency` — только в места её определения
+    # (роль `defines`, гипотеза К2): от вопроса или найденного фрагмента
+    # к определению используемого понятия. Хаб «матрица» перестаёт быть
+    # хабом: определяющих фрагментов у понятия единицы.
+    walk: Literal["comention", "dependency"] = Field(default="comention", alias="GRAPH_WALK")
 
     @model_validator(mode="after")
     def _memory_backend_needs_file(self) -> GraphSettings:
@@ -572,6 +578,12 @@ class GraphSettings(_Base):
             raise ValueError("GRAPH_BACKEND=memory требует GRAPH_FILE — путь к файлу графа")
         if self.ranker == "ppr" and self.backend != "memory":
             raise ValueError("GRAPH_RANKER=ppr работает только с GRAPH_BACKEND=memory")
+        if self.walk == "dependency" and self.backend != "memory":
+            raise ValueError("GRAPH_WALK=dependency работает только с GRAPH_BACKEND=memory")
+        if self.walk == "dependency" and self.ranker == "ppr":
+            # PPR распространяет вес по всем рёбрам сам — фильтр ролей
+            # в нём не применён, и замер молча совпал бы с обычным PPR.
+            raise ValueError("GRAPH_WALK=dependency не сочетается с GRAPH_RANKER=ppr")
         return self
 
     @field_validator("expansion_rel_types", mode="before")

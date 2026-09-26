@@ -131,6 +131,14 @@ class MineruPdfParser:
 
     # ------------------------------------------------------------------- разбор
 
+    def load_cached(self, pdf_path: Path) -> list[Block] | None:
+        """Готовый разбор без запуска MinerU; ``None``, если его нет."""
+        blocks_file = self._blocks_file(self._doc_cache_dir(Path(pdf_path)))
+        if not blocks_file.is_file():
+            return None
+        payload = json.loads(blocks_file.read_text(encoding="utf-8"))
+        return [Block.model_validate(item) for item in payload]
+
     def parse(self, pdf_path: Path, *, force: bool = False) -> list[Block]:
         pdf_path = Path(pdf_path)
         if not pdf_path.is_file():

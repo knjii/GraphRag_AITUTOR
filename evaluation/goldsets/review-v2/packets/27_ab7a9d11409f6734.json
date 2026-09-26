@@ -1,0 +1,24 @@
+{
+  "question_id": "ab7a9d11409f6734",
+  "group": "linking",
+  "question": "Как выражается частная производная логарифма правдоподобия смеси Гауссов по вектору средних $\\boldsymbol{\\theta}$ (в частности, по $\\boldsymbol{\\theta}_k$) через сумму по всем наблюдениям, если использовать понятие ответственности компонента смеси за данное наблюдение?",
+  "answer": "Частная производная равна сумме по всем наблюдениям $n$ произведения ответственности $r_{nk}$ (вероятности того, что $k$-й компонент сгенерировал $n$-е наблюдение) на разность между вектором наблюдения $\\boldsymbol{x}_n$ и вектором средних компонента $\\boldsymbol{\\theta}_k$, умноженную на обратную ковариационную матрицу компонента $\\boldsymbol{\\theta}_k^{-1}$.",
+  "fragments": [
+    {
+      "chunk_id": "0690bb81b7e3c831:01100",
+      "text": "$$\\frac { 1 } { p \\big ( { \\pmb x } _ { n } \\mid \\Theta \\big ) } { = } \\frac { 1 } { \\sum _ { j = 1 } ^ { K } \\pi _ { j } \\mathcal { N } \\big ( { \\pmb x } _ { n } \\mid { \\pmb \\mu } _ { j } , { \\pmb \\Sigma } _ { j } \\big ) } .\\tag{11.16}$$ Далее мы вычислим частные производные (11.12)–(11.14). Но прежде, чем мы это сделаем, мы представим величину, которая $6 \\mathrm { y }$ дет играть центральную роль в оставшейся части этой главы: ответственность. 11.2.1. Ответственность Определяем количество $$r _ { n k } : = \\frac { \\pi _ { k } \\mathcal { N } \\big ( \\pmb { x } _ { n } | \\pmb { \\mu } _ { k } , \\pmb { \\Sigma } _ { k } \\big ) } { \\sum _ { j = 1 } ^ { K } \\pi _ { j } \\mathcal { N } \\big ( \\pmb { x } _ { n } | \\pmb { \\mu } _ { j } , \\pmb { \\Sigma } _ { j } \\big ) }\\tag{11.17}$$ как ответственность $k { \\mathrm { - } } \\Gamma 0$ компонента смеси за n-ю точку данных. Ответствен- ность $r _ { n k } k \\mathrm { - } \\Gamma 0$ компонента смеси для точки данных $\\pmb { x } _ { n }$ пропорциональна правдо- подобию $$p ( \\pmb { x } _ { n } \\vert \\pi _ { k } , \\mu _ { k } , \\Sigma _ { k } ) = \\pi _ { k } \\mathcal { N } ( \\ b { x } _ { n } \\vert \\mu _ { k } , \\Sigma _ { k } )\\tag{11.18}$$"
+    },
+    {
+      "chunk_id": "0690bb81b7e3c831:01105",
+      "text": "$$\\frac { \\hat { c } p \\big ( { \\pmb x } _ { n } \\mid { \\bf \\theta } \\big ) } { \\hat { \\sigma } \\mu _ { k } } = \\sum _ { j = 1 } ^ { K } \\pi _ { j } \\frac { \\hat { c } N \\big ( { \\pmb x } _ { n } \\mid \\mu _ { j } , { \\pmb x } _ { j } \\big ) } { \\hat { \\sigma } \\mu _ { k } } = \\pi _ { k } \\frac { \\hat { \\mathcal { D } } N \\big ( { \\pmb x } _ { n } \\mid \\mu _ { k } , { \\pmb x } _ { k } \\big ) } { \\hat { \\sigma } \\mu _ { k } } =\\tag{11.21a}$$ $$= \\pi _ { k } \\big ( \\pmb { x } _ { n } - \\pmb { \\mu } _ { k } \\big ) ^ { \\mathrm { T } } \\sum _ { k } ^ { - 1 } \\mathcal { N } \\big ( \\pmb { x } _ { n } \\big | \\pmb { \\mu } _ { k } , \\pmb { \\Sigma } _ { k } \\big ) ,\\tag{11.21b}$$ где мы использовали то, что только k-й компонент смеси зависит от $\\mu _ { k }$ Мы используем наш результат из (11.21b) в (11.15) и собираем все вместе, так чтобы искомая частная производная $\\mathcal { L }$ по $\\mu _ { k }$ была задана как $$\\frac { \\partial \\mathcal { L } } { \\partial \\mu _ { k } } = \\sum _ { n = 1 } ^ { N } \\frac { \\partial \\log p \\big ( \\pmb { x } _ { n } \\mid \\pmb { \\theta } \\big ) } { \\partial \\mu _ { k } } = \\sum _ { n = 1 } ^ { N } \\frac { 1 } { p \\big ( \\pmb { x } _ { n } \\mid \\pmb { \\theta } \\big ) } \\frac { \\hat { c } p \\big ( \\pmb { x } _ { n } \\mid \\pmb { \\theta } \\big ) } { \\hat { c } \\mu _ { k } } =\\tag{11.22a}$$"
+    }
+  ],
+  "ablation": {
+    "proposed_verdict": "ok",
+    "answered_by_each_alone": [
+      false,
+      false
+    ],
+    "answered_by_both": true
+  }
+}

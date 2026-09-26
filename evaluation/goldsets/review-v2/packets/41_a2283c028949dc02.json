@@ -1,0 +1,17 @@
+{
+  "question_id": "a2283c028949dc02",
+  "group": "single",
+  "question": "Какое значение имеет функция ценности состояния C (V*(C)) в оптимальной стратегии?",
+  "answer": "16/9",
+  "fragments": [
+    {
+      "chunk_id": "822a7f22a3de0829:00173",
+      "text": "я C. Если опти- мально действие то $$Q ^ { * } ( s = C , \\overline { { \\Vert } } ) = 0 . 2 \\gamma Q ^ { * } ( s = C , \\overline { { \\Vert } } ) + 0 . 8 \\gamma V ^ { * } ( s = B )$$ Решая это уравнение относительно неизвестного $Q ^ { * } ( s = C , \\underline { { \\mathbf { \\Pi } } } )$ , получаем $\\begin{array} { l } { \\frac { 1 6 } { 9 } > Q ^ { * } ( s = C , \\pmb { \\bigtriangledown } ) = - \\bf { 1 } . } \\end{array}$ Значит, в $\\mathrm { C }$ оптимальная стратегия обязана выбирать , и $\\begin{array} { r } { V ^ { * } ( C ) = \\frac { 1 6 } { 9 } } \\end{array}$ Для состояния A достаточно сравнить $\\begin{array} { r } { Q ^ { * } ( s = A , \\underline { { \\mathbf { \\Pi } } } , \\mathbf { \\overline { { \\mathbf { \\Pi } } } } ) = \\mathbf { 0 . 2 5 } \\gamma V ^ { * } ( s = B ) = \\frac { 1 } { 4 } \\mathrm { ~ u ~ } Q ^ { * } ( s = A , \\underline { { \\mathbf { \\Pi } } } , \\mathbf { \\overline { { \\mathbf { \\Pi } } } } ) = } \\end{array}$ $\\begin{array} { r } { { } = \\gamma V ^ { * } ( s = C ) = \\frac { 8 } { 9 } } \\end{array}$ , определив, что оптимальная стратегия должна выбирать §3.2. Улучшение политики 3.2.1. Advantage-функция Допустим, мы находились в некотором состоянии s, и"
+    }
+  ],
+  "ablation": {
+    "proposed_verdict": null,
+    "answered_by_each_alone": null,
+    "answered_by_both": null
+  }
+}

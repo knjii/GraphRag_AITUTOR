@@ -52,6 +52,7 @@ COMPOSITION_FIELDS: tuple[str, ...] = (
     "graph.graph_file_hash",
     "graph.ranker",
     "graph.ppr_alpha",
+    "graph.walk",
     "retrieval.dense_candidates",
     "retrieval.sparse_candidates",
     "retrieval.decompose_enabled",
@@ -225,6 +226,7 @@ LEGACY_DEFAULTS: dict[str, Any] = {
     "graph.graph_file_hash": "",
     "graph.ranker": "walk",
     "graph.ppr_alpha": 0.5,
+    "graph.walk": "comention",
 }
 
 

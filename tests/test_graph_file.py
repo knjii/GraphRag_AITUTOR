@@ -74,6 +74,33 @@ def test_analyzer_splits_like_standard_tokenizer() -> None:
     ]
 
 
+
+def test_analyzer_follows_uax29_word_boundaries() -> None:
+    # Двоеточие склеивает буквы (WB6–7), запятая — цифры (WB11–12),
+    # точка в конце слова отрезается, комбинирующая метка прилипает (WB4).
+    assert analyze("ab:cd 1,5 a.b. x:1 f(x)=x^2") == ["ab:cd", "1,5", "a.b", "x", "1", "f", "x", "x", "2"]
+    assert analyze("étude") == ["étude"]
+    assert analyze("— … ,") == []
+
+
+def test_ties_are_broken_by_id_like_cypher() -> None:
+    # Neo4j сортирует ``round(score, 5) DESC, id ASC``; порядок вставки
+    # сущностей в граф на выдачу влиять не должен.
+    graph = GraphFile(variant="ties")
+    graph.add_passage("p1", doc_id="d", doc_name="К", ordinal=0, text="a", pages=[1])
+    graph.add_passage("p2", doc_id="d", doc_name="К", ordinal=1, text="b", pages=[1])
+    for entity_id in ("zeta", "alpha", "mid"):
+        graph.add_entity(entity_id, canonical="общий термин", name="общий термин")
+        graph.add_mention("p1", entity_id, 1)
+        graph.add_relation("hub", entity_id, "RELATES", "связан", 1.0)
+    graph.add_entity("hub", canonical="узел", name="узел")
+    graph.add_mention("p2", "hub", 1)
+    store = MemoryGraphStore(graph)
+    assert [row["id"] for row in store.find_seed_entities(["общий термин"], 2)] == ["alpha", "mid"]
+    assert [row["id"] for row in store.entities_of_passages(["p1"], 2)] == ["alpha", "mid"]
+    weights = store.expand_entities(["hub"], hops=1, rel_types=["RELATES"], limit=2)
+    assert set(weights) == {"hub", "alpha", "mid"}
+
 def test_seed_search_is_phrase_bm25_over_both_fields() -> None:
     store = MemoryGraphStore(_graph())
     rows = store.find_seed_entities(["сингулярный разложение"], 10)
@@ -116,8 +143,14 @@ def test_expansion_limit_counts_reachable_seeds() -> None:
     # Cypher возвращает и затравку, достижимую от другой затравки: она
     # занимает место в LIMIT, хотя в веса не попадает.
     store = MemoryGraphStore(_graph())
-    weights = store.expand_entities(["svd", "pca"], hops=1, rel_types=["RELATES"], limit=2, decay=0.5)
-    assert weights == {"svd": 1.0, "pca": 1.0}
+    # На расстоянии 1 три узла: cov, pca, svd; по id первыми идут cov и pca,
+    # и затравка pca отнимает у svd место, но не у cov.
+    weights = store.expand_entities(["svd", "pca"], hops=1, rel_types=["RELATES"], limit=1, decay=0.5)
+    assert weights == {"svd": 1.0, "pca": 1.0, "cov": 0.5}
+    weights = store.expand_entities(["pca", "cov"], hops=1, rel_types=["RELATES"], limit=1, decay=0.5)
+    # cov достижима от pca и первой стоит по id: единственное место уходит ей,
+    # svd в веса не попадает.
+    assert weights == {"pca": 1.0, "cov": 1.0}
 
 
 def test_find_passages_matches_cypher_formula() -> None:
@@ -187,6 +220,45 @@ def test_ppr_ranker_on_memory_store(monkeypatch, tmp_path) -> None:
     retriever = GraphRetriever(GraphSettings(), MemoryGraphStore.from_file(path))
     results = retriever.retrieve("вопрос", seed_chunk_ids=["p2"])
     assert results and all(item.chunk.id != "p2" for item in results)
+
+
+def test_find_passages_filters_roles_with_idf_over_definitions() -> None:
+    graph = _graph()
+    graph.add_mention("p1", "svd", 2, role="defines")
+    graph.add_mention("p2", "svd", 1, role="uses")
+    store = MemoryGraphStore(graph)
+    rows = store.find_passages({"svd": 1.0}, 10, roles=("defines",))
+    assert [row["chunk_id"] for row in rows] == ["p1"]
+    # IDF по местам определения: одно из четырёх, а не два из четырёх.
+    assert rows[0]["score"] == pytest.approx(math.log(4 / 1) * math.log(3))
+    assert store.has_role("defines") and not MemoryGraphStore(_graph()).has_role("defines")
+
+
+def test_dependency_walk_leads_from_use_to_definition(monkeypatch, tmp_path) -> None:
+    graph = _graph()
+    graph.add_mention("p1", "svd", 2, role="defines")
+    graph.add_mention("p2", "svd", 1, role="uses")
+    path = graph.save(tmp_path / "g.json")
+    monkeypatch.setenv("GRAPH_BACKEND", "memory")
+    monkeypatch.setenv("GRAPH_FILE", str(path))
+    monkeypatch.setenv("GRAPH_SEED_MODE", "passages")
+    monkeypatch.setenv("GRAPH_HOP_DECAY", "0")
+    monkeypatch.setenv("GRAPH_WALK", "dependency")
+    retriever = GraphRetriever(GraphSettings(), MemoryGraphStore.from_file(path))
+    ids = [item.chunk.id for item in retriever.retrieve("вопрос", seed_chunk_ids=["p2"])]
+    assert ids == ["p1"]
+
+
+def test_dependency_walk_refuses_graph_without_roles(monkeypatch, tmp_path) -> None:
+    path = _graph().save(tmp_path / "g.json")
+    monkeypatch.setenv("GRAPH_BACKEND", "memory")
+    monkeypatch.setenv("GRAPH_FILE", str(path))
+    monkeypatch.setenv("GRAPH_WALK", "dependency")
+    with pytest.raises(ValueError, match="defines"):
+        GraphRetriever(GraphSettings(), MemoryGraphStore.from_file(path))
+    monkeypatch.setenv("GRAPH_RANKER", "ppr")
+    with pytest.raises(ValueError, match="ppr"):
+        GraphSettings()
 
 
 def test_fidelity_script_accepts_identical_channel(tmp_path, monkeypatch) -> None:

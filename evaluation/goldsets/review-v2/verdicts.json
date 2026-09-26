@@ -1,0 +1,254 @@
+{
+  "verdicts": [
+    {
+      "question_id": "a5fa011fd2dd38eb",
+      "verdict": "single_hop_enough",
+      "note": "Фрагмент 0690bb81b7e3c831:01114 используем компоненты из вопроса для получения ключевой формулы. Вопрос в том, что во фрагменте эти компоненты не объявляются до формулы, однако формула верная"
+    },
+    {
+      "question_id": "4b2473f7622c0633",
+      "verdict": "ok",
+      "note": "ok"
+    },
+    {
+      "question_id": "ec579ec51b441307",
+      "verdict": "ok",
+      "note": "ok"
+    },
+    {
+      "question_id": "089f6eed69ce837b",
+      "verdict": "ok",
+      "note": "Пример достаточно сложно воспринимать из-за неправильного определения языка mineru, однако фрагменты по смыслу корректные"
+    },
+    {
+      "question_id": "350dded3705938b2",
+      "verdict": "single_hop_enough",
+      "note": "Фрагмент 567b09c6f1443478:00211 дает полноценный контекст для ответа, второй фрагмент значимого контекста не несет"
+    },
+    {
+      "question_id": "1fa0686e00b274f6",
+      "verdict": "ok",
+      "note": "ok"
+    },
+    {
+      "question_id": "eb7948b4503a5896",
+      "verdict": "ok",
+      "note": "Это спорный вердикт, в представленных фрагментах есть контекст, который может помочь ПРИДУМАТЬ ответ на вопрос. Одназначно ассистент должен уметь пользоваться контекстом для созидания новых утверждений, но надо упомянуть, что вместе эти фрагменты ПРЯМОГО ответа не содержат. "
+    },
+    {
+      "question_id": "dace66e0fc4e642d",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "ff86d811d8f09f85",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "9c60ef116d1d4bbf",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "910f1d9a672b7817",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "7400883b2f2f8e3a",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "9c0c5562f25f5f1c",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "6f04a171a3b30b67",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "bb5388452aaf8b95",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "9f3c7a52f6e7a909",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "182013730515dc05",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "7c056d3149af54f0",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "d210e45a78bd1738",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "fc73beaddb717fcb",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "f701386449c9b99a",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "82266d3863218d2e",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "7ccc891bde2f2ad7",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "22f614e6abe44c39",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "a7049772899eaa1b",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "cc895713a16b853e",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "ab7a9d11409f6734",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "6ac8dd6e3c98c141",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "3a39930ed27e0652",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "5541401d104494f6",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "5d527ede647addd1",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "6265b00542295950",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "1ed20ffd470143a7",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "9762341ea052e295",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "88ba0e622c838f34",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "9f9192f81986a68e",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "99e4c399f8ae53b4",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "0893db674a2062ff",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "bc75ffdf2f208d92",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "a834e9f273ff1bfb",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "a2283c028949dc02",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "766751c2d4b89f3b",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "d6ccadf937f4d147",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "3b850ebaccbd67a5",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "4f477a8b45e4e78c",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "0c3e326d001a07c8",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "76b3aecfc73c158c",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "5d56dc7b0cce8a1d",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "05d76c729f10e098",
+      "verdict": "",
+      "note": ""
+    },
+    {
+      "question_id": "2f60763fa1771adf",
+      "verdict": "",
+      "note": ""
+    }
+  ]
+}

@@ -88,6 +88,7 @@ def run_retrieval_evaluation(
             graph_share=result.graph_share,
             graph_only_share=result.graph_only_share,
             latency_ms=result.timings_ms.get("total", 0.0),
+            context_chars=[len(item.chunk.text) for item in result.chunks],
         )
 
     logger.info("Оценка поиска: вопросов=%s, параллелизм=%s", len(questions), max_workers)
@@ -157,6 +158,7 @@ def save_evaluation(
                 "used_graph": item.used_graph,
                 "graph_share": round(item.graph_share, 3),
                 "graph_only_share": round(item.graph_only_share, 3),
+                "context_chars": item.context_chars,
                 "latency_ms": round(item.latency_ms, 1),
             }
             for item in outcomes
@@ -187,6 +189,7 @@ def load_outcomes(path: Path) -> tuple[str, list[QueryOutcome]]:
             graph_share=float(row.get("graph_share") or 0.0),
             graph_only_share=float(row.get("graph_only_share") or 0.0),
             latency_ms=float(row.get("latency_ms") or 0.0),
+            context_chars=[int(item) for item in (row.get("context_chars") or [])],
         )
         for row in payload.get("outcomes", [])
     ]

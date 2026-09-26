@@ -23,7 +23,7 @@
 без копий весов в памяти), изменения обязаны быть конечными, `dtype` берётся
 из конфигурации базы, токенизатор — из каталога адаптера (с ним шло
 обучение). Запись атомарна: `<out>.partial` → `<out>` с меткой `merge.json`,
-где записаны отпечаток входов и список файлов с размерами.
+где записаны отпечаток входов и список файлов с SHA256.
 
 Упаковка (задача 023). Обучение идёт на текстовой модели
 (`AutoModelForCausalLM`), а она сохраняется как `Qwen3_5ForCausalLM` —
@@ -56,8 +56,8 @@ FORMAT = "packed-like-base-v1"
 # Файлы, которые определяют результат вплавления: веса адаптера и
 # токенизатор, с которым шло обучение (он копируется в merged).
 _ADAPTER_FILES = ("adapter_config.json", "adapter_model.safetensors", "adapter_model.bin")
-_TOKENIZER_FILES = ("tokenizer.json", "tokenizer_config.json", "chat_template.jinja",
-                    "special_tokens_map.json")
+_TOKENIZER_FILES = ("vocab.json", "merges.txt", "tokenizer*.json",
+                    "special_tokens_map.json", "chat_template*", "chat_templates/**/*")
 # Настройки PEFT, при которых выборка целевых весов шире фактической:
 # is_target их не повторяет, поэтому они отвергаются явно (задача 022).
 _UNSUPPORTED = ("layers_to_transform", "layers_pattern", "exclude_modules", "modules_to_save")
@@ -80,55 +80,73 @@ def adapter_config(adapter: Path) -> dict:
     return json.loads(config.read_text(encoding="utf-8"))
 
 
-def adapter_digest(adapter: Path | None, base: str = "") -> str:
-    """Отпечаток входов вплавления: формат результата, имя базы, веса и
-    конфигурация адаптера и токенизатор рядом с ним. Без адаптера
-    (`--identity`) — только формат и база."""
-    digest = hashlib.sha256(f"{FORMAT}\0{base}".encode())
-    if adapter is None:
-        digest.update(b"\0identity")
-        return digest.hexdigest()
-    weights = 0
-    for name in (*_ADAPTER_FILES, *_TOKENIZER_FILES):
-        path = adapter / name
-        if not path.is_file():
-            continue
-        weights += name in _ADAPTER_FILES
-        digest.update(name.encode())
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(1 << 20), b""):
-                digest.update(block)
-    if weights < 2:
-        raise FileNotFoundError(f"{adapter}: нет весов адаптера рядом с adapter_config.json")
+def file_sha256(path: Path) -> str:
+    """Большие веса читаются блоками, без копии файла в памяти."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
     return digest.hexdigest()
 
 
-def manifest(directory: Path) -> dict[str, int]:
-    """Файлы результата и их размеры — без самой метки."""
-    return {path.relative_to(directory).as_posix(): path.stat().st_size
+def tokenizer_manifest(directory: Path) -> dict[str, str]:
+    paths = {path for pattern in _TOKENIZER_FILES for path in directory.glob(pattern)
+             if path.is_file()}
+    return {path.relative_to(directory).as_posix(): file_sha256(path) for path in sorted(paths)}
+
+
+def cached_base(base: str) -> Path:
+    """Проверка актуальности не скачивает веса и не обновляет снимок."""
+    if Path(base).is_dir():
+        return Path(base)
+    from huggingface_hub import snapshot_download
+
+    return Path(snapshot_download(base, local_files_only=True))
+
+
+def adapter_digest(adapter: Path | None, base: str = "", dtype: str = "auto",
+                   *, base_dir: Path | None = None) -> str:
+    """Отпечаток содержимого входов, ревизии базы и запрошенного экспорта."""
+    inputs = {"format": FORMAT, "base": base, "dtype": dtype, "identity": adapter is None}
+    if base:
+        directory = base_dir if base_dir is not None else cached_base(base)
+        resolved = directory.resolve()
+        inputs["base_revision"] = (resolved.name if resolved.parent.name == "snapshots" else {
+            name: file_sha256(directory / name) if (directory / name).is_file() else None
+            for name in ("config.json", INDEX)
+        })
+        inputs["base_tokenizer"] = tokenizer_manifest(directory)
+    if adapter is not None:
+        files = {name: file_sha256(adapter / name) for name in _ADAPTER_FILES
+                 if (adapter / name).is_file()}
+        if "adapter_config.json" not in files or len(files) < 2:
+            raise FileNotFoundError(f"{adapter}: нет весов адаптера рядом с adapter_config.json")
+        inputs["adapter"] = files
+        inputs["tokenizer"] = tokenizer_manifest(adapter)
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def manifest(directory: Path) -> dict[str, str]:
+    """Содержимое результата без самой метки; старые метки с размерами не подходят."""
+    return {path.relative_to(directory).as_posix(): file_sha256(path)
             for path in sorted(directory.rglob("*")) if path.is_file() and path.name != MARKER}
 
 
-def is_current(adapter: Path | None, out: Path, base: str = "") -> bool:
-    """Лежит ли в `out` целое вплавление именно этих входов.
-
-    Одной метки мало (задача 022): каталог с меткой, но без весов, или
-    с недописанным файлом прошёл бы проверку. Поэтому сверяются и
-    список файлов с размерами, и наличие конфигурации и весов.
-    """
-    marker = out / MARKER
-    if not marker.is_file():
-        return False
+def is_current(adapter: Path | None, out: Path, base: str = "", dtype: str = "auto") -> bool:
+    """Проверить целостность результата и совпадение всех входов экспорта."""
     try:
-        data = json.loads(marker.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        data = json.loads((out / MARKER).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return False
+        files = data.get("files") or {}
+        if not isinstance(files, dict) or "config.json" not in files:
+            return False
+        if not any(name.endswith(".safetensors") for name in files):
+            return False
+        return (manifest(out) == files
+                and data.get("adapter_sha256") == adapter_digest(adapter, base, dtype))
+    except (OSError, ValueError):
         return False
-    files = data.get("files") or {}
-    if "config.json" not in files or not any(name.endswith(".safetensors") for name in files):
-        return False
-    if manifest(out) != files:
-        return False
-    return data.get("adapter_sha256") == adapter_digest(adapter, base)
 
 
 def targets_of(config: dict) -> list[str] | str:
@@ -285,12 +303,13 @@ def pack_like_base(state: dict, base_dir: Path, out: Path, *, targets,
     но полнота ключей и формы проверяются так же.
 
     Файлы обрабатываются по одному — в памяти не больше одного файла базы
-    сверх самой модели.
+    сверх самой модели плюс независимые копии заменяемых весов этого файла.
     """
     shards = base_shards(base_dir)
     if shards is None:
         only = read_shard(base_dir / "model.safetensors")
         shards = {"model.safetensors": list(only)}
+        del only
     plan = plan_pack([key for keys in shards.values() for key in keys], state)
     expected = sum(1 for source in plan.values()
                    if source and targets is not None and is_target(source, targets))
@@ -314,9 +333,10 @@ def pack_like_base(state: dict, base_dir: Path, out: Path, *, targets,
                 continue
             if tensor.dtype != base[key].dtype:
                 raise ValueError(f"{key}: {tensor.dtype} против базы {base[key].dtype}")
-            tensors[key] = tensor.detach().contiguous().cpu()
+            tensors[key] = tensor.detach().to("cpu").contiguous().clone()
             replaced += 1
         write_shard(tensors, out / shard)
+        del tensors, base
     if replaced != expected:
         raise ValueError(f"заменено {replaced} целевых весов из {expected}")
     return replaced
@@ -326,9 +346,17 @@ def copy_side_files(base_dir: Path, out: Path) -> None:
     """Всё, кроме весов, — как у базы: конфигурация, индекс файлов (формы и
     типы те же, значит и размеры), препроцессоры, токенизатор (его потом
     перезапишет токенизатор обучения)."""
+    def ignore(directory: str, names: list[str]) -> list[str]:
+        return [name for name in names if name in (MARKER, INDEX)
+                or name.endswith((".safetensors", ".bin", ".index.json"))]
+
     for path in sorted(base_dir.iterdir()):
-        if path.is_file() and path.suffix != ".safetensors" and path.name != MARKER:
-            shutil.copy2(path, out / path.name)  # снимок кэша HF — ссылки, копируется файл
+        if path.is_dir():
+            shutil.copytree(path, out / path.name, symlinks=False, ignore=ignore,
+                            dirs_exist_ok=True)
+        elif path.name == INDEX or not ignore(str(base_dir), [path.name]):
+            # Корневой индекс необходим упаковке: ключи и имена шардов сохранены.
+            shutil.copy2(path, out / path.name)
 
 
 def local_base(base: str) -> Path:
@@ -380,13 +408,12 @@ def main(argv=None) -> int:
 
     base = args.base or base_model_of(adapter)
     if args.is_current:
-        return 0 if is_current(adapter, args.out, base) else 1
+        return 0 if is_current(adapter, args.out, base, args.dtype) else 1
 
     if args.out.exists() and any(args.out.iterdir()):
         print(f"{args.out} не пуст — сначала уберите его", file=sys.stderr)
         return 1
     targets = targets_of(adapter_config(adapter)) if adapter else None
-    digest = adapter_digest(adapter, base)
     partial = args.out.with_name(args.out.name + ".partial")
     if partial.exists():
         # Остаток прерванного вплавления: его никто не принимал за модель.
@@ -396,6 +423,7 @@ def main(argv=None) -> int:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     base_dir = local_base(base)
+    digest = adapter_digest(adapter, base, args.dtype, base_dir=base_dir)
     base_config = json.loads((base_dir / "config.json").read_text(encoding="utf-8"))
     print(f"базовая модель: {base} ({base_dir}); целевые модули: {targets or '—'}")
     dtype = "auto" if args.dtype == "auto" else getattr(torch, args.dtype)
@@ -450,7 +478,7 @@ def main(argv=None) -> int:
         print(f"сохранённая конфигурация не та, что у базы: {problems}", file=sys.stderr)
         return 1
     (partial / MARKER).write_text(json.dumps({
-        "format": FORMAT, "written_by": how,
+        "format": FORMAT, "written_by": how, "requested_dtype": args.dtype,
         "adapter": str(adapter) if adapter else "identity", "adapter_sha256": digest,
         "base": base, "target_modules": targets, "changed": changed, "checked": checked,
         "architectures": saved.get("architectures"), "dtype": loaded_dtype,

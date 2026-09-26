@@ -227,6 +227,13 @@ class FakeTensor:
     def cpu(self):
         return self
 
+    def to(self, device):
+        assert device == "cpu"
+        return self
+
+    def clone(self):
+        return FakeTensor(self.shape, self.dtype, self.tag)
+
 
 def fake_base(tmp_path: Path, shards: dict[str, dict[str, FakeTensor]], index: bool = True,
               **config) -> tuple[Path, dict]:
@@ -435,3 +442,117 @@ def test_tensor_digest_sees_bf16_changes():
     changed[3, 3] = 1e-3
     assert merge_adapter.tensor_digest(weight) == merge_adapter.tensor_digest(weight.clone())
     assert merge_adapter.tensor_digest(weight) != merge_adapter.tensor_digest(changed)
+
+
+@pytest.fixture(autouse=True)
+def cached_test_base(tmp_path: Path, monkeypatch):
+    # Старые сценарии используют имя HF; проверяем локальный снимок без сети.
+    base = tmp_path / "cached-base"
+    base.mkdir()
+    (base / "config.json").write_text("{}", encoding="utf-8")
+    original = merge_adapter.cached_base
+    monkeypatch.setattr(merge_adapter, "cached_base",
+                        lambda name: base if name in (BASE, "другая") else original(name))
+
+
+def test_same_size_corruption_is_not_current(tmp_path: Path):
+    adapter = full_adapter(tmp_path / "run")
+    out = tmp_path / "out"
+    merged_dir(out, adapter)
+    (out / "model.safetensors").write_bytes(b"WEIGHTS")
+    assert current(adapter, out) == 1
+
+
+def test_requested_dtype_changes_current_marker(tmp_path: Path):
+    adapter = full_adapter(tmp_path / "run")
+    out = tmp_path / "out"
+    merged_dir(out, adapter, adapter_sha256=merge_adapter.adapter_digest(adapter, BASE, "bfloat16"))
+    args = ["--adapter", str(adapter), "--out", str(out), "--is-current", "--dtype"]
+    assert merge_adapter.main([*args, "bfloat16"]) == 0
+    assert merge_adapter.main([*args, "float32"]) == 1
+
+
+@pytest.mark.parametrize("name", ["vocab.json", "merges.txt", "tokenizer_extra.json",
+                                  "special_tokens_map.json", "chat_template.txt",
+                                  "chat_templates/nested/tool.jinja"])
+@pytest.mark.parametrize("identity", [False, True])
+def test_all_tokenizer_inputs_affect_digest(tmp_path: Path, name: str, identity: bool):
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "config.json").write_text("{}", encoding="utf-8")
+    adapter = None if identity else full_adapter(tmp_path / "run")
+    directory = base if identity else adapter
+    path = directory / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("old", encoding="utf-8")
+    before = merge_adapter.adapter_digest(adapter, str(base))
+    path.write_text("new", encoding="utf-8")
+    assert merge_adapter.adapter_digest(adapter, str(base)) != before
+
+
+@pytest.mark.parametrize("name", ["config.json", merge_adapter.INDEX])
+def test_local_base_content_affects_digest(tmp_path: Path, name: str):
+    path = tmp_path / name
+    path.write_text("old", encoding="utf-8")
+    before = merge_adapter.adapter_digest(None, str(tmp_path))
+    path.write_text("new", encoding="utf-8")
+    assert merge_adapter.adapter_digest(None, str(tmp_path)) != before
+
+
+def test_snapshot_revision_and_format_affect_digest(tmp_path: Path, monkeypatch):
+    first = tmp_path / "snapshots" / "revision1"
+    second = tmp_path / "snapshots" / "revision2"
+    first.mkdir(parents=True)
+    second.mkdir()
+    monkeypatch.setattr(merge_adapter, "cached_base", lambda _: first)
+    before = merge_adapter.adapter_digest(None, BASE)
+    monkeypatch.setattr(merge_adapter, "cached_base", lambda _: second)
+    assert merge_adapter.adapter_digest(None, BASE) != before
+    before = merge_adapter.adapter_digest(None, BASE)
+    monkeypatch.setattr(merge_adapter, "FORMAT", "next-format")
+    assert merge_adapter.adapter_digest(None, BASE) != before
+
+
+def test_nested_side_files_are_copied(tmp_path: Path):
+    base, _ = fake_base(tmp_path, SHARDS)
+    nested = base / "chat_templates" / "nested"
+    nested.mkdir(parents=True)
+    (nested / "tool.jinja").write_text("template", encoding="utf-8")
+    (nested / "extra.safetensors").write_bytes(b"weight")
+    (nested / merge_adapter.INDEX).write_text("{}", encoding="utf-8")
+    out = tmp_path / "out"
+    out.mkdir()
+    merge_adapter.copy_side_files(base, out)
+    assert (out / "chat_templates/nested/tool.jinja").read_text(encoding="utf-8") == "template"
+    assert not (out / "chat_templates/nested/extra.safetensors").exists()
+    assert not (out / "chat_templates/nested" / merge_adapter.INDEX).exists()
+
+
+def test_replacement_storage_is_independent(tmp_path: Path):
+    base, store = fake_base(tmp_path, SHARDS)
+    state = merged_state()
+    _, written, _ = run_pack(tmp_path, base, store, state)
+    copied = written[next(iter(SHARDS))]["model.language_model.layers.3.self_attn.q_proj.weight"]
+    assert copied is not state["model.layers.3.self_attn.q_proj.weight"]
+    assert copied.tag == "merged"
+
+
+def test_shared_torch_storage_can_be_saved(tmp_path: Path):
+    torch = pytest.importorskip("torch")
+    safetensors = pytest.importorskip("safetensors.torch")
+    shared = torch.ones(4, 4, dtype=torch.bfloat16)
+    state = {"model.q_proj.weight": shared, "model.v_proj.weight": shared}
+    base = tmp_path / "base"
+    out = tmp_path / "out"
+    base.mkdir()
+    out.mkdir()
+    tensors = {"model.language_model.q_proj.weight": shared.clone(),
+               "model.language_model.v_proj.weight": shared.clone()}
+    safetensors.save_file(tensors, str(base / "model.safetensors"))
+    merge_adapter.pack_like_base(
+        state, base, out, targets=TARGETS,
+        read_shard=lambda path: safetensors.load_file(str(path)),
+        write_shard=lambda data, path: safetensors.save_file(data, str(path)),
+    )
+    saved = safetensors.load_file(str(out / "model.safetensors"))
+    assert all(torch.equal(value, shared) for value in saved.values())

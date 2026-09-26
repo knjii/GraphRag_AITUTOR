@@ -131,6 +131,31 @@ def test_chunk_never_starts_inside_a_formula() -> None:
             assert chunk.text.count("$$") % 2 == 0, (size, overlap, chunk.text[:80])
 
 
+def test_short_chunk_before_long_formula_does_not_creep() -> None:
+    """Регрессия 2026-09-22: короткий фрагмент перед формулой длиннее предела.
+
+    «Конец минус перекрытие» уходил левее начала короткого фрагмента, и
+    следующий начинался на символ правее, снова кончаясь перед той же
+    формулой: на MML 306 из 1561 фрагмента были почти дублями с шагом 1.
+    """
+    blocks = [
+        Block(index=0, type="text", text="Слово " * 200),
+        Block(index=1, type="text", text="Короткий абзац перед формулой."),
+        Block(index=2, type="equation", latex="$$ " + "x + " * 400 + "y $$"),
+        Block(index=3, type="text", text="Хвост " * 200),
+    ]
+    for size, overlap in [(1200, 180), (600, 150), (300, 120)]:
+        settings = ChunkingSettings(chunk_size=size, chunk_overlap=overlap, respect_formulas=True)
+        chunks = LayoutAwareChunker(settings).chunk(blocks, doc_id="d", doc_name="D", source_path="d.pdf")
+        starts = [chunk.char_start for chunk in chunks]
+        steps = [b - a for a, b in zip(starts, starts[1:], strict=False)]
+        assert min(steps) >= min(overlap, size // 4), (size, overlap, steps)
+        ends = [chunk.char_end for chunk in chunks]
+        assert len(ends) == len(set(ends)), (size, overlap, ends)
+        # Весь текст документа по-прежнему покрыт.
+        assert chunks[-1].text.rstrip().endswith("Хвост")
+
+
 def test_default_chunking_is_unchanged() -> None:
     """Без флага нарезка прежняя: эталон ссылается на номера фрагментов MML."""
     blocks = [

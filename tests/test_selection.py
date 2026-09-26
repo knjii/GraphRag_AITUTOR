@@ -145,6 +145,19 @@ def test_modes_refuse_to_run_without_their_tools() -> None:
     assert selection.reorder(items, "q", _settings(), 2) == items
 
 
+def test_dependency_modes_refuse_graph_without_roles() -> None:
+    items = [_item("a", "", 1.0), _item("b", "", 0.5)]
+    with pytest.raises(ValueError, match="defines"):
+        selection.complete(items, _settings(selection_mode="closure"), 2, store=_store())
+    with pytest.raises(ValueError, match="defines"):
+        selection.reorder(
+            items, "q", _settings(selection_mode="diffusion", selection_links="dependency"), 2,
+            store=_store(),
+        )
+    # Рёбра «общий узел» ролей не требуют.
+    assert selection.reorder(items, "q", _settings(selection_mode="diffusion"), 2, store=_store())
+
+
 def test_replay_refuses_closure_and_runs_diffusion() -> None:
     from rag_textbook.config import Settings
     from rag_textbook.evaluation.replay import replay

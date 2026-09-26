@@ -546,10 +546,20 @@ def goldset_pairs(
     out: Annotated[Path, typer.Option(help="Файл пар JSONL")],
     per_source: Annotated[int, typer.Option(min=0, help="Квота каждого источника")] = 50,
     vectors: Annotated[Path | None, typer.Option(help="JSON: id фрагмента → вектор")] = None,
+    vectors_from_store: Annotated[
+        bool,
+        typer.Option(
+            "--vectors-from-store",
+            help="Взять плотные векторы из коллекции Qdrant (источник dense)",
+        ),
+    ] = False,
     parsed: Annotated[Path | None, typer.Option(help="Каталог разобранных фрагментов для офлайн-работы")] = None,
     seed: Annotated[int, typer.Option(help="Зерно отбора")] = 20260814,
 ) -> None:
     """Отбирает пары без модели и графа; --parsed позволяет работать без Qdrant."""
+    if vectors is not None and vectors_from_store:
+        console.print("[red]--vectors и --vectors-from-store взаимоисключающие.[/red]")
+        raise typer.Exit(code=2)
     from dataclasses import asdict
 
     from rag_textbook.evaluation.pairgen import sample_pairs, summarize_pairs
@@ -568,6 +578,16 @@ def goldset_pairs(
         console.print("[red]Нет фрагментов для отбора.[/red]")
         raise typer.Exit(code=1)
     vector_data = json.loads(vectors.read_text(encoding="utf-8")) if vectors else None
+    if vectors_from_store:
+        vector_data = dict(build_vector_store(settings.vector_store).iter_vectors())
+        known = {chunk.id for chunk in chunks}
+        covered = len(known & vector_data.keys())
+        console.print(f"Векторов из коллекции: {len(vector_data)}, у фрагментов корпуса: {covered}")
+        # Пары dense без векторов у части корпуса смещены к векторизованной
+        # части; половины мало, чтобы называть источник представительным.
+        if covered < len(known) // 2:
+            console.print("[red]Векторы есть меньше чем у половины фрагментов.[/red]")
+            raise typer.Exit(code=1)
     pairs = sample_pairs(chunks, per_source, seed, vectors=vector_data)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("".join(json.dumps(asdict(p), ensure_ascii=False) + "\n" for p in pairs), encoding="utf-8")
@@ -586,6 +606,7 @@ def goldset_build_v2(
     parsed: Annotated[Path | None, typer.Option(help="Каталог разобранных фрагментов вместо Qdrant")] = None,
     seed: Annotated[int, typer.Option(help="Зерно отбора и разбиения")] = 20260814,
     workers: Annotated[int, typer.Option(min=1, help="Параллельные запросы к модели")] = 1,
+    journal: Annotated[Path | None, typer.Option(help="Журнал ответов модели: повтор продолжает с места обрыва")] = None,
 ) -> None:
     """Собирает вопросы по независимым парам и при необходимости проверяет абляцией."""
     from rag_textbook.clients.llm import build_llm_client
@@ -611,6 +632,10 @@ def goldset_build_v2(
         console.print("[red]Нет фрагментов для сборки.[/red]")
         raise typer.Exit(code=1)
     llm = build_llm_client(settings.llm)
+    if journal is not None:
+        from rag_textbook.clients.llm_journal import JournaledLLM
+
+        llm = JournaledLLM(llm, journal, model=settings.llm.model)
     try:
         builder = GoldsetBuilder(llm, seed=seed, workers=workers)
         questions = build_v2(builder, chunks, candidates, single, formula, seed)
@@ -629,6 +654,8 @@ def goldset_build_v2(
         close = getattr(llm, "close", None)
         if close is not None:
             close()
+    if journal is not None:
+        console.print(f"Журнал ответов: из журнала {llm.hits}, у модели {llm.misses}")
     console.print(f"Сохранено {len(questions)} вопросов в {out}")
 
 
@@ -711,6 +738,104 @@ def goldset_verdicts(
     save_goldset(updated, target)
     verified = sum(1 for item in updated if item.verified)
     console.print(f"Записано в {target}: проверенными помечены {verified} вопросов.")
+
+
+def _read_chunk_rows(path: Path) -> list[dict]:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return list(raw if isinstance(raw, list) else raw.get("chunks", []))
+
+
+@goldset_app.command("migrate")
+def goldset_migrate(
+    old_chunks: Annotated[Path, typer.Option(help="Фрагменты прежней нарезки (*_chunks.json)")],
+    new_chunks: Annotated[Path, typer.Option(help="Фрагменты новой нарезки того же документа")],
+    out: Annotated[Path, typer.Option(help="Куда записать перенесённый набор")],
+    path: Annotated[Path | None, typer.Option(help="Исходный набор")] = None,
+    fixes: Annotated[
+        Path | None, typer.Option(help="Ручные поправки {вопрос: {старый: новый}}")
+    ] = None,
+    sheet: Annotated[
+        Path | None, typer.Option(help="Лист ручного просмотра неоднозначных (Markdown)")
+    ] = None,
+) -> None:
+    """Переносит эталон на новую нарезку по тексту, а не по смещениям.
+
+    Каждый эталонный фрагмент переходит ровно в один новый. Рядом с набором
+    пишется отчёт ``<out>.migration.json`` с отпечатком новой нарезки: на
+    сервере ``goldset check-chunks`` сверяет, что индекс нарезан так же.
+    """
+    from rag_textbook.evaluation.migrate import (
+        chunks_fingerprint,
+        migrate_goldset,
+        review_sheet,
+    )
+
+    settings = _settings()
+    questions = load_goldset(path or settings.evaluation.goldset_path)
+    old_rows = _read_chunk_rows(old_chunks)
+    new_rows = _read_chunk_rows(new_chunks)
+    fix_map = json.loads(fixes.read_text(encoding="utf-8")) if fixes else {}
+    migrated, report = migrate_goldset(
+        questions, {row["id"]: row for row in old_rows}, new_rows, fix_map
+    )
+    ambiguous = set(report.ambiguous)
+    migrated = [
+        question.model_copy(
+            update={"notes": (question.notes + "; " if question.notes else "") + "перенос: неоднозначно"}
+        )
+        if question.id in ambiguous
+        else question
+        for question in migrated
+    ]
+    save_goldset(migrated, out)
+    summary = report.summary()
+    payload = {
+        "summary": summary,
+        "old_chunks": {"file": str(old_chunks), "count": len(old_rows),
+                       "fingerprint": chunks_fingerprint(old_rows)},
+        "new_chunks": {"file": str(new_chunks), "count": len(new_rows),
+                       "fingerprint": chunks_fingerprint(new_rows)},
+        "fixes": len(fix_map),
+        "lost": report.lost,
+        "collided": report.collided,
+        "ambiguous": report.ambiguous,
+        "mappings": {qid: [m.as_dict() for m in items] for qid, items in report.mappings.items()},
+    }
+    report_path = out.with_suffix(".migration.json")
+    report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    for key, value in summary.items():
+        console.print(f"{key}: [bold]{value}[/bold]")
+    if sheet is not None:
+        sheet.write_text(
+            review_sheet(questions, report, {r["id"]: r for r in old_rows},
+                         {r["id"]: r for r in new_rows}),
+            encoding="utf-8",
+        )
+        console.print(f"Лист просмотра: {sheet}")
+    console.print(f"Набор: {out}; отчёт: {report_path}")
+    if report.lost or report.collided:
+        console.print("[yellow]Часть вопросов выбыла — см. lost/collided в отчёте.[/yellow]")
+
+
+@goldset_app.command("check-chunks")
+def goldset_check_chunks(
+    report: Annotated[Path, typer.Option(help="Отчёт переноса (*.migration.json)")],
+    chunks: Annotated[Path, typer.Option(help="Фрагменты, нарезанные на этой машине")],
+) -> None:
+    """Сверяет нарезку с той, на которую перенесён эталон. Расхождение — код 1."""
+    from rag_textbook.evaluation.migrate import chunks_fingerprint
+
+    expected = json.loads(report.read_text(encoding="utf-8"))["new_chunks"]
+    rows = _read_chunk_rows(chunks)
+    actual = chunks_fingerprint(rows)
+    if actual != expected["fingerprint"]:
+        console.print(
+            f"[red]Нарезка другая: {len(rows)} фрагментов против {expected['count']}, "
+            f"отпечаток {actual[:12]} против {expected['fingerprint'][:12]}. "
+            "Номера эталона указывают в чужие тексты.[/red]"
+        )
+        raise typer.Exit(code=1)
+    console.print(f"[green]Нарезка совпадает: {len(rows)} фрагментов.[/green]")
 
 
 def _load_chunks_file(path: Path) -> dict[str, Chunk]:
@@ -1443,6 +1568,7 @@ def eval_answers(
         describe = getattr(context.llm, "describe_model", None)
         served = (describe() or {}).get("model") if callable(describe) else ""
         summary["чем сделано"] = {
+            **summary.get("чем сделано", {}),
             "модель ответа": served or settings.llm.model_for("chat"),
             "модель по настройке": settings.llm.model_for("chat"),
             "модель судьи": settings.llm.model_for("judge") if judge else "—",

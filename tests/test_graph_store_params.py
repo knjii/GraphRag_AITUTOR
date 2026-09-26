@@ -113,6 +113,10 @@ def test_clear_reports_how_much_it_deleted() -> None:
     assert store.clear() == {"nodes": 7}
     cypher, _, _ = session.calls[0]
     assert "DETACH DELETE" in cypher
+    # Индекс пересоздаётся: иначе мёртвые узлы остаются в статистике BM25.
+    issued = [call[0] for call in session.calls]
+    drop = next(i for i, q in enumerate(issued) if q.startswith("DROP INDEX entity_fulltext"))
+    assert any("CREATE FULLTEXT INDEX" in q for q in issued[drop + 1:])
 
 
 class _as_context:

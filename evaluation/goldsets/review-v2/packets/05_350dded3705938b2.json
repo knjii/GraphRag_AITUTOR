@@ -1,0 +1,24 @@
+{
+  "question_id": "350dded3705938b2",
+  "group": "linking",
+  "question": "Как с помощью характеристических функций доказать, что сумма двух независимых случайных величин, распределенных по биномиальному закону с одинаковым параметром вероятности успеха, также подчиняется биномиальному распределению с суммой их параметров испытаний?",
+  "answer": "Характеристическая функция суммы независимых случайных величин равна произведению их характеристических функций. Для биномиальной величины $\\xi \\sim B_{n,p}$ характеристическая функция равна $(1-p+pe^{it})^n$, а для $\\eta \\sim B_{m,p}$ — $(1-p+pe^{it})^m$. Перемножив их, получаем $(1-p+pe^{it})^{n+m}$, что является характеристической функцией распределения $B_{n+m,p}$, тем самым доказывая, что $\\xi+\\eta \\sim B_{n+m,p}$.",
+  "fragments": [
+    {
+      "chunk_id": "567b09c6f1443478:00211",
+      "text": "$${ \\begin{array} { r l } & { \\displaystyle \\mathsf { P } ( \\xi + \\eta = k ) = \\sum _ { i = 0 } ^ { k } \\mathsf { P } ( \\xi = i , \\eta = k - i ) = } \\\\ & { \\qquad = \\sum _ { i = 0 } ^ { k } \\mathsf { P } ( \\xi = i ) \\cdot \\mathsf { P } ( \\eta = k - i ) = \\sum _ { i = 0 } ^ { k } { \\frac { \\lambda ^ { i } } { i ! } } e ^ { - \\lambda } \\cdot { \\frac { \\| \\boldsymbol { \\mathsf { \\Pi } } ^ { k - i } } { ( k - i ) ! } } e ^ { - \\mathsf { \\Pi } } = } \\\\ & { \\qquad = e ^ { - ( \\lambda + \\mu ) } { \\frac { 1 } { k ! } } \\sum _ { i = 0 } ^ { k } { \\frac { k ! } { i ! ( k - i ) ! } } \\lambda ^ { i } \\| ^ { k - i } = e ^ { - ( \\lambda + \\mu ) } { \\frac { ( \\lambda + \\mathsf { \\Pi } ) ^ { k } } { k ! } } . } \\end{array} }$$ В последнем равенстве мы воспользовались биномом Ньютона. □ Л е м м а 2. Пусть случайные величины $\\xi \\in \\mathrm { ~ B ~ } _ { n , p } \\mathrm { ~ \\# ~ } \\mathfrak { n } \\in \\mathrm { ~ B } _ { m , p }$ неза- висимы. Тогда $\\xi + \\eta \\ \\in \\ \\mathrm { B } _ { n + m , p } .$ Смысл леммы 2 совершенно понятен: складывая количество успехов в первых n и в следующих m независимых испытаниях одной и той же схемы Бернулли, получаем количество успехов в $n + m$ испытаниях."
+    },
+    {
+      "chunk_id": "567b09c6f1443478:00342",
+      "text": "$$\\begin{array} { r c l } { { \\displaystyle \\displaystyle \\varphi _ { \\xi } ( t ) ~ = ~ \\mathsf E e ^ { i t \\xi } = \\sum _ { k = 0 } ^ { n } e ^ { i t \\cdot k } \\mathsf P ( \\xi = k ) = \\sum _ { k = 0 } ^ { n } e ^ { i t \\cdot k } C _ { n } ^ { k } p ^ { k } \\left( 1 - p \\right) ^ { n - k } = } } \\\\ { { } } & { { = } } & { { \\displaystyle \\sum _ { k = 0 } ^ { n } C _ { n } ^ { k } \\left( p e ^ { i t } \\right) ^ { k } \\left( 1 - p \\right) ^ { n - k } = \\left( 1 - p + p e ^ { i t } \\right) ^ { n } . } } \\end{array}$$ Последнее равенство есть бином Ньютона. П р и м е р 74. Пусть случайная величина $\\xi$ имеет распределение Пуас- сона с параметром λ. Её характеристическая функция равна $$\\begin{array} { r l r } { { \\mathfrak { o } _ { \\mathfrak { L } } ( t ) } } & { = } & { \\mathsf { E } e ^ { i t \\mathfrak { L } } = \\displaystyle \\sum _ { k = 0 } ^ { \\infty } e ^ { i t \\cdot k } \\mathsf { P } ( \\mathfrak { k } = k ) = \\sum _ { k = 0 } ^ { \\infty } e ^ { i t \\cdot k } \\frac { \\lambda ^ { k } } { k ! } e ^ { - \\lambda } = } \\\\ & { = } & { e ^ { - \\lambda } \\displaystyle \\sum _ { k = 0 } ^ { \\infty } \\frac { ( \\lambda e ^ { i t } ) ^ { k } } { k ! } = e ^ { - \\lambda } e ^ { \\lambda e ^ { i t } } = \\exp \\{ \\lambda ( e ^ { i t } - 1 ) \\} . } \\end{array}$$"
+    }
+  ],
+  "ablation": {
+    "proposed_verdict": "ok",
+    "answered_by_each_alone": [
+      false,
+      false
+    ],
+    "answered_by_both": true
+  }
+}

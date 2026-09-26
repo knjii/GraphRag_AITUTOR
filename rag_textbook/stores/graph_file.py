@@ -45,7 +45,7 @@ import gzip
 import hashlib
 import json
 import math
-import re
+import unicodedata
 from collections import defaultdict, deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -66,14 +66,70 @@ _BM25_B = 0.75
 # Поля полнотекстового индекса: ``ON EACH [e.canonical, e.name]``.
 _FULLTEXT_FIELDS = ("canonical", "name")
 
-# Приближение StandardTokenizer (UAX#29): буквы и цифры, склеенные
-# подчёркиванием, а также точкой или апострофом внутри слова («3.14»).
-_TOKEN = re.compile(r"\w+(?:[.'’]\w+)*", re.UNICODE)
+# Равные баллы Neo4j разбирает по ``round(score, 5)`` и id: без вторичного
+# ключа порядок ничьих на границе ``LIMIT`` произволен, и стенд с базой
+# расходились на одинаковых баллах. Округление гасит разницу float32 Lucene
+# и float64 здесь.
+_TIE_DIGITS = 5
+
+# Классы границ слов UAX#29 (правила WB6–WB12), по которым режет
+# StandardTokenizer Lucene. Прежнее приближение регулярным выражением
+# склеивало лишнее и сдвигало среднюю длину поля в BM25.
+_MID_LETTER = frozenset(":··՟״‧︓﹕：")
+_MID_NUM = frozenset(",;;։،؍٬߸⁄︐︔﹐﹔，；")
+_MID_NUM_LET = frozenset(".'‘’․﹒＇．")
+
+
+def _word_class(ch: str) -> str:
+    category = unicodedata.category(ch)
+    if category == "Nd":
+        return "N"
+    if category.startswith("L"):
+        return "L"
+    if category == "Pc":
+        return "U"
+    if category in ("Mn", "Mc", "Me", "Cf"):
+        return "E"
+    return "O"
 
 
 def analyze(text: str) -> list[str]:
-    """Разбор строки так, как его делает анализатор ``standard-no-stop-words``."""
-    return [token.lower() for token in _TOKEN.findall(text or "")]
+    """Разбор строки так, как его делает анализатор ``standard-no-stop-words``.
+
+    Сверено с эталонной сегментацией UAX#29 на всех названиях сущностей
+    графа v4: расхождений нет.
+    """
+    text = text or ""
+    classes = [_word_class(ch) for ch in text]
+    tokens: list[str] = []
+    current: list[str] = []
+    last = ""
+    for index, ch in enumerate(text):
+        cls = classes[index]
+        if cls == "E" and current:  # WB4: метка прилипает к слову
+            current.append(ch)
+            continue
+        if cls in ("L", "N", "U"):
+            current.append(ch)
+            last = cls
+            continue
+        following = classes[index + 1] if index + 1 < len(text) else ""
+        if current and last == "L" and following == "L" and (ch in _MID_LETTER or ch in _MID_NUM_LET):
+            current.append(ch)
+            continue
+        if current and last == "N" and following == "N" and (ch in _MID_NUM or ch in _MID_NUM_LET):
+            current.append(ch)
+            continue
+        if current:
+            tokens.append("".join(current))
+        current, last = [], ""
+    if current:
+        tokens.append("".join(current))
+    return [
+        token.lower()
+        for token in tokens
+        if any(_word_class(ch) in ("L", "N") for ch in token)
+    ]
 
 
 # --------------------------------------------------------------------- файл
@@ -275,7 +331,6 @@ class MemoryGraphStore:
     def __init__(self, graph: GraphFile, *, source: str = "") -> None:
         self.graph = graph
         self.source = source
-        self._order = {entity_id: index for index, entity_id in enumerate(graph.entities)}
 
         # Число фрагментов с упоминанием узла и число узлов у фрагмента.
         self._passages_of: dict[str, list[str]] = defaultdict(list)
@@ -401,7 +456,7 @@ class MemoryGraphStore:
                     score = self._phrase_score(field_name, entity_id, phrase)
                     if score > 0:
                         scores[entity_id] += score
-        ranked = sorted(scores.items(), key=lambda item: (-item[1], self._order[item[0]]))
+        ranked = sorted(scores.items(), key=lambda item: (-round(item[1], _TIE_DIGITS), item[0]))
         rows = []
         for entity_id, score in ranked[: int(limit)]:
             entity = self.graph.entities[entity_id]
@@ -438,7 +493,7 @@ class MemoryGraphStore:
                     "weight": value * math.log(corpus / df),
                 }
             )
-        rows.sort(key=lambda row: (-row["weight"], self._order[row["id"]]))
+        rows.sort(key=lambda row: (-round(row["weight"], _TIE_DIGITS), row["id"]))
         return rows[: int(limit)]
 
     def expand_entities(
@@ -494,7 +549,7 @@ class MemoryGraphStore:
             if best is not None:
                 distance[seed] = best
 
-        ranked = sorted(distance.items(), key=lambda item: (item[1], self._order.get(item[0], 0)))
+        ranked = sorted(distance.items(), key=lambda item: (item[1], item[0]))
         weights: dict[str, float] = {entity_id: 1.0 for entity_id in seed_ids}
         step = max(0.0, min(float(decay), 1.0))
         for entity_id, dist in ranked[: int(limit)]:
@@ -504,17 +559,35 @@ class MemoryGraphStore:
         return weights
 
     def find_passages(
-        self, entity_weights: dict[str, float], limit: int, use_idf: bool = True
+        self,
+        entity_weights: dict[str, float],
+        limit: int,
+        use_idf: bool = True,
+        roles: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
+        """Фрагменты по весам сущностей.
+
+        ``roles`` ограничивает рёбра «фрагмент — сущность» ролями (обход К2
+        по зависимостям: ``("defines",)``). IDF считается по оставшимся
+        рёбрам: у понятия с одним местом определения он высокий, хотя
+        упоминают его сотни фрагментов.
+        """
         if not entity_weights:
             return []
         total = len(self.graph.passages)
+        allowed = set(roles) if roles is not None else None
         raw: dict[str, float] = defaultdict(float)
         contributions: dict[str, list[tuple[float, str]]] = defaultdict(list)
         for entity_id, weight in entity_weights.items():
             if entity_id not in self.graph.entities:
                 continue
             passages = self._passages_of.get(entity_id, [])
+            if allowed is not None:
+                passages = [
+                    passage_id
+                    for passage_id in passages
+                    if self.graph.mentions[passage_id][entity_id][1] in allowed
+                ]
             df = len(passages)
             idf = math.log(total / max(df, 1)) if use_idf else 1.0
             canonical = str(self.graph.entities[entity_id].get("canonical") or "")
@@ -544,7 +617,7 @@ class MemoryGraphStore:
                     "score": value / math.sqrt(entity_count),
                 }
             )
-        rows.sort(key=lambda row: (-row["score"], row["chunk_id"]))
+        rows.sort(key=lambda row: (-round(row["score"], _TIE_DIGITS), row["chunk_id"]))
         return rows[: int(limit)]
 
     # ------------------------------------------- то, чего у Neo4j пока нет
@@ -634,6 +707,14 @@ class MemoryGraphStore:
                         seen.add(passage_id)
                         found.append(passage_id)
         return found
+
+    def has_role(self, role: str) -> bool:
+        """Есть ли в графе хоть одно ребро с этой ролью (у выгрузки v3 ролей нет)."""
+        return any(
+            entity_role == role
+            for entities in self.graph.mentions.values()
+            for _, entity_role in entities.values()
+        )
 
     def passage_row(self, chunk_id: str) -> dict[str, Any] | None:
         return self.graph.passages.get(str(chunk_id))

@@ -158,3 +158,20 @@ def test_default_limit_fits_v4_worst_case() -> None:
     }
     estimated = len(json.dumps(answer, ensure_ascii=False, indent=2)) / 2.5
     assert settings.extraction_max_tokens > estimated * 1.2
+
+
+def test_v4_cache_key_follows_prompt_text(monkeypatch) -> None:
+    """Правка текста промпта v4 обязана менять ключ кэша, у v3 — нет.
+
+    2026-09-22: после неудачной пробы G0 формулировка роли defines
+    изменилась, а ключ кэша текста промпта не видел — повторная проба
+    вернула бы прежние ответы.
+    """
+    import rag_textbook.graph.extractor as extractor
+
+    v4 = EntityExtractor(GraphSettings(extraction_prompt_version="v4"), llm=_LLM(V4_ANSWER))
+    v3 = EntityExtractor(GraphSettings(extraction_prompt_version="v3"), llm=_LLM(V4_ANSWER))
+    before_v4, before_v3 = v4._cache_key(_chunk(), "m"), v3._cache_key(_chunk(), "m")
+    monkeypatch.setattr(extractor, "PROMPT_TEMPLATE_V4", extractor.PROMPT_TEMPLATE_V4 + " ")
+    assert v4._cache_key(_chunk(), "m") != before_v4
+    assert v3._cache_key(_chunk(), "m") == before_v3

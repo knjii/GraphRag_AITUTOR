@@ -342,8 +342,13 @@ class GraphStore:
                 RETURN count(n) AS nodes
                 """,
             ).single()
+            # Lucene держит удалённые узлы в статистике до слияния сегментов:
+            # число документов и частоты для BM25 считались бы с мёртвыми
+            # узлами, и затравки нового графа расходились бы со стендом.
+            self._run(session, f"DROP INDEX {FULLTEXT_INDEX} IF EXISTS").consume()
+        self.ensure_schema()
         nodes = int((record or {}).get("nodes") or 0)
-        logger.warning("Граф очищен: удалено узлов %s", nodes)
+        logger.warning("Граф очищен: удалено узлов %s, полнотекстовый индекс пересоздан", nodes)
         return {"nodes": nodes}
 
     # ------------------------------------------------------------------ чтение
@@ -369,7 +374,7 @@ class GraphStore:
                 YIELD node, score
                 RETURN node.id AS id, node.canonical AS canonical, node.name AS name,
                        coalesce(node.count, 1) AS count, score
-                ORDER BY score DESC
+                ORDER BY round(score, 5) DESC, id ASC
                 LIMIT $limit
                 """,
                 search=query_string,
@@ -433,7 +438,7 @@ class GraphStore:
                        e.canonical AS canonical,
                        document_frequency,
                        local * log(toFloat(corpus) / document_frequency) AS weight
-                ORDER BY weight DESC
+                ORDER BY round(weight, 5) DESC, id ASC
                 LIMIT $limit
                 """,
                 chunk_ids=[str(item) for item in chunk_ids],
@@ -475,7 +480,7 @@ class GraphStore:
                 WITH n, min(length(path)) AS distance
                 WHERE n IS NOT NULL
                 RETURN n.id AS id, distance
-                ORDER BY distance ASC
+                ORDER BY distance ASC, id ASC
                 LIMIT $limit
                 """,
                 seed_ids=list(seed_ids),
@@ -543,7 +548,7 @@ class GraphStore:
                        p.ordinal AS ordinal,
                        matched AS matched_entities,
                        raw_score / sqrt(toFloat(CASE WHEN entity_count < 1 THEN 1 ELSE entity_count END)) AS score
-                ORDER BY score DESC
+                ORDER BY round(score, 5) DESC, chunk_id ASC
                 LIMIT $limit
                 """,
                 entities=rows_input,

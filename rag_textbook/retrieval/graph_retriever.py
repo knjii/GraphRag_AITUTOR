@@ -32,6 +32,15 @@ class GraphRetriever:
     def __init__(self, settings: GraphSettings, store: GraphStore) -> None:
         self.settings = settings
         self.store = store
+        # Обход по зависимостям на графе без ролей вернул бы пустоту
+        # по каждому вопросу — и замер молча совпал бы с «без графа».
+        if settings.walk == "dependency" and settings.retrieval_enabled:
+            has_role = getattr(store, "has_role", None)
+            if has_role is None or not has_role("defines"):
+                raise ValueError(
+                    "GRAPH_WALK=dependency: в графе нет ролей «defines» — "
+                    "нужна выгрузка извлечения v4 или структурный граф"
+                )
 
     def _query_terms(self, question: str) -> list[str]:
         """Кандидаты для поиска сущностей: леммы и биграммы лемм."""
@@ -103,9 +112,17 @@ class GraphRetriever:
             logger.warning("Расширение графа не удалось: %s", exc)
 
         try:
-            rows = self.store.find_passages(
-                weights, requested, use_idf=self.settings.passage_idf_enabled
-            )
+            if self.settings.walk == "dependency":
+                rows = self.store.find_passages(  # type: ignore[call-arg]
+                    weights,
+                    requested,
+                    use_idf=self.settings.passage_idf_enabled,
+                    roles=("defines",),
+                )
+            else:
+                rows = self.store.find_passages(
+                    weights, requested, use_idf=self.settings.passage_idf_enabled
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Поиск пассажей в графе не удался: %s", exc)
             return []

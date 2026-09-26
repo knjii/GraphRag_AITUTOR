@@ -141,3 +141,59 @@ def test_ordinary_run_still_uses_retrieval():
             context, [_question()], chunks=chunks, judge=False, max_workers=1
         )
     assert retrieval.calls == 1
+
+
+@pytest.mark.parametrize("change", ["text", "order", "gold", "reference", "question"])
+def test_provenance_tracks_content(change: str):
+    context, chunks, _ = _setup()
+    question = _question()
+    frozen = {"q1": ["c1", "c2"]}
+
+    def measure(workers: int = 1):
+        summary, _ = run_answer_evaluation(
+            context, [question], chunks=chunks, judge=False,
+            max_workers=workers, frozen_contexts=frozen,
+        )
+        return summary["чем сделано"]
+
+    before = measure()
+    assert before == measure(2)
+    assert all(len(value) == 64 for value in before.values())
+    if change == "text":
+        chunks["c2"].text += " Изменено."
+    elif change == "order":
+        frozen["q1"].reverse()
+    elif change == "gold":
+        question.answer += " Изменено."
+    elif change == "reference":
+        chunks["c1"].text += " Изменено."
+    else:
+        question.question += " Изменено."
+    after = measure()
+    field = "sha256 слепка/контекста" if change in ("text", "order") else "sha256 эталона"
+    assert before[field] != after[field]
+
+
+def test_cli_preserves_provenance_hashes():
+    # Проверяем именно разрешённый блок CLI, не запуская внешние сервисы.
+    import ast
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    source = Path(__file__).resolve().parents[1] / "rag_textbook/cli/main.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    assignment = next(node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Subscript)
+                              and isinstance(target.value, ast.Name)
+                              and target.value.id == "summary"
+                              and isinstance(target.slice, ast.Constant)
+                              and target.slice.value == "чем сделано" for target in node.targets))
+    hashes = {"sha256 эталона": "a" * 64, "sha256 слепка/контекста": "b" * 64}
+    scope = {"summary": {"чем сделано": hashes.copy()}, "served": "model", "judge": False,
+             "frozen": {}, "settings": SimpleNamespace(
+                 llm=SimpleNamespace(model_for=lambda _: "model", context_window=1024),
+                 prompts=SimpleNamespace(fingerprint=lambda: "prompt"),
+                 retrieval=SimpleNamespace(top_k=2))}
+    exec(compile(ast.Module(body=[assignment], type_ignores=[]), str(source), "exec"), scope)
+    assert hashes.items() <= scope["summary"]["чем сделано"].items()
+    assert scope["summary"]["чем сделано"]["модель ответа"] == "model"
