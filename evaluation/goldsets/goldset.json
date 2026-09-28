@@ -523,7 +523,7 @@
       "gold_doc_ids": [
         "0690bb81b7e3c831"
       ],
-      "answer": "Сопряженная функция равна (λ/2)αTKα.",
+      "answer": "Сопряженная функция равна $\\frac{1}{2\\lambda}\\alpha^{\\mathrm T}K\\alpha$.",
       "question_type": "formula_table",
       "expected_hops": 1,
       "generator_model": "",
@@ -539,7 +539,7 @@
       "gold_doc_ids": [
         "0690bb81b7e3c831"
       ],
-      "answer": "11",
+      "answer": "13",
       "question_type": "formula_table",
       "expected_hops": 1,
       "generator_model": "",

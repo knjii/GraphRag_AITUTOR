@@ -34,8 +34,10 @@ from rag_textbook.clients.llm import LLMClient, OpenAICompatibleLLMClient  # noq
 from rag_textbook.config import LLMSettings  # noqa: E402
 from rag_textbook.evaluation.answers import (  # noqa: E402
     JUDGE_PROMPT,
+    JUDGE_PROMPT_V2,
     AnswerOutcome,
     judge_answer,
+    judge_answer_v2,
     summarize_answers,
 )
 from rag_textbook.evaluation.goldset import load_goldset  # noqa: E402
@@ -81,13 +83,22 @@ class DryJudge:
         return {"model": "dry-run-constant-judge"}
 
     def chat(self, messages: Sequence[Any], **kwargs: Any) -> str:
+        properties = kwargs.get("json_schema", {}).get("properties", {})
+        if "facts_in_answer" in properties:
+            count = properties["facts_in_answer"]["minItems"]
+            return json.dumps({"facts_in_answer": [False] * count,
+                               "facts_in_context": [False] * count,
+                               "refusal": False, "contradicts": False, "unsupported": False})
         return '{"correctness": 1, "groundedness": 1, "reason": "сухой прогон"}'
 
 
 def score_rows(
     rows: Sequence[dict[str, Any]], questions: dict[str, GoldQuestion],
     contexts: dict[str, str], llm: LLMClient, workers: int,
+    *, judge_version: str = "v1", facts: dict[str, list[str]] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
+    if judge_version not in ("v1", "v2"):
+        raise ValueError("Неизвестная версия судьи")
     # Проверяем вход целиком до первого обращения к модели.
     for row in rows:
         qid = row["question_id"]
@@ -95,11 +106,20 @@ def score_rows(
             raise ValueError(f"Нет вопроса или контекста: {qid}")
         if not isinstance(row.get("answer"), str):
             raise ValueError(f"Нет текста ответа: {qid}")
+        if judge_version == "v2":
+            values = (facts or {}).get(qid)
+            if (not isinstance(values, list) or not 1 <= len(values) <= 4
+                    or any(not isinstance(value, str) or not value.strip() for value in values)):
+                raise ValueError(f"Нужны 1–4 непустых ключевых факта: {qid}")
 
     def one(row: dict[str, Any]) -> dict[str, Any]:
         question = questions[row["question_id"]]
-        verdict = judge_answer(llm, question=question.question, answer=row["answer"],
-                               context=contexts[question.id], reference=question.answer)
+        if judge_version == "v2":
+            verdict = judge_answer_v2(llm, question=question.question, answer=row["answer"],
+                                      context=contexts[question.id], facts=facts[question.id])
+        else:
+            verdict = judge_answer(llm, question=question.question, answer=row["answer"],
+                                   context=contexts[question.id], reference=question.answer)
         valid = all(type(verdict.get(key)) is int and 0 <= verdict[key] <= 2
                     for key in ("correctness", "groundedness"))
         valid = valid and isinstance(verdict.get("reason", ""), str)
@@ -107,6 +127,8 @@ def score_rows(
         result.update(correctness=verdict["correctness"] if valid else None,
                       groundedness=verdict["groundedness"] if valid else None,
                       judge_reason=verdict.get("reason", "")[:300] if valid else "")
+        if judge_version == "v2":
+            result["judge_checks"] = verdict.get("checks") if valid else None
         return result
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -114,15 +136,21 @@ def score_rows(
     return scored, sum(row["correctness"] is None for row in scored)
 
 
-def provenance(llm: LLMClient, sources: Sequence[Path]) -> dict[str, Any]:
+def provenance(
+    llm: LLMClient, sources: Sequence[Path], *, judge_version: str = "v1",
+    facts_path: Path | None = None,
+) -> dict[str, Any]:
     describe = getattr(llm, "describe_model", None)
     description = describe(purpose="judge") if callable(describe) else {}
     settings = getattr(llm, "settings", None)
     configured = settings.model_for("judge") if settings is not None else None
+    prompt = JUDGE_PROMPT_V2 if judge_version == "v2" else JUDGE_PROMPT
     return {"judge_model": description.get("model") or configured,
             "judge_description": description,
+            "judge_version": judge_version,
+            "facts_sha256": sha256(facts_path) if facts_path is not None else None,
             "input_sha256": {str(path): sha256(path) for path in sources},
-            "judge_prompt_sha256": hashlib.sha256(JUDGE_PROMPT.encode("utf-8")).hexdigest()}
+            "judge_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest()}
 
 
 def spearman(pairs: Sequence[tuple[float, float]]) -> float | None:
@@ -168,11 +196,15 @@ def calibration_metrics(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "accepted": value >= THRESHOLD and low > 0.5}
 
 
-def restore_calibration(checks: Path, answers_dir: Path) -> tuple[list[dict[str, Any]], list[Path]]:
+def restore_calibration(
+    checks: Path, answers_dir: Path, *, group: str = "all",
+) -> tuple[list[dict[str, Any]], list[Path]]:
+    if group not in ("within", "across", "all"):
+        raise ValueError("Неизвестная группа калибровки")
     rows = []
     sources = []
     answers = {}
-    for group in ("within", "across"):
+    for group in (("within", "across") if group == "all" else (group,)):
         key_path, grade_path = checks / f"{group}-key.json", checks / f"{group}-grades.json"
         sources.extend([key_path, grade_path])
         grades = read_json(grade_path)
@@ -211,6 +243,9 @@ def main(argv: Sequence[str] | None = None, *, llm: LLMClient | None = None) -> 
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--judge-version", choices=("v1", "v2"), default="v1")
+    parser.add_argument("--facts", type=Path)
+    parser.add_argument("--group", choices=("within", "across", "all"), default="all")
     parser.add_argument("--checks", type=Path, default=ROOT / "evaluation/reward_checks/2026-09-17")
     parser.add_argument("--answers-dir", type=Path, default=ROOT / "capture/session-0903")
     args = parser.parse_args(argv)
@@ -218,11 +253,20 @@ def main(argv: Sequence[str] | None = None, *, llm: LLMClient | None = None) -> 
         parser.error("Нужны --workers >= 1 и либо файлы ответов, либо --calibrate")
     if args.dry_run and not args.calibrate:
         parser.error("--dry-run разрешён только с --calibrate")
+    if args.group != "all" and not args.calibrate:
+        parser.error("--group разрешён только с --calibrate")
+    if args.judge_version == "v2" and args.facts is None:
+        parser.error("Для v2 нужен --facts")
+    if args.judge_version == "v1" and args.facts is not None:
+        parser.error("--facts применяется только к v2")
     try:
+        facts = read_json(args.facts) if args.facts is not None else None
+        if facts is not None and not isinstance(facts, dict):
+            raise ValueError("Факты должны быть объектом question_id: список строк")
         questions = {q.id: q for q in load_goldset(args.goldset)}
         jobs = []
         if args.calibrate:
-            rows, sources = restore_calibration(args.checks, args.answers_dir)
+            rows, sources = restore_calibration(args.checks, args.answers_dir, group=args.group)
             jobs.append((args.output_dir / "calibration.json", {}, rows, sources))
         else:
             for path in args.answers:
@@ -232,6 +276,8 @@ def main(argv: Sequence[str] | None = None, *, llm: LLMClient | None = None) -> 
         targets = [job[0].resolve() for job in jobs]
         inputs = {path.resolve() for job in jobs for path in job[3]}
         inputs.update(path.resolve() for path in (args.goldset, args.trace, args.chunks))
+        if args.facts is not None:
+            inputs.add(args.facts.resolve())
         if len(set(targets)) != len(targets) or any(p.exists() or p in inputs for p in targets):
             raise ValueError("Выходные пути совпадают или уже существуют")
         qids = {row["question_id"] for job in jobs for row in job[2]}
@@ -242,10 +288,14 @@ def main(argv: Sequence[str] | None = None, *, llm: LLMClient | None = None) -> 
         for target, data, rows, sources in jobs:
             if not rows:
                 raise ValueError("Нет ответов для оценки")
-            scored, invalid = score_rows(rows, questions, contexts, llm, args.workers)
+            scored, invalid = score_rows(rows, questions, contexts, llm, args.workers,
+                                        judge_version=args.judge_version, facts=facts)
             fraction = invalid / len(rows)
-            meta = provenance(llm, sources)
+            meta = provenance(llm, sources, judge_version=args.judge_version,
+                              facts_path=args.facts)
             meta.update(goldset_sha256=sha256(args.goldset), trace_sha256=sha256(args.trace))
+            if args.calibrate:
+                meta["calibration_group"] = args.group
             result = dict(data)
             result.update(outcomes=scored, judge_provenance=meta,
                           invalid_judge_fraction=fraction)
@@ -256,7 +306,8 @@ def main(argv: Sequence[str] | None = None, *, llm: LLMClient | None = None) -> 
                               restored_answers=len(rows), restored_questions=len(qids))
                 print(f"Восстановлено ответов: {len(rows)}, вопросов: {len(qids)}")
                 print(json.dumps(metrics, ensure_ascii=False, allow_nan=False))
-                failed |= not metrics["accepted"] and not args.dry_run
+                # Across служит подбору, допуска на этой группе не бывает.
+                failed |= not metrics["accepted"] and not args.dry_run and args.group != "across"
             else:
                 names = {field.name for field in fields(AnswerOutcome)}
                 outcomes = [AnswerOutcome(**{k: v for k, v in row.items() if k in names})
