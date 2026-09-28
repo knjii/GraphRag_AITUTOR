@@ -53,6 +53,8 @@ run() {
     [ "$rc" = 0 ] || die "$desc — код возврата $rc (журнал: $LOG)"
 }
 
+# unsloth-4bit — то же окружение Unsloth, обучение поверх 4-битной базы (QLoRA);
+# вплавляется адаптер в базу bf16, как у обычного LoRA.
 rl_env_dir() { [ "$1" = vllm ] && echo .venv-rl-vllm || echo .venv-rl; }
 llm_off() {
     run "остановка SGLang" docker compose --env-file .env \
@@ -64,7 +66,10 @@ search_off() {
         -f docker/docker-compose.yml stop infinity ollama
 }
 serve() {
-    run "подъём модели $1" bash deploy/model-swap.sh "$1" 0.75
+    # 9B — доля 0.7 (указание владельца, sglang-9b-mem-fraction-0-7), 4B — 0.75.
+    local fraction=0.75
+    case "$BASE_MODEL" in *9B*) fraction=0.7 ;; esac
+    run "подъём модели $1" bash deploy/model-swap.sh "$1" "$fraction"
 }
 
 # ------------------------------------------------------------------- план
@@ -107,7 +112,7 @@ done
 [ -n "$GENERATIONS" ] || GENERATIONS="$(cat "$RUN/generations" 2>/dev/null)"
 [ -n "$STACK" ] && [ -n "$GENERATIONS" ] \
     || die "укажите --stack и --generations по выводу scripts/probe_compare.py (день №1, шаг P1)"
-case "$STACK" in vllm|unsloth) ;; *) die "связка: vllm или unsloth, получено '$STACK'" ;; esac
+case "$STACK" in vllm|unsloth|unsloth-4bit) ;; *) die "связка: vllm, unsloth или unsloth-4bit, получено '$STACK'" ;; esac
 printf '%s' "$STACK" > "$RUN/stack"; printf '%s' "$GENERATIONS" > "$RUN/generations"
 
 STARTED=$([ -z "$FROM" ] && echo 1 || echo 0)
@@ -269,6 +274,7 @@ train_one() {
     rm -rf "$out/merged" "$out/merged.partial"
     local extra=()
     [ "$STACK" = vllm ] && extra=(--backend hf --vllm --vllm-memory 0.3)
+    [ "$STACK" = unsloth-4bit ] && extra=(--load-in-4bit)
     run "обучение ($kind)" "$dir/bin/python" scripts/train_grpo.py \
         --dataset "$TRAIN_SET" --model "$BASE_MODEL" --reward "$kind" \
         --steps "$STEPS" --num-generations "$GENERATIONS" --grad-accum "$GENERATIONS" \

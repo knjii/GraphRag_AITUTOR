@@ -237,8 +237,10 @@ def train(args) -> int:
         "seconds_per_step": round(elapsed / max(1, done_steps), 2),
         # Условия пробы: без них две пробы нельзя ни сравнить между собой,
         # ни вычесть одну из другой ради доли генерации.
-        "stack": "vllm" if args.vllm else args.backend,
-        "backend": args.backend, "vllm": args.vllm,
+        # 4-битная база — отдельная связка: другая память и другое качество весов.
+        "stack": "vllm" if args.vllm else (f"{args.backend}-4bit" if args.load_in_4bit else args.backend),
+        "backend": args.backend, "vllm": args.vllm, "model": args.model,
+        "load_in_4bit": args.load_in_4bit,
         "vllm_mode": args.vllm_mode if args.vllm else None,
         "num_generations": args.num_generations,
         "grad_accum": args.grad_accum,
@@ -322,7 +324,7 @@ def load_model(args):
         from unsloth import FastLanguageModel
 
         model, tokenizer = FastLanguageModel.from_pretrained(
-            args.model, max_seq_length=args.max_seq_length, load_in_4bit=False,
+            args.model, max_seq_length=args.max_seq_length, load_in_4bit=args.load_in_4bit,
             fast_inference=False, max_lora_rank=args.lora_rank,
         )
         model = FastLanguageModel.get_peft_model(
@@ -369,6 +371,9 @@ def main() -> int:
                              "`trl vllm-serve`, обычно на второй карте")
     parser.add_argument("--vllm-memory", type=float, default=0.3,
                         help="доля памяти карты под движок генерации (совмещённый режим)")
+    parser.add_argument("--load-in-4bit", action="store_true",
+                        help="QLoRA: база в 4 битах (только Unsloth) — 9B на одной 24 ГБ; "
+                             "адаптер потом вплавляется в bf16-базу (scripts/merge_adapter.py)")
     parser.add_argument("--probe", action="store_true", help="короткий прогон ради памяти и скорости")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -376,6 +381,8 @@ def main() -> int:
         parser.error("--vllm с Unsloth: совместимого набора версий нет (tasks/014-report.md). "
                      "Связка с vLLM ставится из deploy/requirements-rl-vllm.txt "
                      "и запускается с --backend hf")
+    if args.load_in_4bit and args.backend != "unsloth":
+        parser.error("--load-in-4bit поддержан только с --backend unsloth")
     if args.vllm_mode == "server" and not args.vllm:
         parser.error("--vllm-mode server имеет смысл только с --vllm")
     if args.probe:
