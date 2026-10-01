@@ -1,7 +1,7 @@
 # Забрать с сервера всё, что нельзя восстановить бесплатно.
 #
-#   .\deploy\backup.ps1 -ServerIp 185.182.108.41
-#   .\deploy\backup.ps1 -ServerIp 185.182.108.41 -WithCaches
+#   .\deploy\backup.ps1 -ServerIp 1.2.3.4
+#   .\deploy\backup.ps1 -ServerIp 1.2.3.4 -WithCaches
 #
 # Зачем. 2026-09-09 машину пересоздали, и вместе с ней исчезли 73 ГБ весов,
 # индекс Qdrant, граф Neo4j и кэши. Восстановление заняло час — и оно вообще

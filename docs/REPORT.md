@@ -1101,4 +1101,4 @@ MinerU без этого дефекта: тогда станет возможн�
 | [`INFERENCE.md`](INFERENCE.md) | движок инференса, бюджет видеопамяти, утилизация |
 | [`SETUP-CHECKLIST.md`](SETUP-CHECKLIST.md) | что нужно сделать для аренды сервера |
 | [`../deploy/README.md`](../deploy/README.md) | пошаговый запуск на сервере |
-| [`../src/README-DEPRECATED.md`](../src/README-DEPRECATED.md) | статус прежней реализации |
+| `src/` (только в истории git) | статус прежней реализации |

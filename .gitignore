@@ -1,83 +1,103 @@
-
-!.env.example
-!deepeval_artifacts/.gitkeep
-!deepeval_artifacts/rag_eval_inputs.json
-!documents/markdown_docs/
-!documents/markdown_docs/.gitkeep
-!documents/pdf_docs/
-!documents/pdf_docs/.gitkeep
-!graph_indexing/metrics/.gitkeep
-# DeepEval
-# IDE и ОС
-# legacy
-# Артефакты прогонов: разбор, кэши, манифесты, метрики, состояние
-# Архив прежних экспериментов и временные каталоги
-# ВАЖНО: рабочий код больше НЕ исключается.
-# Виртуальные окружения
-# Данные и модели
-# Кэши Python и артефакты сборки
-# Локальные заметки и выгрузки логов прогонов
-# Локальные секреты
-# Прежде здесь были src/app.py, src/preflight.py, src/backfill_graph_from_chroma.py —
-# Черновые ноутбуки: экспериментальный код, версионировать шумно
-# Эталонные наборы: сами файлы версионируем, промежуточные прогоны — нет
-# существовали только на одной машине и не версионировались.
-# то есть интерфейс, health-check и главный инструмент бэкфилла графа
-*.egg-info/
-*.ipynb
-*.py[cod]
-*.so
-*.tmp
-.DS_Store
-.coverage
-.deepeval/
+# Локальные секреты (шаблон .env.example версионируется)
 .env
 .env.*
-.idea/
-.ipynb_checkpoints/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
+!.env.example
+
+# Виртуальные окружения
 .venv/
-.vscode/
-C:\python\rag_textbook\deploy\*
+venv/
+env/
 ENV/
-Thumbs.db
+
+# Кэши Python и артефакты сборки
 __pycache__/
-__root_test.tmp
-_tmp_agentic_graph_rag/
-archive/
-artifacts/
+*.py[cod]
+*.so
+*.egg-info/
 build/
-chat_history/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.tmp
+
+# IDE, ОС, настройки агентов разработки
+.idea/
+.vscode/
+.claude/
+AGENTS.md
+.DS_Store
+Thumbs.db
+
+# Веб-демо: зависимости и сборка (дублирует web/.gitignore)
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Черновые ноутбуки
+*.ipynb
+.ipynb_checkpoints/
+
+# Данные, модели, внешние наборы — скачиваются или собираются, в git не идут
+data/
+models/
 chroma_db/
 chroma_db_stress/
 converted_for_rag/
-deepeval_artifacts/*
-dist/
+evaluation/public/
+учебники_для_оценки/
 documents/*
+!documents/markdown_docs/
+!documents/pdf_docs/
 documents/markdown_docs/*
 documents/pdf_docs/*
-env/
-evaluation/goldsets/*_draft.json
+!documents/markdown_docs/.gitkeep
+!documents/pdf_docs/.gitkeep
+
+# Артефакты прогонов: разбор, кэши, слепки, метрики, журналы
+artifacts/
+capture/
+logs/
+output/
+output_docling/
+chat_history/
 graph_indexing/metrics/*
-htmlcov/
+!graph_indexing/metrics/.gitkeep
+deepeval_artifacts/
+.deepeval/
+evaluation/goldsets/*_draft.json
+evaluation/reward_checks/
+# Пакеты и листы ручной приёмки содержат дословные фрагменты книг —
+# в репозиторий идут только вердикты и правила
+evaluation/goldsets/review-v2/packets/
+evaluation/goldsets/review-v2/sheet*.md
+evaluation/goldsets/migration-r2-review.md
+
+# Служебное: замеры конкретного сервера, колёса под его окружение,
+# внутренние задачи и скрипты рабочего процесса
+deploy/measured/
+deploy/wheels/
+tasks/
+scripts/codex_*.ps1
+scripts/notify*.ps1
+
+# Прежняя реализация (выведена из эксплуатации) и архив экспериментов
+src/
+archive/
+_tmp_agentic_graph_rag/
+
+# Материалы учебного отчёта
+report_assets/
+tools/build_report_appendix_assets.py
+Отчет_1курс_ссылки.tex
+
+# Разовые локальные заметки и выгрузки
 hypotheses_and_experiments.md
+sprints.md
 ket_query_test.txt
 last_ket_indexing_logs.txt
 last_prompt.txt
-logs/
-models/
-output/
-output_docling/
 rag_eval_inputs_2.txt
-sprints.md
-src/app.py
-src/backfill_graph_from_chroma.py
-src/preflight.py
 successful_indexing.txt
-tasks/
-venv/
-Отчет_1курс_ссылки.tex
-учебники_для_оценки/
-evaluation/public/

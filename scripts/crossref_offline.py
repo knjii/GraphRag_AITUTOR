@@ -177,9 +177,9 @@ def graph_reach(settings_model: str, effort: str | None, doc: str,
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--parsed", type=Path,
-                        default=Path("C:/python/rag_textbook/artifacts/parsed"))
+                        default=Path("artifacts/parsed"))
     parser.add_argument("--goldset", type=Path,
-                        default=Path("C:/python/rag_textbook/evaluation/goldsets/goldset.json"))
+                        default=Path("evaluation/goldsets/goldset.json"))
     parser.add_argument("--doc", default="0690bb81b7e3c831", help="документ (по умолчанию MML)")
     parser.add_argument("--hops", type=int, default=2)
     parser.add_argument("--compare-graph", action="store_true",

@@ -161,6 +161,10 @@ def test_lower_bound_must_exceed_random() -> None:
     assert not result["accepted"]
 
 
+# Калибровочные данные (ручные оценки и слепок сессии) в репозиторий не входят.
+@pytest.mark.skipif(not (js.ROOT / "evaluation/reward_checks/2026-09-17").exists()
+                    or not (js.ROOT / "capture/session-0903").exists(),
+                    reason="нет локальных калибровочных данных")
 def test_real_calibration_dry_run(tmp_path: Path) -> None:
     root = js.ROOT
     rows, _ = js.restore_calibration(root / "evaluation/reward_checks/2026-09-17",

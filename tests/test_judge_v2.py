@@ -185,6 +185,8 @@ def test_across_cli(inputs: list[str], tmp_path: Path, dry: bool) -> None:
     assert result["judge_provenance"]["calibration_group"] == "across"
 
 
+@pytest.mark.skipif(not (Path(__file__).resolve().parents[1] / "evaluation/reward_checks").exists(),
+                    reason="нет локальных калибровочных данных")
 def test_fact_coverage() -> None:
     root = Path(__file__).resolve().parents[1]
     # Только ключи: ни оценки, ни ответы калибровки не читаются.
