@@ -14,3 +14,4 @@ llama-cpp-python>=0.2.78
 langchain-huggingface>=0.0.3
 arize-phoenix>=12.0.0
 arize-phoenix-otel>=0.14.0
+neo4j>=5.23.0

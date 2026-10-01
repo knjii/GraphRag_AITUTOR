@@ -1,192 +1,282 @@
 # rag_textbook
 
-Local RAG project with:
-- LangChain + ChromaDB
-- Hybrid retrieval (dense embeddings + BM25 sparse fusion)
-- Ollama for generation/evaluation models
-- DeepEval metrics for RAG evaluation
-- Arize Phoenix tracing (OpenInference spans)
+ИИ-ассистент для глубокого изучения математической и технической литературы.
+Он работает с формулами, таблицами и иллюстрациями. Граф знаний помогает
+с вопросами, для ответа на которые нужно связать разные разделы и разные книги.
 
-## Project Structure
+## Устройство
 
-```text
-rag_textbook/
-|-- src/
-|   |-- ingest.py
-|   |-- query.py
-|   |-- deepeval_eval.py
-|   |-- rag_chain.py
-|   |-- retriever.py
-|   |-- chat_history.py
-|   |-- chunker.py
-|   |-- embeddings.py
-|   |-- llm.py
-|   |-- vectorstore.py
-|   |-- settings.py
-|   `-- utils.py
-|-- documents/
-|   |-- pdf_docs/          # knowledge base PDFs (ignored in git)
-|   `-- markdown_docs/     # knowledge base MD/TXT (ignored in git)
-|-- deepeval_artifacts/
-|   `-- rag_eval_inputs.json
-|-- .env.example
-|-- requirements.txt
-`-- README.md
+```
+PDF ──MinerU──> блоки ──обогащение──> фрагменты ──┬──> Qdrant  (плотный + BM25)
+                                                  └──> Neo4j   (граф знаний; или файл графа)
+
+вопрос ──переписывание──> маршрут ──┬──> гибридный поиск ──┐
+                                    └──> графовый канал ───┴──> слияние ──> реранкер
+                                                                               │
+                         ответ с цитатами <── генерация (9B) <── отбор в контекст (SetR / SEAL)
 ```
 
-## Environment Setup
+Ключевые свойства:
+
+- **Формулы и таблицы не теряются.** LaTeX и HTML из MinerU индексируются вместе
+  с описанием, а не заменяются им.
+- **Цитаты с номерами страниц.** Ответ можно проверить по книге.
+- **Лексический поиск знает русскую морфологию.** BM25 со стеммингом
+  на стороне Qdrant.
+- **Граф в каждом запросе.** Маршрут `always` принят по замеру. Рёбра
+  фильтруются по PMI, чтобы граф не вырождался в клики частотных слов.
+- **Отбор в контекст — отдельная стадия** (`RETRIEVAL_SELECTION`):
+  - `setr` — модель выбирает минимальное достаточное множество фрагментов;
+  - `seal` — модель ищет пробелы и задаёт микрозапросы.
+- **Всё измеримо.** Метрики поиска считаются без LLM за секунды. Для ответов
+  есть отдельный харнесс. Каждое решение принято по замеру с критерием отказа,
+  записанным до замера ([`docs/HYPOTHESES.md`](docs/HYPOTHESES.md)).
+- **Индексация возобновляема.** Падение на стадии графа не заставляет
+  заново разбирать PDF.
+
+## Состояние
+
+Стек развёрнут и проверен на арендованном сервере с одной RTX 3090.
+Корпус — русская библиотека из нескольких книг по математике и машинному
+обучению. Модель ответа — Qwen3.5-9B в кванте Q4 (llama.cpp). Модель служебных
+вызовов — Qwen3.5-4B (SGLang).
+
+**Внутри одной книги.** Эталон `goldset-v2` содержит 234 вопроса после ручной
+приёмки, связывающих в test — 44. recall@16 = **0.872**.
+
+**Между книгами.** Эталон `goldset-x` содержит 75 вопросов, в test — 60.
+Каждому вопросу нужны фрагменты двух разных книг.
+
+| Система | recall@16 поиска | Доля эталонных фрагментов в контексте ответа |
+|---|---|---|
+| база | 0.460 | 0.317 |
+| база + SetR | — | 0.383 |
+| база + SEAL | — | **0.392** (интервал выше нуля) |
+
+Межкнижный поиск — главный открытый изъян. Оба нужных фрагмента попадают
+в пул кандидатов лишь у 12 вопросов из 60: это потеря доступа, а не отбора.
+
+**Публичный набор MuSiQue-300** (протокол статей: EM ответа 9B при k=5).
+
+| Система | EM |
+|---|---|
+| обычный RAG (dense) | 0.267 |
+| HippoRAG 2 | 0.320 |
+| наша, без отбора | 0.273 |
+| наша + SetR | **0.383** (+0.110, p_holm ≈ 1e-6) |
+| наша + SEAL | **0.406** (+0.133) |
+
+Без нагрузки поиск с SEAL медленнее базы в 19 раз: 4.6 с против 0.24 с.
+Полный путь с ответом медленнее в 2.9 раза.
+
+**Формулы в ответе.** Сначала измерили, в какой доле ответов дошла хотя бы одна
+формула эталонного фрагмента. Промпт ответа `deploy/prompts/qa-v4.txt` поднял
+эту долю с 0.119 до 0.315 на 4B. На 9B она 0.395. Модель 27B не лучше 9B.
+
+Что проверено и отвергнуто, с числами и причинами, — в
+[`docs/HYPOTHESES.md`](docs/HYPOTHESES.md) и
+[`docs/engineering-log.md`](docs/engineering-log.md).
+
+## Установка
 
 ```bash
-conda create -n rag_test python=3.11 -y
-conda activate rag_test
-pip install -r requirements.txt
+uv sync --extra dev
 ```
 
-Create local env config:
+Для разбора PDF дополнительно (нужно только там, где реально разбираем):
 
 ```bash
-cp .env.example .env
+uv sync --extra parsing
 ```
 
-PowerShell alternative:
+Extra `parsing` тянет `mineru[core]`, именно с дополнением `core`. Без него
+приедет оболочка без моделей и без PyTorch, и разбор не запустится.
+
+## Инфраструктура
+
+```bash
+cp .env.example .env   # заполните NEO4J_PASSWORD
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+```
+
+`--env-file` обязателен. Каталогом проекта Compose считает каталог
+compose-файла, а `.env` лежит в корне репозитория.
+
+Поднимаются Qdrant, Neo4j, Infinity (эмбеддер и реранкер) и Phoenix.
+Все порты слушают только localhost — наружу ходите через SSH-туннель.
+
+Генеративная модель запускается отдельно: SGLang или vLLM для служебных
+вызовов, llama.cpp для ответа. Переключение — сменой `LLM_BASE_URL`,
+код не меняется.
+
+Граф можно держать без Neo4j, в файле: `GRAPH_BACKEND=memory`,
+`GRAPH_FILE=<граф>.json.gz`. Так работают бенчмарки и офлайн-демо.
+
+### Развёртывание на арендованном сервере
 
 ```powershell
-Copy-Item .env.example .env
+.\deploy\upload.ps1 -ServerIp <адрес>     # с вашей машины
 ```
 
-Then update paths and model names in `.env` for your machine.
-
-## Knowledge Base Organization
-
-Put source files here:
-- `documents/pdf_docs/` for PDF files
-- `documents/markdown_docs/` for Markdown and text files
-
-These folders are intentionally excluded from git, so each user keeps their own dataset locally.
-
-## Build/Refresh Vector Index
-
-Run from repository root:
+Затем на сервере:
 
 ```bash
-python src/ingest.py
+cd rag_textbook && bash deploy/bootstrap.sh && bash deploy/services.sh up
 ```
 
-This reads files from `PDF_DIR` / `MARKDOWN_DIR` and writes Chroma index to `CHROMA_DIR`.
+`bootstrap.sh` идемпотентен и обходит особенности хостинга:
 
-Checkpoint mode (resume by source file after failures) is optional in `ingest.py`:
+- выбирает доступное зеркало PyPI;
+- снимает удержание с контейнерных пакетов NVIDIA;
+- проверяет проброс видеокарты в контейнеры.
+
+Подробности — в [`deploy/README.md`](deploy/README.md).
+
+## Работа
 
 ```bash
-python src/ingest.py --checkpoint
-python src/ingest.py --checkpoint-file chroma_db/ingest_checkpoint.json
-python src/ingest.py --force --checkpoint
+rag-textbook health                       # всё ли поднялось
+rag-textbook ingest                       # проиндексировать корпус из PDF_DIR
+rag-textbook ask "Как связаны сингулярное разложение и метод главных компонент?" --show-context
+
+rag-textbook eval run                     # качество поиска на эталоне
+rag-textbook eval answers                 # качество ответов
+rag-textbook eval ab --experiment graph   # даёт ли граф прирост
+rag-textbook eval replay <слепок>.jsonl   # перебор порядка и отбора без сервера
+rag-textbook graph stats                  # статистика графа
 ```
 
-Default checkpoint path can be configured via `INGEST_CHECKPOINT_FILE` in `.env`.
-
-For large corpora / GPU stability during embedding, tune:
-- `EMBEDDINGS_BACKEND=ollama|sentence` (default: `ollama` for offline local embeddings)
-- `OLLAMA_EMBED_MODEL` (local Ollama embedding model, default `qwen3-embedding:0.6b`)
-- `EMBED_BATCH_SIZE` (batch size inside sentence-transformers encode)
-- `CHROMA_ADD_BATCH_SIZE` (how many chunks are sent per `add_documents` call)
-- `EMBED_DEVICE=auto|cpu|cuda` (embedding device policy)
-- `EMBED_MIN_FREE_VRAM_MB` (minimum free VRAM target before embedding)
-- `EMBED_MIN_FREE_VRAM_RATIO` (required free VRAM ratio, default `0.7`)
-- `EMBED_FORCE_CPU_ON_LOW_VRAM=1` (fallback to CPU when VRAM remains low)
-- `EMBED_PROBE_LLM_BEFORE_INDEX=1` (run LLM ping before VRAM check/unload)
-
-If CUDA errors appear on indexing, reduce both values first (e.g. `EMBED_BATCH_SIZE=16`, `CHROMA_ADD_BATCH_SIZE=64`).
-
-For fully offline embedding flow with Ollama, pull embedding model once:
+Сервис:
 
 ```bash
-ollama pull qwen3-embedding:0.6b
+uvicorn rag_textbook.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-Stress test for vectorization path (tripled markdown + split 1200/300):
+## Веб-демо
+
+В [`web/`](web/README.md) лежит интерфейс в духе NotebookLM: источники, чат
+с цитатами, просмотр документа. Сцена «Как я ищу» показывает, что конвейер
+сделал на самом деле:
+
+- понятия из вопроса;
+- обход графа;
+- кандидаты по тексту и через граф;
+- переранжирование;
+- отбор в контекст.
+
+Офлайн-режим работает на ноутбуке без сервера: граф из файла, BM25 вместо
+векторов, выписка из найденного вместо ответа модели.
 
 ```bash
-python src/vectorization_stress_test.py --force
+python web/server/run.py --offline <граф>.json.gz
+npm run dev:api --prefix web
 ```
 
-## Retrieval Configuration
+## Бенчмарки
 
-Hybrid retrieval is enabled by default and does not change CLI commands.
+| Сценарий | Что меряет |
+|---|---|
+| `deploy/hipporag-bench.sh`, `deploy/bench-ours.sh` | MuSiQue-300: dense, HippoRAG 2, наша система, SetR, SEAL; ответы 9B, задержка |
+| `deploy/crossbook-bench.sh` | goldset-x: межкнижная проверка «не хуже» для SetR и SEAL |
+| `deploy/laya-bench.sh` | дообучение и проверка лёгкого классификатора решений в поиске |
+| `deploy/omnidocbench.sh` | качество разбора PDF: формулы (CDM), таблицы (TEDS) |
+| `deploy/multihop-rag.sh` | MultiHop-RAG (англ., 2255 вопросов) |
 
-Set in `.env`:
-- `CONVERSATIONAL_RAG_ENABLED=1` (set `0` for stateless mode by default)
-- `OLLAMA_THINK=auto|0|1` (`auto` disables think for `qwen3*` and `deepseek-r1*` on query generation to avoid empty outputs)
-- `OLLAMA_REQUEST_TIMEOUT_SECONDS=0|N` (`0` = model-aware auto timeout, uses 600s for `deepseek-r1*`, 180s otherwise)
-- `CHAT_HISTORY_DIR=chat_history` (JSONL storage for sessions)
-- `CHAT_SESSION_ID=default` (default conversation id)
-- `CHAT_HISTORY_MAX_TURNS=6` (how many latest turns are sent to LLM)
-- `RETRIEVER_MODE=hybrid` (`dense` for dense-only mode)
-- `TOP_K=4` (final number of retrieved chunks)
-- `HYBRID_SPARSE_K=8` (BM25 candidate pool size)
-- `HYBRID_DENSE_WEIGHT=0.6`
-- `HYBRID_SPARSE_WEIGHT=0.4`
-- `HYBRID_RRF_K=60` (reciprocal-rank-fusion smoothing)
+Сравнения считаются парно на одних и тех же вопросах, значимость — с поправкой
+Холма. Для каждого шага, где модель пишет свободный текст, проверяется доля
+обрезанных ответов: три вырождения генерации за один день нашлись
+только так.
 
-## Query the RAG System
+## Эталонные наборы
+
+Наборы лежат в `evaluation/goldsets/`. Отметка `.accepted` хранит sha256
+принятой версии: сценарии отказываются работать с изменённым набором.
+
+| Набор | Вопросов | Назначение |
+|---|---|---|
+| `goldset-v2.json` | 234 | одна книга, ручная приёмка голосованием |
+| `goldset-x.json` | 75 | две книги в одном вопросе |
+| `goldset.json`, `goldset-r2.json` | 388 | первая версия и её перенос на новую нарезку |
+
+Вопросы сгенерированы моделью и приняты вручную по правилам
+`review-v2/RULES.md`. Вердикты лежат рядом. Набор меньше 100 вопросов даёт
+интервал шире типичного эффекта, поэтому `eval ab` предупреждает об этом явно.
+
+Тексты книг и пакеты приёмки с дословными фрагментами в репозиторий не входят.
+Книги скачиваются по манифесту `evaluation/library/manifest.json`
+(`scripts/fetch_library.py`).
+
+## Офлайн-работа по слепку
+
+`deploy/capture.sh` за одну серверную сессию снимает слепок:
+
+- кандидаты каналов с рангами и баллами;
+- баллы реранкера по широкому окну;
+- итоговый отбор.
+
+По слепку на ноутбуке перебираются веса слияния, `rrf_k`, дедупликация,
+режим реранкера, ширина окна, а также SetR и Picker:
 
 ```bash
-python src/query.py "Your question here"
+uv run rag-textbook eval replay <каталог слепка>/trace.jsonl
 ```
 
-Conversation controls (same command, optional flags):
+Перед перебором `eval replay` проверяет воспроизведение: с рабочими
+настройками оно обязано повторить серверную выдачу.
+
+По слепку нельзя проверить то, что меняет **состав** кандидатов: обход графа,
+затравки, SEAL, другую модель. Попытка прерывается с перечислением нарушивших
+настроек. Офлайн годится, чтобы дёшево отбрасывать гипотезы, но не подтверждать их.
+
+## Подводные камни, которые уже учтены
+
+| Параметр | Значение | Почему именно так |
+|---|---|---|
+| `LLM_REASONING_EFFORT` | `none` | рассуждающая модель тратит весь лимит на размышление и возвращает пустой ответ |
+| `EMBEDDING_MODEL` | `BAAI/bge-m3` | `Qwen3-Embedding` построена на архитектуре, которую не знает ни один выпущенный образ Infinity |
+| `EMBEDDING_BASE_URL` | без `/v1` | Infinity отдаёт OpenAI-совместимые пути в корне |
+| `MINERU_LANG` | `east_slavic` | значения `ru` MinerU не знает и падает с кодом 2 |
+| `SGLANG_GPU_FRACTION` | `0.75` | батч упирается в слоты состояния mamba, а не в KV-кэш |
+| `RETRIEVAL_ROUTER_MODE` | `always` | эвристика маршрута работает только по-русски; recall@16 +0.018 значимо |
+| `RETRIEVAL_TOP_K` | `16` | весь выигрыш графа лежит за восьмым местом |
+
+Версии образов закреплены и должны оставаться свежими. Старый образ
+с новой моделью не работает хуже — он не стартует вовсе.
+
+## Тесты
 
 ```bash
-python src/query.py "How does gradient descent work?" --session-id ml_course
-python src/query.py "How to implement it in Python?" --session-id ml_course
-python src/query.py "One-off question" --stateless
-python src/query.py "Reset session and ask again" --session-id ml_course --clear-history
+uv run pytest -q
 ```
 
-The query command runs the same RAG chain and emits tracing spans to Phoenix.
+Тесты не требуют ни GPU, ни Qdrant, ни Neo4j, ни сервера инференса. Внешние
+клиенты подменяются детерминированными заглушками. Рабочий `.env` тесты
+не читают: путь задаётся переменной `RAG_ENV_FILE`.
 
-## RAG Evaluation (DeepEval)
+## Документы
 
-Default dataset:
-- `deepeval_artifacts/rag_eval_inputs.json`
+- [`docs/HYPOTHESES.md`](docs/HYPOTHESES.md) — реестр гипотез: критерии отказа,
+  результаты, опровергнутое. **Начинать отсюда.**
+- [`docs/engineering-log.md`](docs/engineering-log.md) — журнал: что сделано,
+  зачем, какими командами и как проверено.
+- [`docs/REPORT.md`](docs/REPORT.md) — сводный отчёт о переработке конвейера (август 2026).
+- [`docs/RESEARCH-2026-09.md`](docs/RESEARCH-2026-09.md) — обзор литературы
+  и план исследования.
+- [`docs/INFERENCE.md`](docs/INFERENCE.md) — движок инференса, бюджет видеопамяти.
+- [`docs/SETUP-CHECKLIST.md`](docs/SETUP-CHECKLIST.md) — подготовка к аренде сервера.
+- [`deploy/README.md`](deploy/README.md) — пошаговый запуск на сервере.
 
-Smoke test:
+## Ограничения
 
-```bash
-python src/deepeval_eval.py --max-rows 1 --output-prefix deepeval_smoke
-```
-
-Full run:
-
-```bash
-python src/deepeval_eval.py --dataset deepeval_artifacts/rag_eval_inputs.json --output-prefix deepeval
-```
-
-Used metrics:
-- `AnswerRelevancyMetric`
-- `FaithfulnessMetric`
-- `ContextualPrecisionMetric`
-
-Outputs are saved to `deepeval_artifacts/` using the selected prefix.
-
-If your eval model is `qwen3:*` or `deepseek-r1:*` and metrics fail with `Invalid JSON ... input_value=''`, use non-thinking eval mode for structured metrics:
-- `OLLAMA_EVAL_THINK=0` (or `auto`, which sets `think=0` for `qwen3:*` and `deepseek-r1:*`)
-- `OLLAMA_EVAL_JSON_RETRY_ATTEMPTS=1` (one extra structured retry in think mode)
-- `OLLAMA_EVAL_RETRY_NUM_PREDICT_MULTIPLIER=1.5` (increases `num_predict` on retry)
-- `OLLAMA_EVAL_MAX_NUM_PREDICT=512` (caps growth to avoid timeout spikes)
-- `OLLAMA_EVAL_STRUCTURED_RECOVERY=1` (runs one JSON-normalization pass from content)
-- `OLLAMA_EVAL_STRUCTURED_RECOVERY_INPUT_CHARS=6000` (limits recovery prompt size)
-- optional last resort: `OLLAMA_EVAL_JSON_RETRY_WITHOUT_THINK=1`
-
-## Tracing (Arize Phoenix)
-
-Set in `.env`:
-- `PHOENIX_ENDPOINT` (default: `http://127.0.0.1:4317`)
-- `PHOENIX_PROTOCOL` (default: `grpc`)
-- `PHOENIX_PROJECT_NAME` (default: `rag_eval`)
-
-Make sure Phoenix collector is running before query/evaluation.
-
-## Notes
-
-- This repository uses DeepEval for evaluation. Legacy Ragas demo content is excluded from git.
-- Local models, vector DB, and generated artifacts are ignored via `.gitignore`.
+- **Межкнижный поиск слаб.** recall@16 0.460 против 0.872 внутри книги.
+  Одноимённые сущности разных книг почти не сливаются в графе: общих узлов
+  у межкнижных пар 3 из 60.
+- **Отбор поверх найденного внутри одной книги исчерпан.** Семь вариантов
+  построения графа и отбора (серия К) не дали значимого прироста на связывающих
+  вопросах.
+- **SEAL медленный.** Поиск в 19 раз дольше базы. Брать ли его в продукт —
+  открытое решение.
+- **Ответы на межкнижные вопросы автоматически не оцениваются.** Эталонные
+  ответы — развёрнутые объяснения: EM на них равна нулю, F1 не различает
+  системы. Судья 27B калибровку не прошёл.
+- **Один язык.** Замеры внутри библиотеки сделаны на русских книгах.

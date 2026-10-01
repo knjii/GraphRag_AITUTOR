@@ -1,0 +1,13 @@
+# Зависимости кода награды и среды (rag_textbook.rewards, rag_textbook.rl) для
+# окружения обучения .venv-rl. Ставятся после deploy/requirements-rl.txt и
+# не трогают закреплённые там пакеты. pymorphy3 обязателен: без него
+# лемматизация молча отключается и награда считается иначе, чем проверено
+# вручную (сверяется scripts/reward_fingerprint.py).
+pydantic>=2.9,<3
+pydantic-settings>=2.5,<3
+python-dotenv>=1.0
+httpx>=0.27
+tenacity>=9.0
+rich>=13.7
+pymorphy3>=2.0
+pymorphy3-dicts-ru>=2.4

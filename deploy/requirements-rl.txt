@@ -1,0 +1,44 @@
+# Аудит 17.09.2026. Кандидат для проверки БЕЗ --vllm; GPU не проверялся.
+# Это закрепление основных пакетов, не полный lock CUDA/транзитивных зависимостей.
+# Полный совместимый набор семи запрошенных библиотек установить по источникам
+# не удалось: vllm оставлен ниже комментарием с конкретной отклонённой версией.
+# Не устанавливать trl[vllm]: extra у TRL 0.24.0 закрепляет vllm==0.10.2.
+
+# Верхняя граница Unsloth; max_prompt_length ещё существует.
+# https://pypi.org/pypi/trl/0.24.0/json
+# https://github.com/huggingface/trl/blob/v0.24.0/trl/trainer/grpo_config.py#L300
+trl==0.24.0
+
+# Актуальный Unsloth; ограничения зависимостей взяты из requires_dist.
+# https://pypi.org/pypi/unsloth/2026.9.6/json
+# https://github.com/unslothai/unsloth/blob/v0.1.810-beta/unsloth/_version.py
+unsloth==2026.9.6
+
+# Дополнительный обязательный пакет Unsloth, закреплён для воспроизводимости.
+# https://pypi.org/pypi/unsloth-zoo/2026.9.5/json
+unsloth-zoo==2026.9.5
+
+# Есть реализация Qwen3.5; такая версия используется и в официальном GRPO notebook.
+# https://pypi.org/pypi/transformers/5.2.0/json
+# https://github.com/huggingface/transformers/blob/v5.2.0/src/transformers/models/auto/modeling_auto.py#L693
+transformers==5.2.0
+
+# Удовлетворяет Unsloth: peft>=0.18.0, !=0.11.0.
+# https://pypi.org/pypi/peft/0.18.1/json
+peft==0.18.1
+
+# Удовлетворяет пересечению ограничений Unsloth и TRL 0.24.0.
+# https://pypi.org/pypi/datasets/4.3.0/json
+datasets==4.3.0
+
+# Допускается метаданными Unsloth; CUDA wheel и драйвер здесь не закреплены.
+# https://pypi.org/pypi/torch/2.10.0/json
+torch==2.10.0
+
+# ОТКЛОНЁННЫЙ кандидат: первый подтверждённый релиз поддержки Qwen3.5.
+# Требует transformers<5, поэтому конфликтует с transformers==5.2.0 выше.
+# Новейший vllm==0.29.0 также не подходит: transformers>=5.10.4, torch==2.13.0.
+# https://github.com/vllm-project/vllm/releases/tag/v0.17.0
+# https://pypi.org/pypi/vllm/0.17.0/json
+# https://pypi.org/pypi/vllm/0.29.0/json
+# vllm==0.17.0

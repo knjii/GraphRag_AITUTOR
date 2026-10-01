@@ -1,70 +1,103 @@
-# Python caches and build artifacts
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-.coverage.*
-htmlcov/
-.ipynb_checkpoints/
+# Локальные секреты (шаблон .env.example версионируется)
+.env
+.env.*
+!.env.example
 
-# Virtual environments
+# Виртуальные окружения
 .venv/
 venv/
 env/
 ENV/
 
-# IDE and OS
+# Кэши Python и артефакты сборки
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.tmp
+
+# IDE, ОС, настройки агентов разработки
 .idea/
 .vscode/
+.claude/
+AGENTS.md
 .DS_Store
 Thumbs.db
 
-# Local secrets
-.env
-.env.*
-!.env.example
+# Веб-демо: зависимости и сборка (дублирует web/.gitignore)
+web/node_modules/
+web/dist/
+*.tsbuildinfo
 
-# Local models and data
+# Черновые ноутбуки
+*.ipynb
+.ipynb_checkpoints/
+
+# Данные, модели, внешние наборы — скачиваются или собираются, в git не идут
+data/
 models/
 chroma_db/
 chroma_db_stress/
+converted_for_rag/
+evaluation/public/
+учебники_для_оценки/
+documents/*
+!documents/markdown_docs/
+!documents/pdf_docs/
+documents/markdown_docs/*
+documents/pdf_docs/*
+!documents/markdown_docs/.gitkeep
+!documents/pdf_docs/.gitkeep
+
+# Артефакты прогонов: разбор, кэши, слепки, метрики, журналы
+artifacts/
+capture/
+logs/
 output/
 output_docling/
-converted_for_rag/
-
-# Knowledge base content (keep folder structure local-only)
-documents/*
-!documents/pdf_docs/
-!documents/markdown_docs/
-documents/pdf_docs/*
-documents/markdown_docs/*
-!documents/pdf_docs/.gitkeep
-!documents/markdown_docs/.gitkeep
-
-# DeepEval and run artifacts
-.deepeval/
-deepeval_artifacts/*
-!deepeval_artifacts/rag_eval_inputs.json
-!deepeval_artifacts/.gitkeep
 chat_history/
+graph_indexing/metrics/*
+!graph_indexing/metrics/.gitkeep
+deepeval_artifacts/
+.deepeval/
+evaluation/goldsets/*_draft.json
+evaluation/reward_checks/
+# Пакеты и листы ручной приёмки содержат дословные фрагменты книг —
+# в репозиторий идут только вердикты и правила
+evaluation/goldsets/review-v2/packets/
+evaluation/goldsets/review-v2/sheet*.md
+evaluation/goldsets/migration-r2-review.md
+
+# Служебное: замеры конкретного сервера, колёса под его окружение,
+# внутренние задачи и скрипты рабочего процесса
+deploy/measured/
+deploy/wheels/
+tasks/
+scripts/codex_*.ps1
+scripts/notify*.ps1
+
+# Прежняя реализация (выведена из эксплуатации) и архив экспериментов
+src/
 archive/
+_tmp_agentic_graph_rag/
 
-# Legacy and experimental directories not needed in main repo
-rag_eval/
-ai_rag_tutor/
-src/parse_test/
-src/documents/
-src/ollama_test/
-src/app.py
-src/vectorization_stress_test.py
-# src/pdf_processing_test.ipynb
-# src/test_sql.ipynb
-pdf_parsing/
+# Материалы учебного отчёта
+report_assets/
+tools/build_report_appendix_assets.py
+Отчет_1курс_ссылки.tex
 
-# Local notebooks (can be removed from ignore if you want to version notebooks)
-*.ipynb
+# Разовые локальные заметки и выгрузки
+hypotheses_and_experiments.md
+sprints.md
+ket_query_test.txt
+last_ket_indexing_logs.txt
+last_prompt.txt
+rag_eval_inputs_2.txt
+successful_indexing.txt

@@ -1,0 +1,141 @@
+# Инфраструктура пилота. Поднимается одной командой на арендованном сервере:
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# Все сервисы слушают на localhost. Наружу ничего не публикуем: доступ через SSH-туннель.
+# Если понадобится открыть наружу — добавляйте реверс-прокси с аутентификацией, а не порты.
+
+name: rag-textbook
+
+services:
+  qdrant:
+    # Версия сервера согласована с qdrant-client из pyproject: клиент 1.19
+    # против сервера 1.12 официально несовместим и предупреждает при каждом
+    # подключении.
+    image: qdrant/qdrant:v1.19.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"   # HTTP / REST
+      - "127.0.0.1:6334:6334"   # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__ENABLE_TLS: "false"
+      QDRANT__LOG_LEVEL: "INFO"
+    healthcheck:
+      # У образа нет curl, поэтому проверяем открытый порт средствами самого контейнера.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  neo4j:
+    image: neo4j:5.26-community
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7474:7474"   # HTTP-браузер
+      - "127.0.0.1:7687:7687"   # Bolt
+    environment:
+      # Пароль берётся из .env, в образ ничего не зашито.
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}"
+      NEO4J_PLUGINS: '["apoc"]'
+      # Память под наш размер графа на машине с 32 ГБ RAM.
+      NEO4J_server_memory_heap_initial__size: "2G"
+      NEO4J_server_memory_heap_max__size: "6G"
+      NEO4J_server_memory_pagecache_size: "4G"
+      NEO4J_db_transaction_timeout: "300s"
+      NEO4J_apoc_export_file_enabled: "true"
+      NEO4J_apoc_import_file_enabled: "true"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:7474 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # Сервер эмбеддингов и реранкера. Один контейнер отдаёт обе модели
+  # по OpenAI-совместимому API, что убирает Ollama из пути эмбеддингов.
+  infinity:
+    # 0.0.76 несёт transformers без поддержки архитектуры qwen3 и падает на
+    # Qwen3-Embedding с "does not recognize this architecture".
+    image: michaelf34/infinity:0.0.77
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7997:7997"
+    volumes:
+      - hf_cache:/app/.cache/huggingface
+    environment:
+      HF_HOME: /app/.cache/huggingface
+    command: >
+      v2
+      --model-id ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      --model-id ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      --batch-size ${INFINITY_BATCH_SIZE:-32}
+      --port 7997
+      --host 0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:7997/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 15
+      start_period: 120s
+
+  # Генеративная модель и модель зрения. В контейнере, а не через `curl | sh`,
+  # чтобы весь стек поднимался одной командой и одинаково на любой машине.
+  # На этапе пилота заменяется на vLLM сменой LLM_BASE_URL — код не меняется.
+  ollama:
+    # 0.6.8 отказывается тянуть современные модели: "requires a newer version".
+    image: ollama/ollama:0.32.13
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      # Обе модели держим загруженными: перезагрузка модели между вызовами
+      # была одной из причин, по которой прежняя индексация занимала часы.
+      OLLAMA_KEEP_ALIVE: "${OLLAMA_KEEP_ALIVE:-30m}"
+      OLLAMA_NUM_PARALLEL: "${OLLAMA_NUM_PARALLEL:-4}"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  phoenix:
+    image: arizephoenix/phoenix:version-12.25.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6006:6006"   # UI
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+    volumes:
+      - phoenix_data:/mnt/data
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+
+volumes:
+  qdrant_storage:
+  neo4j_data:
+  neo4j_logs:
+  hf_cache:
+  ollama_models:
+  phoenix_data:

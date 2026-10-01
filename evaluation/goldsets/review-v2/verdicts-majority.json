@@ -1,0 +1,764 @@
+{
+  "verdicts": [
+    {
+      "question_id": "a5fa011fd2dd38eb",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "4b2473f7622c0633",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "ec579ec51b441307",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "089f6eed69ce837b",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "350dded3705938b2",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "1fa0686e00b274f6",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "eb7948b4503a5896",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "dace66e0fc4e642d",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "ff86d811d8f09f85",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "9c60ef116d1d4bbf",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "910f1d9a672b7817",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "7400883b2f2f8e3a",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "9c0c5562f25f5f1c",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "6f04a171a3b30b67",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 3, 'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "bb5388452aaf8b95",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "9f3c7a52f6e7a909",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "182013730515dc05",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "7c056d3149af54f0",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 4, 'single_hop_enough': 1}"
+    },
+    {
+      "question_id": "d210e45a78bd1738",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "fc73beaddb717fcb",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "f701386449c9b99a",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "82266d3863218d2e",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "7ccc891bde2f2ad7",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "22f614e6abe44c39",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 4, 'single_hop_enough': 1}"
+    },
+    {
+      "question_id": "a7049772899eaa1b",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "cc895713a16b853e",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "ab7a9d11409f6734",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "6ac8dd6e3c98c141",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "3a39930ed27e0652",
+      "verdict": "ok",
+      "note": "большинство голосов: {'single_hop_enough': 1, 'ok': 4}"
+    },
+    {
+      "question_id": "5541401d104494f6",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "5d527ede647addd1",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 4, 'leaky': 1}"
+    },
+    {
+      "question_id": "6265b00542295950",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "1ed20ffd470143a7",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "9762341ea052e295",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "88ba0e622c838f34",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "9f9192f81986a68e",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "99e4c399f8ae53b4",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 4, 'single_hop_enough': 1}"
+    },
+    {
+      "question_id": "0893db674a2062ff",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "bc75ffdf2f208d92",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "a834e9f273ff1bfb",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "a2283c028949dc02",
+      "verdict": "ambiguous",
+      "note": "большинство голосов: {'ambiguous': 5}"
+    },
+    {
+      "question_id": "766751c2d4b89f3b",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "d6ccadf937f4d147",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "3b850ebaccbd67a5",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "4f477a8b45e4e78c",
+      "verdict": "ambiguous",
+      "note": "большинство голосов: {'ambiguous': 4, 'ok': 1}"
+    },
+    {
+      "question_id": "0c3e326d001a07c8",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "76b3aecfc73c158c",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "5d56dc7b0cce8a1d",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "05d76c729f10e098",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "2f60763fa1771adf",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "05ad1175039f1eb4",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "0f203c076bb16263",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 4, 'single_hop_enough': 1}"
+    },
+    {
+      "question_id": "339f1bb75471688b",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "4d9fc713f3bbf6b6",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "54bbb8c7033fdc87",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 4, 'single_hop_enough': 1}"
+    },
+    {
+      "question_id": "5c297f12b5e2ae2f",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "7cea9dfc451744c8",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 4, 'unanswerable': 1}"
+    },
+    {
+      "question_id": "8e74a27fbac20c43",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "9463a5f8b335f4db",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "ecc9290a57c7783f",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 4, 'leaky': 1}"
+    },
+    {
+      "question_id": "0c8f7e6bb49034f9",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "2225a838afb15691",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "25ee27e08a2d87ea",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "4140b337776c69bc",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "648e78fcef0ce45c",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "865549c35e5cd5a1",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "95acd9931c8f0485",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "b63d51591b4cdf28",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 4, 'unanswerable': 1}"
+    },
+    {
+      "question_id": "b7bcce87caa12f45",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "fd28c3d86b70e855",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "2084254621dc1a71",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 4, 'unanswerable': 1}"
+    },
+    {
+      "question_id": "66ae2307c53f7bb7",
+      "verdict": "leaky",
+      "note": "большинство голосов: {'leaky': 3, 'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "6dcbf81fee58e0a6",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "71edd9ebd91077a5",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "73264646833c7b8d",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 4, 'ok': 1}"
+    },
+    {
+      "question_id": "9a8e0c94fe6fef4d",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "aadd072b82267b35",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 4, 'unanswerable': 1}"
+    },
+    {
+      "question_id": "b332be114d96ad33",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "b477a13ef34e4462",
+      "verdict": "ok",
+      "note": "большинство голосов: {'single_hop_enough': 2, 'ok': 3}"
+    },
+    {
+      "question_id": "d9dd176bcfecb75f",
+      "verdict": "ok",
+      "note": "большинство голосов: {'unanswerable': 2, 'ok': 3}"
+    },
+    {
+      "question_id": "0f34251ee2f5673e",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "2d26f6c5e535bb33",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "4410bad91172e288",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 4, 'ambiguous': 1}"
+    },
+    {
+      "question_id": "57c904bf50383520",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "608e44ce04fa080c",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 4, 'ok': 1}"
+    },
+    {
+      "question_id": "76bb30fb9bb3b095",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "a297a60750a3f973",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "d179fa69ca9bd85b",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'ok': 1, 'single_hop_enough': 4}"
+    },
+    {
+      "question_id": "e364af0374a4090b",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "e79693569290a862",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 3, 'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "49bf3aefc25e8167",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "4c27c744bf340343",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 3, 'ok': 2}"
+    },
+    {
+      "question_id": "53cfad45b4833b21",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "551e1bf96e4e26c8",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "74399f9bb6d8742d",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "8a16ba331dfdbbbb",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "9951c5ed1a8f5d68",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "c7efec48d2bff6f8",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "cf32077e44148174",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "e9c4b60957702c30",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "1bf586976cdc9039",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 5}"
+    },
+    {
+      "question_id": "323e10a7e94ab570",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "328b32e047e45efd",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "4835c4872760fce3",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 4, 'ambiguous': 1}"
+    },
+    {
+      "question_id": "4c4dc5a85b60f1c2",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "5552f014e110029a",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'ok': 1, 'unanswerable': 4}"
+    },
+    {
+      "question_id": "6e8b1721e9a04c77",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "756dbf1ede005638",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "c0eb1fee8f786d94",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 5}"
+    },
+    {
+      "question_id": "c50208c63bc37189",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 5}"
+    },
+    {
+      "question_id": "003eae8110916556",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 3}"
+    },
+    {
+      "question_id": "214a113c7d765484",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 3}"
+    },
+    {
+      "question_id": "3c9f6a46686ce664",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 3}"
+    },
+    {
+      "question_id": "48df860ca7229142",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 3}"
+    },
+    {
+      "question_id": "4d7884f08af9257d",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 3}"
+    },
+    {
+      "question_id": "535d55ed698efca0",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 3}"
+    },
+    {
+      "question_id": "a94040d19cd7758f",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 3}"
+    },
+    {
+      "question_id": "d659eb995015a8be",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 3}"
+    },
+    {
+      "question_id": "dc42705cb1af9b01",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 2, 'ok': 1}"
+    },
+    {
+      "question_id": "f3ed70d50e0cf6e6",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2, 'ok': 1}"
+    },
+    {
+      "question_id": "23078c31192b6eb1",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "3993271237331b7c",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "4182243dc467533b",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'ambiguous': 1, 'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "48ec12410ff398ee",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'single_hop_enough': 1, 'unanswerable': 2}"
+    },
+    {
+      "question_id": "4ef78fbb4e1555c2",
+      "verdict": "ambiguous",
+      "note": "большинство голосов: {'ambiguous': 2}"
+    },
+    {
+      "question_id": "989c412cc47b8301",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "9a488ad4fce22709",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "dd0f91f32880048a",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "f49925ac318e00a2",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "fb23420c2d382d13",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "22f637e13116be37",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "29c1bf6a43fa770b",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "393adfe50c37c115",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "6a854ab0eb067b0b",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "99d16403aafd30c4",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "9d858c445344e2bd",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "b5752232f9477907",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "ccef974909bd29b1",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2, 'ok': 1}"
+    },
+    {
+      "question_id": "f160d53c3fa0c714",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "f635fe43baca1cbe",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "3c49e32f878584a2",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "48db3ddcb1781298",
+      "verdict": "single_hop_enough",
+      "note": "большинство голосов: {'single_hop_enough': 2}"
+    },
+    {
+      "question_id": "57caefe8eb87acb9",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "6f4b74be6b645a32",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "8d4a2d58e2cd6ff9",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "a3921f04641f9c3f",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "b1e28c04a603d83c",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "c8d612f7d5072312",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "f58a9215707726e3",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "f5aa8a93815ea180",
+      "verdict": "ok",
+      "note": "большинство голосов: {'ok': 2}"
+    },
+    {
+      "question_id": "26b38cdcbc339400",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    },
+    {
+      "question_id": "885b4bfc2419da51",
+      "verdict": "unanswerable",
+      "note": "большинство голосов: {'unanswerable': 2}"
+    }
+  ]
+}
