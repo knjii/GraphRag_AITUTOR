@@ -24,6 +24,8 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          # uv.lock в репозитории нет — ключ кэша строится по pyproject.toml.
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Установить Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
