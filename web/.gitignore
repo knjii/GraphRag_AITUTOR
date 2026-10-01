@@ -1,0 +1,6 @@
+node_modules/
+dist/
+tsconfig.tsbuildinfo
+__pycache__/
+# не секрет: режим сборки с настоящим API (vite --mode api)
+!.env.api
