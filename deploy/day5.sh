@@ -97,16 +97,52 @@ ensure_4b() {
         run "запуск служб" bash deploy/services.sh up
     fi
 }
-# 9B без поиска: доля памяти 0.7 — указание владельца (sglang-9b-mem-fraction-0-7).
+# 9B для генерации — квант UD-Q4_K_XL на llama.cpp, как Q0 дня 2 (решение
+# владельца 2026-09-22). bf16 на SGLang не стартует при доле 0.7: веса 18.87 ГБ
+# больше 0.7 × 24 ГБ (день 5, первый запуск Q1 упал ровно на этом).
+GEN_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda
+GEN_MODEL=/models/qwen9b/Qwen3.5-9B-UD-Q4_K_XL.gguf
+# Слоты под задачу: вопросы (Q1) короткие — 16 × 8192; эпизоды RL (D1) несут
+# контекст до окна rl_dataset 16384 плюс ответ 768 — 8 × 18432 (день 5:
+# разминка D1 упала на промпте 8453 при слоте 8192).
 ensure_9b_alone() {
-    if grep -q "^LLM_MODEL=$MODEL_9B\$" .env 2>/dev/null \
-        && curl -sf http://127.0.0.1:8001/v1/models 2>/dev/null | grep -q 'Qwen3.5-9B'; then
-        ok "9B уже поднята"
+    local slots="${1:-16}" slot_tokens="${2:-8192}" config
+    config="$slots x $slot_tokens"
+    if docker ps --format '{{.Names}}' | grep -qx generator \
+        && [ "$(docker inspect -f '{{index .Config.Labels "slots"}}' generator 2>/dev/null)" = "$config" ] \
+        && curl -sf -o /dev/null http://127.0.0.1:8001/health; then
+        ok "9B-Q4 уже поднята ($config)"
         return
     fi
-    docker rm -f judge generator >/dev/null 2>&1
+    docker rm -f judge generator rag-textbook-sglang-1 >/dev/null 2>&1
+    docker compose --env-file .env -f docker/docker-compose.vllm.yml --profile sglang stop sglang >/dev/null 2>&1
     docker compose --env-file .env -f docker/docker-compose.yml stop infinity ollama >/dev/null 2>&1
-    run "переключение на 9B" bash deploy/model-swap.sh "$MODEL_9B" 0.7
+    run "запуск llama.cpp (9B-Q4, $config)" docker run -d --name generator --gpus all \
+        --label "slots=$config" \
+        -v rag-textbook_gguf_models:/models -p 127.0.0.1:8001:8000 "$GEN_IMAGE" \
+        -m "$GEN_MODEL" --host 0.0.0.0 --port 8000 \
+        -c $((slot_tokens * slots)) -np "$slots" -ngl 999 --jinja \
+        --reasoning off --reasoning-effort minimal
+    local ready=0
+    for _ in $(seq 1 60); do
+        curl -sf -o /dev/null http://127.0.0.1:8001/health && { ready=1; break; }
+        sleep 5
+    done
+    [ "$ready" = 1 ] || { docker logs --tail 25 generator 2>&1 | tee -a "$LOG"; die "llama.cpp не поднялся"; }
+    ok "видеопамять: $(nvidia-smi --query-gpu=memory.used --format=csv,noheader)"
+    # Ответ читается до долгого прогона: пустой ответ или размышление вместо текста.
+    run "пробный ответ 9B-Q4" uv run python - <<'PY'
+import json, urllib.request
+body = {"model": "qwen9b", "max_tokens": 200, "messages": [
+    {"role": "user", "content": "Сформулируй одним предложением, что такое собственный вектор матрицы."}]}
+req = urllib.request.Request("http://127.0.0.1:8001/v1/chat/completions",
+                             data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+msg = json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]
+text = (msg.get("content") or "").strip()
+print("ответ:", text[:300])
+print("размышление:", len(msg.get("reasoning_content") or ""), "знаков")
+raise SystemExit(0 if text and "<think>" not in text and len(msg.get("reasoning_content") or "") < 200 else 1)
+PY
 }
 all_off() {
     docker rm -f judge generator >/dev/null 2>&1
@@ -228,7 +264,7 @@ step_E0() {
     run "отпечаток награды (окружение сервиса)" uv run python scripts/reward_fingerprint.py \
         --dataset "$OUT/mml-test.jsonl" --check "$OUT/reward-fingerprint.json"
     run "тесты новых частей" uv run python -m pytest -q tests/test_graph_synonyms.py \
-        tests/test_build_crossbook_goldset.py
+        tests/test_judge_hybrid.py
     for stack in vllm unsloth; do rl_env_install "$stack"; done
     command -v hf >/dev/null 2>&1 || uv tool install "huggingface_hub[cli]" >/dev/null 2>&1
     ( HF_HOME="$(hf_cache_dir)"; export HF_HOME
@@ -288,7 +324,7 @@ step_Q1() {
     say "Q1. Вопросы для обучения (9B)"
     ensure_9b_alone
     # С запасом: эпизоды, чей контекст задел MML, уйдут в тест (Q2).
-    run "генерация вопросов" env "${CORPUS_ENV[@]}" GRAPH_ENABLED=false LLM_MAX_CONCURRENCY=16 \
+    run "генерация вопросов" env "${CORPUS_ENV[@]}" GRAPH_ENABLED=false LLM_MAX_CONCURRENCY=16 LLM_REASONING_EFFORT=none \
         uv run rag-textbook goldset build --single 2800 --multihop 700 --workers 16 \
         --exclude-doc "$MML_DOC" --output "$OUT/train-ru.json" --seed 20260929
     run "вопросы читаются" uv run python - "$OUT/train-ru.json" <<'PY'
@@ -304,7 +340,7 @@ PY
 
 step_D1() {
     say "D1. Группы генераций 9B"
-    ensure_9b_alone
+    ensure_9b_alone 8 18432
     rm -f "$RUN/smoke.summary.json"
     run "разминка генерации" uv run python scripts/sample_groups.py \
         --dataset "$OUT/mml-test.jsonl" --questions 2 --n 2 --out "$RUN/smoke.jsonl"
@@ -445,14 +481,27 @@ step_P1() {
     local stacks=(); mapfile -t stacks < "$RUN/stacks.txt" 2>/dev/null
     [ "${#stacks[@]}" -gt 0 ] || die "нет $RUN/stacks.txt — шаг R0"
     FRESH=()
-    # Сначала вариант, который вероятнее всего поместится: 9B bf16 — 18.9 ГБ одних весов.
-    if printf '%s\n' "${stacks[@]}" | grep -qx unsloth; then
-        probe_one unsloth-4bit unsloth --load-in-4bit
-        probe_one unsloth unsloth
+    rm -f "$RUN"/probe-*.log   # вывод о памяти — только по пробам этого запуска
+    # Обучение 9B — в кванте (решение владельца 2026-09-28): bf16-связки
+    # на одной карте не помещаются (vLLM: веса 17 ГБ, первый запуск P1),
+    # поэтому по умолчанию пробуется только QLoRA. PROBES="unsloth-4bit unsloth vllm" — все.
+    local probe
+    for probe in ${PROBES:-unsloth-4bit}; do
+        case "$probe" in
+            unsloth-4bit) probe_one unsloth-4bit unsloth --load-in-4bit --micro-batch 1 ;;
+            unsloth)      probe_one unsloth unsloth ;;
+            vllm)         probe_one vllm vllm --backend hf --vllm --vllm-memory 0.3 ;;
+        esac
+    done
+    if [ "${#FRESH[@]}" = 0 ]; then
+        # Вывод о второй карте — только если отказ был по памяти: первый запуск
+        # P1 упал на ошибке кода, а сценарий объявил нехватку карты.
+        if grep -l -i -E "out of memory|outofmemoryerror|less than desired GPU memory" \
+                "$RUN"/probe-*.log >/dev/null 2>&1; then
+            die "ни одна связка 9B не поместилась на одной карте — нужна вторая карта (см. $RUN/probe-*.log)"
+        fi
+        die "пробы 9B упали не по памяти — ошибка кода или окружения, см. $RUN/probe-*.log"
     fi
-    printf '%s\n' "${stacks[@]}" | grep -qx vllm \
-        && probe_one vllm vllm --backend hf --vllm --vllm-memory 0.3
-    [ "${#FRESH[@]}" -gt 0 ] || die "ни одна связка 9B не прошла пробу на одной карте — нужна вторая карта"
     run "разбор проб (правило записано до замера)" "$(rl_env_dir "${stacks[0]}")/bin/python" \
         scripts/probe_compare.py "${FRESH[@]}"
     done_mark P1
