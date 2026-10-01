@@ -154,6 +154,13 @@ if (Test-Path "artifacts\goldset-r2") {
     if ($LASTEXITCODE -ne 0) { throw "Не удалось скопировать artifacts\goldset-r2" }
 }
 
+# Публичные наборы этапа 1 (scripts/bench_bundle.py) — фрагменты и эталон,
+# общие для всех сравниваемых систем; сервер сверяет их sha256 по manifest.json.
+if (Test-Path "artifacts\bench") {
+    Invoke-Remote "mkdir -p $RemoteDir/artifacts"
+    Copy-DirArchive "artifacts\bench" "${RemoteDir}/artifacts"
+}
+
 if ($WithLibrary) {
     Write-Host "`n==> Копирую библиотеку и эпизоды RL" -ForegroundColor Cyan
     Invoke-Remote "mkdir -p $RemoteDir/documents $RemoteDir/artifacts"

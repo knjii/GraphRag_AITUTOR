@@ -192,29 +192,80 @@ PROMPT_TEMPLATE_V4 = """Ты извлекаешь граф знаний из ф�
 {text}"""
 
 
+# Версия en — для чужого английского корпуса (публичный набор MuSiQue,
+# решение владельца 2026-09-30). Промпты v3/v4 написаны по-русски под
+# учебник математики и на энциклопедических текстах не находят ни одной
+# сущности в 55 фрагментах из 100: сравнение с HippoRAG 2 мерило бы промпт
+# предметной области, а не устройство графа. Схема ответа — как у v3.
+GENERAL_PROMPT_VERSION = "en"
+RELATION_LABELS_EN: tuple[str, ...] = (
+    "part_of",
+    "located_in",
+    "member_of",
+    "instance_of",
+    "created_by",
+    "owned_by",
+    "participated_in",
+    "occurred_in",
+    "has_property",
+    "related_to",
+)
+
+PROMPT_TEMPLATE_EN = """You extract a knowledge graph from a text passage.
+
+Extract:
+1. entities — named entities and key concepts: people, organizations, places,
+   works, events, dates, and specific objects. Use the name as written in the
+   passage; no generic words. At most {max_entities}.
+2. relations — relations between the extracted entities stated in the
+   passage. At most {max_relations}.
+
+Choose the relation field STRICTLY from the list:
+{labels}
+
+Rules:
+- source and target must both appear in the entities list;
+- do not invent relations that the passage does not state;
+- if there are no relations, return an empty relations list.
+
+Passage:
+{text}"""
+
+
 def _uses_roles(settings: GraphSettings) -> bool:
     return settings.extraction_prompt_version == ROLES_PROMPT_VERSION
 
 
+def _is_general(settings: GraphSettings) -> bool:
+    return settings.extraction_prompt_version == GENERAL_PROMPT_VERSION
+
+
+def _labels(settings: GraphSettings) -> tuple[str, ...]:
+    return RELATION_LABELS_EN if _is_general(settings) else RELATION_LABELS
+
+
 def _build_prompt(text: str, settings: GraphSettings) -> str:
-    template = PROMPT_TEMPLATE_V4 if _uses_roles(settings) else PROMPT_TEMPLATE
+    if _is_general(settings):
+        template = PROMPT_TEMPLATE_EN
+    else:
+        template = PROMPT_TEMPLATE_V4 if _uses_roles(settings) else PROMPT_TEMPLATE
     return template.format(
         max_entities=settings.max_entities_per_chunk,
         max_relations=settings.max_relations_per_chunk,
-        labels="\n".join(f"- {label}" for label in RELATION_LABELS),
+        labels="\n".join(f"- {label}" for label in _labels(settings)),
         text=truncate(text, settings.extraction_max_chars),
     )
 
 
-def _normalize_label(raw: str) -> str:
+def _normalize_label(raw: str, labels: tuple[str, ...] = RELATION_LABELS) -> str:
     value = str(raw or "").strip().lower().replace(" ", "_")
-    if value in RELATION_LABELS:
+    if value in labels:
         return value
     # Мягкое приведение синонимов к ближайшей метке из списка.
-    for label in RELATION_LABELS:
+    for label in labels:
         if value and (value in label or label in value):
             return label
-    return "используется_в"
+    return "related_to" if labels is RELATION_LABELS_EN else "используется_в"
 
 
 def _strip_code_fence(raw: str) -> str:
@@ -282,6 +333,8 @@ class EntityExtractor:
         # У v3 ключ прежний — его кэш стоит часов работы модели.
         if _uses_roles(self.settings):
             parts.append(content_hash(PROMPT_TEMPLATE_V4))
+        elif _is_general(self.settings):
+            parts.append(content_hash(PROMPT_TEMPLATE_EN))
         return content_hash(*parts)
 
     # ------------------------------------------------------------- нормализация
@@ -352,7 +405,7 @@ class EntityExtractor:
                 continue
             if source_canonical == target_canonical:
                 continue
-            label = _normalize_label(str(item.get("relation") or ""))
+            label = _normalize_label(str(item.get("relation") or ""), _labels(self.settings))
             key = (source_canonical, target_canonical, label)
             if key in seen:
                 continue
@@ -454,21 +507,38 @@ class EntityExtractor:
         if self.llm is None or not excerpts:
             return []
 
-        numbered = "\n\n".join(
-            f"Фрагмент {index}:\n{truncate(text, 700)}" for index, text in enumerate(excerpts, 1)
-        )
-        prompt = (
-            f"Ниже выдержки из разных разделов учебника, в которых упоминается «{subject}».\n\n"
-            f"{numbered}\n\n"
-            f"Назови связи понятия «{subject}» с другими понятиями, которые видны "
-            "ТОЛЬКО при сопоставлении нескольких фрагментов.\n"
-            "Требования:\n"
-            "- не называй связи, очевидные из одного фрагмента;\n"
-            "- второе понятие должно быть названо в выдержках;\n"
-            "- связь называй глаголом или коротким оборотом;\n"
-            "- если сопоставление ничего нового не даёт, верни пустой список.\n\n"
-            'Верни строго JSON: {"relations": [{"target": "...", "relation": "..."}]}'
-        )
+        if _is_general(self.settings):
+            numbered = "\n\n".join(
+                f"Passage {index}:\n{truncate(text, 700)}" for index, text in enumerate(excerpts, 1)
+            )
+            prompt = (
+                f"Below are passages from different documents that mention \"{subject}\".\n\n"
+                f"{numbered}\n\n"
+                f"Name relations of \"{subject}\" to other entities that become visible "
+                "ONLY when several passages are combined.\n"
+                "Requirements:\n"
+                "- do not name relations obvious from a single passage;\n"
+                "- the other entity must be named in the passages;\n"
+                "- choose relation from: " + ", ".join(RELATION_LABELS_EN) + ";\n"
+                "- if combining adds nothing new, return an empty list.\n\n"
+                'Return strictly JSON: {"relations": [{"target": "...", "relation": "..."}]}'
+            )
+        else:
+            numbered = "\n\n".join(
+                f"Фрагмент {index}:\n{truncate(text, 700)}" for index, text in enumerate(excerpts, 1)
+            )
+            prompt = (
+                f"Ниже выдержки из разных разделов учебника, в которых упоминается «{subject}».\n\n"
+                f"{numbered}\n\n"
+                f"Назови связи понятия «{subject}» с другими понятиями, которые видны "
+                "ТОЛЬКО при сопоставлении нескольких фрагментов.\n"
+                "Требования:\n"
+                "- не называй связи, очевидные из одного фрагмента;\n"
+                "- второе понятие должно быть названо в выдержках;\n"
+                "- связь называй глаголом или коротким оборотом;\n"
+                "- если сопоставление ничего нового не даёт, верни пустой список.\n\n"
+                'Верни строго JSON: {"relations": [{"target": "...", "relation": "..."}]}'
+            )
         try:
             raw = self.llm.chat(
                 [ChatMessage(role="user", content=prompt)],
@@ -507,7 +577,7 @@ class EntityExtractor:
             )
             if not target or target == subject_canonical or target not in known_canonical:
                 continue
-            label = _normalize_label(str(item.get("relation") or ""))
+            label = _normalize_label(str(item.get("relation") or ""), _labels(self.settings))
             if (target, label) in seen:
                 continue
             seen.add((target, label))
