@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -23,7 +24,7 @@ from rag_textbook.clients.reranker import RerankerClient
 from rag_textbook.config import Settings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import ScoredChunk
-from rag_textbook.retrieval import selection
+from rag_textbook.retrieval import seal, selection, set_selection
 from rag_textbook.retrieval.diversity import apply_diversity
 from rag_textbook.retrieval.fusion import (
     deduplicate,
@@ -53,6 +54,14 @@ class RetrievalResult:
     # Подвопросы, на которые был разложен связывающий вопрос. Пусто, если
     # разложение выключено или вопрос делению не поддался.
     sub_questions: list[str] = field(default_factory=list)
+    # Отбор множества моделью (setr, picker, seal): исход вызова, выбранное
+    # множество и то, что SEAL принёс микрозапросами. Пул кандидатов нужен,
+    # чтобы отличить принесённое извне пула — единственное, что чинит доступ.
+    selection_status: str = ""
+    selected: list[str] = field(default_factory=list)
+    seal_added: list[str] = field(default_factory=list)
+    seal_gaps: list[str] = field(default_factory=list)
+    pool: list[str] = field(default_factory=list)
 
     @property
     def graph_share(self) -> float:
@@ -189,7 +198,7 @@ class RetrievalPipeline:
         )
         self.link_store = graph_retriever.store if graph_retriever is not None else None
         if settings.retrieval.selection_mode != "off":
-            selection.check_ready(settings.retrieval, self.pair_scorer, self.link_store)
+            selection.check_ready(settings.retrieval, self.pair_scorer, self.link_store, llm)
 
     # --------------------------------------------------------- разложение
 
@@ -307,6 +316,17 @@ class RetrievalPipeline:
             return []
         seed_ids = [item.chunk.id for item in base_items[: self.settings.graph.seed_passages]]
         return self.graph_retriever.retrieve(query, seed_chunk_ids=seed_ids)
+
+    def _micro_search(self, query: str) -> list[ScoredChunk]:
+        """Поиск по микрозапросу SEAL: те же каналы, что у вопроса, без отбора."""
+        base = self._base_channel(query)
+        graph = self._graph_channel(query, base) if self.graph_retriever is not None else []
+        weight = self.settings.graph.weight if graph else 0.0
+        return reciprocal_rank_fusion(
+            {"base": base, "graph": graph},
+            weights={"base": 1.0 - weight, "graph": weight},
+            rrf_k=self.settings.retrieval.rrf_k,
+        )[: self.settings.reranker.candidates]
 
     # ---------------------------------------------------------- реранкинг
 
@@ -498,6 +518,7 @@ class RetrievalPipeline:
         # Разнообразие применяется ПОСЛЕ реранкинга и ДО отсечки: раньше
         # реранкера ему нечего переупорядочивать, позже отсечки — уже поздно.
         stage = time.perf_counter()
+        statuses: Counter = Counter()
         selected = selection.reorder(
             reranked,
             rewritten,
@@ -505,6 +526,8 @@ class RetrievalPipeline:
             top_k,
             scorer=self.pair_scorer,
             store=self.link_store,
+            llm=self.llm,
+            stats=statuses,
         )
         diversified = apply_diversity(selected, self.settings, top_k=top_k)
 
@@ -516,6 +539,19 @@ class RetrievalPipeline:
         final = selection.complete(
             final, self.settings.retrieval, top_k, store=self.link_store
         )
+        sealed: seal.SealResult | None = None
+        if self.settings.retrieval.selection_mode == "seal":
+            sealed = seal.run(
+                rewritten,
+                final,
+                search=self._micro_search,
+                score=self.pair_scorer.score,  # type: ignore[union-attr]
+                llm=self.llm,  # type: ignore[arg-type]
+                settings=self.settings.retrieval,
+                top_k=top_k,
+            )
+            final = sealed.final
+            statuses[f"seal_{sealed.status}"] += 1
         if self.settings.retrieval.selection_mode != "off":
             timings["selection"] = (time.perf_counter() - stage) * 1000
 
@@ -527,6 +563,11 @@ class RetrievalPipeline:
             route=route,
             timings_ms={key: round(value, 1) for key, value in timings.items()},
             sub_questions=list(parts),
+            selection_status=",".join(sorted(statuses)),
+            selected=set_selection.selected_ids(final),
+            seal_added=list(sealed.added) if sealed else [],
+            seal_gaps=list(sealed.gaps) if sealed else [],
+            pool=[item.chunk.id for item in candidates],
             channel_sizes={
                 "base": len(base_items),
                 "graph": len(graph_items),

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol
@@ -36,6 +37,7 @@ from rag_textbook.clients.reranker import RerankerClient
 from rag_textbook.config import RetrievalSettings
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, ScoredChunk
+from rag_textbook.retrieval import set_selection
 
 logger = get_logger("retrieval.selection")
 
@@ -44,10 +46,12 @@ logger = get_logger("retrieval.selection")
 # а не в настройках: он ограничивает цену, а не меняет гипотезу.
 MAX_PAIRS = 64
 
-MODES_NEEDING_RERANKER = ("conditional", "pairs")
+MODES_NEEDING_RERANKER = ("conditional", "pairs", "seal")
 MODES_NEEDING_GRAPH = ("pairs", "diffusion", "closure")
+# Отбор множества моделью (этап 2): SetR, Context-Picker, SEAL-RAG.
+MODES_NEEDING_LLM = ("setr", "picker", "seal")
 # Моды, которые меняют состав выдачи, а не только порядок внутри пула.
-MODES_LEAVING_POOL = ("closure",)
+MODES_LEAVING_POOL = ("closure", "seal")
 
 
 class LinkStore(Protocol):
@@ -292,11 +296,20 @@ def closure(
     return list(final[:keep]) + additions
 
 
-def check_ready(settings: RetrievalSettings, scorer: PairScorer | None, store: object | None) -> None:
+def check_ready(
+    settings: RetrievalSettings,
+    scorer: PairScorer | None,
+    store: object | None,
+    llm: object | None = None,
+    *,
+    need_llm: bool = True,
+) -> None:
     """Режим отбора без нужного ему инструмента молча выродился бы в обычный порядок."""
     mode = settings.selection_mode
     if mode in MODES_NEEDING_RERANKER and scorer is None:
         raise ValueError(f"Отбор {mode} требует реранкер для оценки пар")
+    if need_llm and mode in MODES_NEEDING_LLM and llm is None:
+        raise ValueError(f"Отбор {mode} требует языковую модель (LLM_BASE_URL)")
     if mode in MODES_NEEDING_GRAPH and not supports_links(store):
         raise ValueError(
             f"Отбор {mode} требует рёбра между фрагментами: нужен граф в памяти "
@@ -324,12 +337,24 @@ def reorder(
     *,
     scorer: PairScorer | None = None,
     store: object | None = None,
+    llm: object | None = None,
+    stats: Counter | None = None,
 ) -> list[ScoredChunk]:
-    """Переупорядочивает пул после реранкера. Состав не меняется."""
+    """Переупорядочивает пул после реранкера. Состав не меняется.
+
+    ``stats`` копит исходы отбора моделью (ok, empty, fallback): доля
+    отказов печатается рядом с метриками, иначе отказ выглядел бы как
+    «метод ничего не дал».
+    """
     mode = settings.selection_mode
-    if mode in ("off", "closure"):
+    if mode in ("off", "closure", "seal"):
         return list(items)
-    check_ready(settings, scorer, store)
+    check_ready(settings, scorer, store, llm)
+    if mode in set_selection.MODES:
+        outcome = set_selection.select_set(items, question, llm, settings, top_k)  # type: ignore[arg-type]
+        if stats is not None:
+            stats[outcome.status] += 1
+        return outcome.ordered
     if mode == "conditional":
         return conditional(items, question, scorer, settings, top_k)  # type: ignore[arg-type]
     if mode == "pairs":
@@ -347,5 +372,5 @@ def complete(
     """Достраивает выдачу после отсечки (К8). Прочим режимам нечего делать."""
     if settings.selection_mode != "closure":
         return list(final)
-    check_ready(settings, None, store)
+    check_ready(settings, None, store, need_llm=False)
     return closure(final, store, settings, top_k)  # type: ignore[arg-type]

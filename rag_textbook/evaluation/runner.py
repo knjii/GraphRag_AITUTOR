@@ -89,6 +89,10 @@ def run_retrieval_evaluation(
             graph_only_share=result.graph_only_share,
             latency_ms=result.timings_ms.get("total", 0.0),
             context_chars=[len(item.chunk.text) for item in result.chunks],
+            selected=list(result.selected),
+            seal_added=list(result.seal_added),
+            pool=list(result.pool),
+            selection_status=result.selection_status,
         )
 
     logger.info("Оценка поиска: вопросов=%s, параллелизм=%s", len(questions), max_workers)
@@ -147,6 +151,7 @@ def save_evaluation(
             # полученные одним и тем же кодом.
             "prompt_fingerprint": settings.prompts.fingerprint(),
             "utility_model": settings.llm.model_for("utility"),
+            "selection_mode": settings.retrieval.selection_mode,
         },
         "metrics": metrics.as_dict(),
         "outcomes": [
@@ -160,6 +165,16 @@ def save_evaluation(
                 "graph_only_share": round(item.graph_only_share, 3),
                 "context_chars": item.context_chars,
                 "latency_ms": round(item.latency_ms, 1),
+                **(
+                    {
+                        "selected": item.selected,
+                        "seal_added": item.seal_added,
+                        "pool": item.pool,
+                        "selection_status": item.selection_status,
+                    }
+                    if item.selection_status
+                    else {}
+                ),
             }
             for item in outcomes
         ],
@@ -190,6 +205,10 @@ def load_outcomes(path: Path) -> tuple[str, list[QueryOutcome]]:
             graph_only_share=float(row.get("graph_only_share") or 0.0),
             latency_ms=float(row.get("latency_ms") or 0.0),
             context_chars=[int(item) for item in (row.get("context_chars") or [])],
+            selected=[str(item) for item in (row.get("selected") or [])],
+            seal_added=[str(item) for item in (row.get("seal_added") or [])],
+            pool=[str(item) for item in (row.get("pool") or [])],
+            selection_status=str(row.get("selection_status") or ""),
         )
         for row in payload.get("outcomes", [])
     ]

@@ -95,6 +95,14 @@ class QueryOutcome:
     # Нужна, чтобы уравнять бюджет контекста: при равном числе мест вариант,
     # выдающий длинные фрагменты, получает больше текста (SetCE, табл. 1).
     context_chars: list[int] = field(default_factory=list)
+    # Этап 2. Множество, выбранное моделью (setr/picker) — оно же контекст
+    # при переменном числе мест; recall@k по ``retrieved`` его не видит.
+    selected: list[str] = field(default_factory=list)
+    # SEAL: что пришло микрозапросами; ``pool`` — кандидаты до отбора, чтобы
+    # отличить починку доступа (эталон пришёл извне пула) от перестановки.
+    seal_added: list[str] = field(default_factory=list)
+    pool: list[str] = field(default_factory=list)
+    selection_status: str = ""
 
 
 @dataclass
@@ -106,6 +114,7 @@ class RetrievalMetrics:
     by_type: dict[str, dict[str, float]] = field(default_factory=dict)
     graph_usage: dict[str, float] = field(default_factory=dict)
     latency: dict[str, float] = field(default_factory=dict)
+    selection: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +130,7 @@ class RetrievalMetrics:
             },
             "graph_usage": {name: round(value, 4) for name, value in self.graph_usage.items()},
             "latency_ms": {name: round(value, 1) for name, value in self.latency.items()},
+            "selection": {name: round(value, 4) for name, value in self.selection.items()},
         }
 
     def summary_line(self, k: int) -> str:
@@ -203,6 +213,52 @@ def evaluate_retrieval(
             "p95": latencies[min(len(latencies) - 1, int(len(latencies) * 0.95))],
             "max": latencies[-1],
         }
+    result.selection = selection_metrics(outcomes)
+    return result
+
+
+def selection_metrics(outcomes: Sequence[QueryOutcome]) -> dict[str, float]:
+    """Сводка этапа 2: размер и полнота выбранного множества, вклад SEAL.
+
+    Пусто, если ни один вопрос не прошёл через отбор моделью или SEAL.
+    """
+    result: dict[str, float] = {}
+    statuses = [item.selection_status for item in outcomes if item.selection_status]
+    if not statuses and not any(item.selected or item.seal_added for item in outcomes):
+        return result
+    n = len(outcomes)
+    for name in sorted({part for status in statuses for part in status.split(",") if part}):
+        result[f"status_{name}"] = sum(name in s.split(",") for s in statuses) / n
+    chosen = [item for item in outcomes if item.selected]
+    if chosen:
+        result["set_share"] = len(chosen) / n
+        result["set_size"] = statistics.fmean(len(item.selected) for item in chosen)
+        # Полнота по всем вопросам: не выбрал ничего — полнота ноль.
+        result["set_recall"] = statistics.fmean(
+            recall_at_k(item.selected, item.relevant, len(item.selected) or 1)
+            if item.selected else 0.0
+            for item in outcomes
+        )
+        result["set_full"] = statistics.fmean(
+            full_at_k(item.selected, item.relevant, len(item.selected) or 1)
+            if item.selected else 0.0
+            for item in outcomes
+        )
+    sealed = [item for item in outcomes if item.seal_added]
+    if sealed or any("seal" in s for s in statuses):
+        result["seal_touched"] = len(sealed) / n
+        result["seal_added"] = statistics.fmean(len(item.seal_added) for item in outcomes)
+        outside = 0
+        gold_outside = 0
+        for item in outcomes:
+            pool = set(item.pool)
+            relevant = set(item.relevant)
+            fresh = [cid for cid in item.seal_added if cid not in pool]
+            outside += len(fresh)
+            gold_outside += sum(cid in relevant for cid in fresh)
+        result["seal_outside_pool"] = outside / n
+        # Главное число SEAL: эталон, которого не было среди кандидатов.
+        result["seal_gold_outside_pool"] = gold_outside / n
     return result
 
 

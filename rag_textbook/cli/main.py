@@ -1297,6 +1297,15 @@ REPLAY_GRID: dict[str, list[dict[str, dict]]] = {
         {"retrieval": {"selection_mode": "diffusion", "selection_alpha": 0.6}},
         {"retrieval": {"selection_mode": "diffusion", "selection_alpha": 1.0}},
     ],
+    # Серия S, этап 2: отбор множества моделью (SetR 2507.06838, Context-Picker
+    # 2512.14465). Вызов модели на вопрос — только с --llm; SEAL выходит за пул
+    # и здесь не считается (только прогон на сервере).
+    "S-множество": [
+        {"retrieval": {"selection_mode": "setr"}},
+        {"retrieval": {"selection_mode": "picker"}},
+        {"retrieval": {"selection_mode": "setr", "selection_llm_pool": 30}},
+        {"retrieval": {"selection_mode": "picker", "selection_llm_pool": 30}},
+    ],
 }
 
 
@@ -1306,6 +1315,21 @@ def _apply_overrides(settings: Settings, overrides: dict[str, dict]) -> Settings
         current = getattr(updated, section)
         setattr(updated, section, current.model_copy(update=values))
     return updated
+
+
+def _describe_selection(values: dict[str, float]) -> str:
+    if not values:
+        return ""
+    parts = []
+    if "set_size" in values:
+        parts.append(
+            f"|S|={values['set_size']:.1f} полн={values['set_recall']:.3f} "
+            f"все={values['set_full']:.3f}"
+        )
+    failed = values.get("status_fallback", 0.0)
+    if failed:
+        parts.append(f"отказ={failed:.2f}")
+    return " ".join(parts)
 
 
 def _describe(overrides: dict[str, dict]) -> str:
@@ -1334,6 +1358,10 @@ def eval_replay(
     pair_cache: Annotated[
         Path | None, typer.Option(help="Кэш баллов пар реранкера, JSONL")
     ] = None,
+    use_llm: Annotated[
+        bool, typer.Option("--llm", help="Поднять клиент модели для отбора множеством (серия S)")
+    ] = False,
+    workers: Annotated[int, typer.Option(help="Параллельных вызовов модели при --llm")] = 8,
 ) -> None:
     """Пересчитывает отбор по слепку и перебирает настройки офлайн.
 
@@ -1416,6 +1444,13 @@ def eval_replay(
 
         scorer = PairScorer(build_reranker_client(settings.reranker), cache_path=pair_cache)
 
+    llm = None
+    if use_llm:
+        from rag_textbook.clients.llm import build_llm_client
+
+        llm = build_llm_client(settings.llm)
+        console.print(f"[dim]Модель отбора: {settings.llm.model_for('utility')}[/dim]")
+
     groups = {group: REPLAY_GRID[group]} if group else REPLAY_GRID
     for name, variants in groups.items():
         table = Table(title=name)
@@ -1427,14 +1462,23 @@ def eval_replay(
         # требует другого решения, чем прирост из +3 и −0.
         table.add_column("лучше/хуже", justify="right")
         table.add_column("значимо", justify="right")
+        # Серия S: размер множества, его полнота и доля отказов разбора.
+        table.add_column("множество", justify="right")
         for overrides in variants:
             try:
                 candidate = _apply_overrides(settings, overrides)
                 outcomes = replay(
-                    traces, candidate, corpus, gold, scorer=scorer, link_store=link_store
+                    traces,
+                    candidate,
+                    corpus,
+                    gold,
+                    scorer=scorer,
+                    link_store=link_store,
+                    llm=llm,
+                    workers=workers,
                 )
             except (NotReplayable, ValueError) as error:
-                table.add_row(_describe(overrides), "—", "—", "—", "—", str(error)[:40])
+                table.add_row(_describe(overrides), "—", "—", "—", "—", str(error)[:40], "")
                 continue
             metrics = evaluate_retrieval(outcomes, settings.evaluation.k_values)
             delta = metrics.per_k[top_k]["recall"] - base_metrics.per_k[top_k]["recall"]
@@ -1448,6 +1492,7 @@ def eval_replay(
                 f"{linked:.3f}",
                 f"{recall_block['improved']}/{recall_block['worsened']}",
                 "да" if recall_block["significant"] else "нет",
+                _describe_selection(metrics.selection),
             )
         console.print(table)
 

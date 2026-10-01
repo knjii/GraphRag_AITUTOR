@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 
 from rag_textbook.config import Settings
 from rag_textbook.evaluation.metrics import QueryOutcome
@@ -26,7 +28,7 @@ from rag_textbook.evaluation.trace import (
 )
 from rag_textbook.logging_setup import get_logger
 from rag_textbook.models import Chunk, ScoredChunk
-from rag_textbook.retrieval import selection
+from rag_textbook.retrieval import selection, set_selection
 from rag_textbook.retrieval.diversity import apply_diversity
 from rag_textbook.retrieval.fusion import (
     deduplicate,
@@ -111,6 +113,8 @@ def replay_one(
     *,
     scorer: selection.PairScorer | None = None,
     link_store: object | None = None,
+    llm: object | None = None,
+    stats: Counter | None = None,
 ) -> list[ScoredChunk]:
     """Пересчитывает выдачу по одному вопросу."""
     top_k = settings.retrieval.top_k_for(trace.used_graph)
@@ -144,7 +148,14 @@ def replay_one(
 
     question = trace.rewritten_question or trace.question
     selected = selection.reorder(
-        reranked, question, settings.retrieval, top_k, scorer=scorer, store=link_store
+        reranked,
+        question,
+        settings.retrieval,
+        top_k,
+        scorer=scorer,
+        store=link_store,
+        llm=llm,  # type: ignore[arg-type]
+        stats=stats,
     )
     diversified = apply_diversity(selected, settings, top_k=top_k)
 
@@ -161,6 +172,8 @@ def replay(
     *,
     scorer: selection.PairScorer | None = None,
     link_store: object | None = None,
+    llm: object | None = None,
+    workers: int = 1,
 ) -> list[QueryOutcome]:
     """Пересчитывает выдачу по всему слепку.
 
@@ -175,7 +188,7 @@ def replay(
             f"Отбор {settings.retrieval.selection_mode} выходит за пул кандидатов "
             "и проверяется только прогоном на сервере"
         )
-    selection.check_ready(settings.retrieval, scorer, link_store)
+    selection.check_ready(settings.retrieval, scorer, link_store, llm)  # type: ignore[arg-type]
     if settings.reranker.candidates > traces.rerank_window > 0:
         raise ValueError(
             f"Окно кандидатов {settings.reranker.candidates} шире снятого "
@@ -183,12 +196,13 @@ def replay(
             "Снимите слепок с более широким окном."
         )
 
-    outcomes: list[QueryOutcome] = []
-    for trace in traces.traces:
-        final = replay_one(trace, settings, chunks, scorer=scorer, link_store=link_store)
+    def one(trace: QueryTrace) -> QueryOutcome:
+        stats: Counter = Counter()
+        final = replay_one(
+            trace, settings, chunks, scorer=scorer, link_store=link_store, llm=llm, stats=stats
+        )
         retrieved = [item.chunk.id for item in final]
-        outcomes.append(
-            QueryOutcome(
+        return QueryOutcome(
                 question_id=trace.question_id,
                 question_type=trace.question_type,
                 retrieved=retrieved,
@@ -203,9 +217,20 @@ def replay(
                     else 0.0
                 ),
                 context_chars=[len(item.chunk.text) for item in final],
+                selected=set_selection.selected_ids(final),
+                pool=[
+                    item.chunk_id
+                    for name in ("base", "graph")
+                    for item in trace.channels.get(name, [])
+                ],
+                selection_status=",".join(sorted(stats)),
             )
-        )
-    return outcomes
+
+    # Отбор моделью — вызов на вопрос; параллельно, как и серверный прогон.
+    if workers > 1 and llm is not None:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(one, traces.traces))
+    return [one(trace) for trace in traces.traces]
 
 
 def fidelity_report(traces: TraceSet, replayed: Sequence[QueryOutcome]) -> dict[str, float]:

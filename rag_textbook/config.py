@@ -633,9 +633,30 @@ class RetrievalSettings(_Base):
     #   diffusion   — К7: балл соседа по графу внутри пула поднимает слабого;
     #   closure     — К8: к выбранному добавляется место определения. Выходит
     #                 за пул, поэтому по слепку не проверяется.
-    selection_mode: Literal["off", "conditional", "pairs", "diffusion", "closure"] = Field(
-        default="off", alias="RETRIEVAL_SELECTION"
+    # Отбор множества моделью, этап 2 (docs/HYPOTHESES.md, серия S):
+    #   setr   — SetR (2507.06838): потребности вопроса → множество фрагментов;
+    #   picker — Context-Picker (2512.14465): минимальное достаточное множество;
+    #   seal   — SEAL-RAG (2512.10787): пробелы → микрозапросы → замена худших
+    #            при том же k. Выходит за пул, по слепку не проверяется.
+    selection_mode: Literal[
+        "off", "conditional", "pairs", "diffusion", "closure", "setr", "picker", "seal"
+    ] = Field(default="off", alias="RETRIEVAL_SELECTION")
+    # Сколько верхних кандидатов после реранкера видит модель в setr/picker.
+    # У SetR ровно 20: больше — длиннее подсказка, а слот сервера 9B конечен.
+    selection_llm_pool: int = Field(default=20, ge=2, le=60, alias="RETRIEVAL_SELECTION_LLM_POOL")
+    # Предел знаков одного фрагмента в подсказке: страховка от переполнения
+    # слота, а не сокращение — медианный фрагмент короче.
+    selection_llm_chars: int = Field(
+        default=2400, ge=200, le=12000, alias="RETRIEVAL_SELECTION_LLM_CHARS"
     )
+    selection_llm_max_tokens: int = Field(
+        default=1536, ge=64, le=8192, alias="RETRIEVAL_SELECTION_LLM_MAX_TOKENS"
+    )
+    # SEAL: число кругов «извлечь → оценить → заменить», микрозапросов на круг
+    # и новых кандидатов на микрозапрос.
+    seal_max_loops: int = Field(default=2, ge=1, le=5, alias="SEAL_MAX_LOOPS")
+    seal_max_gaps: int = Field(default=3, ge=1, le=8, alias="SEAL_MAX_GAPS")
+    seal_candidates_per_gap: int = Field(default=3, ge=1, le=10, alias="SEAL_CANDIDATES_PER_GAP")
     # Вес собственного балла против условного (К6а) или парного (К6б).
     selection_lambda: float = Field(
         default=0.5, ge=0.0, le=1.0, alias="RETRIEVAL_SELECTION_LAMBDA"

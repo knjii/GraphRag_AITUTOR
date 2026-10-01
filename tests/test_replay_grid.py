@@ -69,6 +69,7 @@ def test_grid_covers_the_stated_hypotheses():
         "К6-условный",
         "К6-пары",
         "К7-распространение",
+        "S-множество",
     }
 
 
