@@ -14,7 +14,8 @@ import pytest
 from rag_textbook.evaluation.goldset import load_goldset
 
 _SPEC = importlib.util.spec_from_file_location(
-    "build_crossbook_goldset", Path(__file__).resolve().parents[1] / "scripts" / "build_crossbook_goldset.py"
+    "build_crossbook_goldset",
+    Path(__file__).resolve().parents[1] / "scripts" / "build_crossbook_goldset.py",
 )
 bx = importlib.util.module_from_spec(_SPEC)
 sys.modules["build_crossbook_goldset"] = bx
@@ -37,21 +38,33 @@ def corpus(tmp_path, monkeypatch):
     for i in range(90):
         other = CH if i < 60 else SOK
         first = MML if i < 60 else CH
-        candidates.append({"id": f"x-t-{i:02d}", "question": f"вопрос {i}?",
-                           "gold_chunk_ids": [f"{first}:{i:05d}", f"{other}:{i + 100:05d}"],
-                           "gold_doc_ids": [first, other], "answer": "ответ",
-                           "roles": {}, "topic": "т"})
-    (out / "t.jsonl").write_text("".join(json.dumps(c, ensure_ascii=False) + "\n" for c in candidates),
-                                 encoding="utf-8-sig")
+        candidates.append(
+            {
+                "id": f"x-t-{i:02d}",
+                "question": f"вопрос {i}?",
+                "gold_chunk_ids": [f"{first}:{i:05d}", f"{other}:{i + 100:05d}"],
+                "gold_doc_ids": [first, other],
+                "answer": "ответ",
+                "roles": {},
+                "topic": "т",
+            }
+        )
+    (out / "t.jsonl").write_text(
+        "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in candidates), encoding="utf-8-sig"
+    )
     monkeypatch.setattr(bx, "CANDIDATES", out)
     monkeypatch.setattr(bx, "CHUNKS", chunks)
-    monkeypatch.setattr(bx, "REVIEW", tmp_path / "review.json")  # настоящий файл проверки не подхватывать
+    monkeypatch.setattr(
+        bx, "REVIEW", tmp_path / "review.json"
+    )  # настоящий файл проверки не подхватывать
     return tmp_path, candidates
 
 
 def _verdicts(tmp_path, candidates, ok):
-    rows = [{"question_id": c["id"], "verdict": "ok" if i < ok else "one_enough", "votes": {"ok": 2}}
-            for i, c in enumerate(candidates)]
+    rows = [
+        {"question_id": c["id"], "verdict": "ok" if i < ok else "one_enough", "votes": {"ok": 2}}
+        for i, c in enumerate(candidates)
+    ]
     path = tmp_path / "verdicts.json"
     path.write_text(json.dumps({"verdicts": rows}), encoding="utf-8")
     return path
@@ -98,7 +111,8 @@ def test_unknown_chunk_refuses(corpus):
     tmp_path, candidates = corpus
     candidates[0]["gold_chunk_ids"][1] = f"{CH}:09999"
     (bx.CANDIDATES / "t.jsonl").write_text(
-        "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in candidates), encoding="utf-8")
+        "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in candidates), encoding="utf-8"
+    )
     with pytest.raises(SystemExit, match="нет фрагментов"):
         bx.build(60, 7, _verdicts(tmp_path, candidates, 70))
 
@@ -106,7 +120,9 @@ def test_unknown_chunk_refuses(corpus):
 def test_write_freezes_and_loads(corpus):
     tmp_path, candidates = corpus
     target = tmp_path / "goldset-x.json"
-    bx.main(["--verdicts", str(_verdicts(tmp_path, candidates, 70)), "--output", str(target), "--write"])
+    bx.main(
+        ["--verdicts", str(_verdicts(tmp_path, candidates, 70)), "--output", str(target), "--write"]
+    )
     digest, name = (tmp_path / "goldset-x.accepted").read_text(encoding="utf-8").split()
     assert digest == hashlib.sha256(target.read_bytes()).hexdigest()
     assert name == "goldset-x.json"
@@ -116,7 +132,9 @@ def test_write_freezes_and_loads(corpus):
 def test_review_excludes_accepted(corpus):
     tmp_path, candidates = corpus
     review = tmp_path / "review.json"
-    review.write_text(json.dumps({"exclude": {"x-t-00": "причина", "x-t-61": "причина"}}), encoding="utf-8")
+    review.write_text(
+        json.dumps({"exclude": {"x-t-00": "причина", "x-t-61": "причина"}}), encoding="utf-8"
+    )
     data = bx.build(60, 7, _verdicts(tmp_path, candidates, 80), review)
     ids = {q["id"] for q in data["questions"]}
     assert data["count"] == 78 and not ids & {"x-t-00", "x-t-61"}

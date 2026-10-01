@@ -15,20 +15,34 @@ from rag_textbook.stores.graph_file import GraphFile, MemoryGraphStore
 def _chunks(doc: str = "book") -> list[dict]:
     return [
         {
-            "id": f"{doc}:1", "doc_id": doc, "doc_name": "Книга", "ordinal": 1,
-            "headers": ["2. МАТРИЦЫ"], "text": "Вводная часть главы о матрицах.",
+            "id": f"{doc}:1",
+            "doc_id": doc,
+            "doc_name": "Книга",
+            "ordinal": 1,
+            "headers": ["2. МАТРИЦЫ"],
+            "text": "Вводная часть главы о матрицах.",
         },
         {
-            "id": f"{doc}:2", "doc_id": doc, "doc_name": "Книга", "ordinal": 2,
+            "id": f"{doc}:2",
+            "doc_id": doc,
+            "doc_name": "Книга",
+            "ordinal": 2,
             "headers": ["2.1. Определитель"],
             "text": "Определение 2.1 (определитель). Число $\\det A = \\sum x \\tag{2.3}$.",
         },
         {
-            "id": f"{doc}:3", "doc_id": doc, "doc_name": "Книга", "ordinal": 3,
-            "headers": ["2.1.1. Свойства"], "text": "Прочий текст без ссылок и номеров.",
+            "id": f"{doc}:3",
+            "doc_id": doc,
+            "doc_name": "Книга",
+            "ordinal": 3,
+            "headers": ["2.1.1. Свойства"],
+            "text": "Прочий текст без ссылок и номеров.",
         },
         {
-            "id": f"{doc}:4", "doc_id": doc, "doc_name": "Книга", "ordinal": 4,
+            "id": f"{doc}:4",
+            "doc_id": doc,
+            "doc_name": "Книга",
+            "ordinal": 4,
             "headers": ["3.2. Собственные значения"],
             "text": "Подставив (2.3) и пользуясь определением 2.1, см. раздел 2.1, а также (9.9).",
         },
@@ -64,7 +78,11 @@ def test_statement_name_is_searchable() -> None:
 def test_nesting_edges_are_separate_type() -> None:
     graph, _ = build_structural(_chunks())
     by_id = graph.entities
-    edges = {(by_id[s]["name"], by_id[t]["name"]) for s, t, kind, _, _ in graph.relations if kind == STRUCT_REL}
+    edges = {
+        (by_id[s]["name"], by_id[t]["name"])
+        for s, t, kind, _, _ in graph.relations
+        if kind == STRUCT_REL
+    }
     # Заголовок главы «2.» правилом не ловится (как в crossref), подраздел — да.
     assert ("раздел 2.1.1", "раздел 2.1") in edges
     assert ("(2.3)", "раздел 2.1") in edges
@@ -90,7 +108,13 @@ def test_merge_keeps_strongest_role_and_all_edges(tmp_path) -> None:
     structural, _ = build_structural(_chunks())
     model = GraphFile(variant="model")
     for pid, row in structural.passages.items():
-        model.add_passage(pid, doc_id=row["doc_id"], doc_name=row["doc_name"], ordinal=row["ordinal"], text=row["text"])
+        model.add_passage(
+            pid,
+            doc_id=row["doc_id"],
+            doc_name=row["doc_name"],
+            ordinal=row["ordinal"],
+            text=row["text"],
+        )
     model.add_entity("m", canonical="матрица")
     model.add_mention("book:1", "m", 2, role="mentions")
     model.add_mention("book:2", "m", 1, role="defines")
@@ -114,12 +138,21 @@ def test_script_writes_file_and_report(tmp_path) -> None:
 
     parsed = tmp_path / "parsed"
     parsed.mkdir()
-    (parsed / "book_chunks.json").write_text(json.dumps(_chunks(), ensure_ascii=False), encoding="utf-8")
+    (parsed / "book_chunks.json").write_text(
+        json.dumps(_chunks(), ensure_ascii=False), encoding="utf-8"
+    )
     spec = importlib.util.spec_from_file_location("graph_structural", "scripts/graph_structural.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     code = module.main(
-        ["--parsed", str(parsed), "--out", str(tmp_path / "s.json.gz"), "--report", str(tmp_path / "r.json")]
+        [
+            "--parsed",
+            str(parsed),
+            "--out",
+            str(tmp_path / "s.json.gz"),
+            "--report",
+            str(tmp_path / "r.json"),
+        ]
     )
     assert code == 0
     report = json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))

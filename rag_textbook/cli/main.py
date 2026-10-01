@@ -495,7 +495,9 @@ def goldset_build(
         if exclude_doc:
             before = len(chunks)
             chunks = exclude_documents(chunks, exclude_doc)
-            console.print(f"Исключено фрагментов: {before - len(chunks)} ({', '.join(exclude_doc)})")
+            console.print(
+                f"Исключено фрагментов: {before - len(chunks)} ({', '.join(exclude_doc)})"
+            )
         console.print(f"Доступно чанков: {len(chunks)}")
         # Граф передаётся, чтобы часть многошаговых пар отбиралась по связям,
         # а не по общим словам: на лексически похожих парах вклад графа
@@ -553,7 +555,9 @@ def goldset_pairs(
             help="Взять плотные векторы из коллекции Qdrant (источник dense)",
         ),
     ] = False,
-    parsed: Annotated[Path | None, typer.Option(help="Каталог разобранных фрагментов для офлайн-работы")] = None,
+    parsed: Annotated[
+        Path | None, typer.Option(help="Каталог разобранных фрагментов для офлайн-работы")
+    ] = None,
     seed: Annotated[int, typer.Option(help="Зерно отбора")] = 20260814,
 ) -> None:
     """Отбирает пары без модели и графа; --parsed позволяет работать без Qdrant."""
@@ -567,9 +571,11 @@ def goldset_pairs(
 
     settings = _settings()
     if parsed is not None:
-        chunks = [Chunk.model_validate(item)
-                  for path in sorted(parsed.glob("*_chunks.json"))
-                  for item in json.loads(path.read_text(encoding="utf-8"))]
+        chunks = [
+            Chunk.model_validate(item)
+            for path in sorted(parsed.glob("*_chunks.json"))
+            for item in json.loads(path.read_text(encoding="utf-8"))
+        ]
     else:
         # Тот же корпус, что у build, без создания клиентов моделей и графа.
         store = build_vector_store(settings.vector_store)
@@ -590,7 +596,9 @@ def goldset_pairs(
             raise typer.Exit(code=1)
     pairs = sample_pairs(chunks, per_source, seed, vectors=vector_data)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("".join(json.dumps(asdict(p), ensure_ascii=False) + "\n" for p in pairs), encoding="utf-8")
+    out.write_text(
+        "".join(json.dumps(asdict(p), ensure_ascii=False) + "\n" for p in pairs), encoding="utf-8"
+    )
     summary = summarize_pairs(pairs, per_source, vectors_available=bool(vector_data))
     console.print_json(data=summary)
     console.print(f"Сохранено {len(pairs)} пар в {out}")
@@ -602,11 +610,17 @@ def goldset_build_v2(
     out: Annotated[Path, typer.Option(help="Файл эталона")],
     single: Annotated[int, typer.Option(min=0, help="Одношаговые вопросы")] = 100,
     formula: Annotated[int, typer.Option(min=0, help="Формульные вопросы")] = 50,
-    ablate: Annotated[bool, typer.Option("--ablate", help="Проверить необходимость обоих фрагментов")] = False,
-    parsed: Annotated[Path | None, typer.Option(help="Каталог разобранных фрагментов вместо Qdrant")] = None,
+    ablate: Annotated[
+        bool, typer.Option("--ablate", help="Проверить необходимость обоих фрагментов")
+    ] = False,
+    parsed: Annotated[
+        Path | None, typer.Option(help="Каталог разобранных фрагментов вместо Qdrant")
+    ] = None,
     seed: Annotated[int, typer.Option(help="Зерно отбора и разбиения")] = 20260814,
     workers: Annotated[int, typer.Option(min=1, help="Параллельные запросы к модели")] = 1,
-    journal: Annotated[Path | None, typer.Option(help="Журнал ответов модели: повтор продолжает с места обрыва")] = None,
+    journal: Annotated[
+        Path | None, typer.Option(help="Журнал ответов модели: повтор продолжает с места обрыва")
+    ] = None,
 ) -> None:
     """Собирает вопросы по независимым парам и при необходимости проверяет абляцией."""
     from rag_textbook.clients.llm import build_llm_client
@@ -619,12 +633,17 @@ def goldset_build_v2(
     from rag_textbook.stores.vector_store import build_vector_store
 
     settings = _settings()
-    candidates = [PairCandidate(**json.loads(line))
-                  for line in pairs.read_text(encoding="utf-8").splitlines() if line.strip()]
+    candidates = [
+        PairCandidate(**json.loads(line))
+        for line in pairs.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     if parsed is not None:
-        chunks = [Chunk.model_validate(item)
-                  for path in sorted(parsed.glob("*_chunks.json"))
-                  for item in json.loads(path.read_text(encoding="utf-8"))]
+        chunks = [
+            Chunk.model_validate(item)
+            for path in sorted(parsed.glob("*_chunks.json"))
+            for item in json.loads(path.read_text(encoding="utf-8"))
+        ]
     else:
         store = build_vector_store(settings.vector_store)
         chunks = list(store.iter_chunks())
@@ -640,13 +659,18 @@ def goldset_build_v2(
         builder = GoldsetBuilder(llm, seed=seed, workers=workers)
         questions = build_v2(builder, chunks, candidates, single, formula, seed)
         if ablate:
-            results = run_ablation(llm, [q for q in questions if q.expected_hops > 1],
-                                   {c.id: c for c in chunks}, max_workers=workers)
+            results = run_ablation(
+                llm,
+                [q for q in questions if q.expected_hops > 1],
+                {c.id: c for c in chunks},
+                max_workers=workers,
+            )
             verdict_path = Path(str(out) + ".ablation.jsonl")
             verdict_path.parent.mkdir(parents=True, exist_ok=True)
-            verdict_path.write_text("".join(
-                json.dumps(r.as_dict(), ensure_ascii=False) + "\n" for r in results
-            ), encoding="utf-8")
+            verdict_path.write_text(
+                "".join(json.dumps(r.as_dict(), ensure_ascii=False) + "\n" for r in results),
+                encoding="utf-8",
+            )
             questions = keep_two_hop(questions, results)
         questions = assign_split(questions, seed)
         save_goldset(questions, out)
@@ -687,12 +711,10 @@ def goldset_stats(
 @goldset_app.command("verdicts")
 def goldset_verdicts(
     path: Annotated[Path | None, typer.Option(help="Путь к набору")] = None,
-    verdicts: Annotated[
-        Path, typer.Option(help="Файл вердиктов ручной проверки")
-    ] = Path("evaluation/goldsets/verdicts.json"),
-    apply: Annotated[
-        bool, typer.Option("--apply", help="Записать отметки в набор")
-    ] = False,
+    verdicts: Annotated[Path, typer.Option(help="Файл вердиктов ручной проверки")] = Path(
+        "evaluation/goldsets/verdicts.json"
+    ),
+    apply: Annotated[bool, typer.Option("--apply", help="Записать отметки в набор")] = False,
 ) -> None:
     """Применяет вердикты ручной проверки к эталонному набору.
 
@@ -781,7 +803,9 @@ def goldset_migrate(
     ambiguous = set(report.ambiguous)
     migrated = [
         question.model_copy(
-            update={"notes": (question.notes + "; " if question.notes else "") + "перенос: неоднозначно"}
+            update={
+                "notes": (question.notes + "; " if question.notes else "") + "перенос: неоднозначно"
+            }
         )
         if question.id in ambiguous
         else question
@@ -791,10 +815,16 @@ def goldset_migrate(
     summary = report.summary()
     payload = {
         "summary": summary,
-        "old_chunks": {"file": str(old_chunks), "count": len(old_rows),
-                       "fingerprint": chunks_fingerprint(old_rows)},
-        "new_chunks": {"file": str(new_chunks), "count": len(new_rows),
-                       "fingerprint": chunks_fingerprint(new_rows)},
+        "old_chunks": {
+            "file": str(old_chunks),
+            "count": len(old_rows),
+            "fingerprint": chunks_fingerprint(old_rows),
+        },
+        "new_chunks": {
+            "file": str(new_chunks),
+            "count": len(new_rows),
+            "fingerprint": chunks_fingerprint(new_rows),
+        },
         "fixes": len(fix_map),
         "lost": report.lost,
         "collided": report.collided,
@@ -807,8 +837,9 @@ def goldset_migrate(
         console.print(f"{key}: [bold]{value}[/bold]")
     if sheet is not None:
         sheet.write_text(
-            review_sheet(questions, report, {r["id"]: r for r in old_rows},
-                         {r["id"]: r for r in new_rows}),
+            review_sheet(
+                questions, report, {r["id"]: r for r in old_rows}, {r["id"]: r for r in new_rows}
+            ),
             encoding="utf-8",
         )
         console.print(f"Лист просмотра: {sheet}")
@@ -924,9 +955,9 @@ def goldset_audit(
 @goldset_app.command("label")
 def goldset_label(
     path: Annotated[Path | None, typer.Option(help="Путь к набору")] = None,
-    verdicts: Annotated[
-        Path, typer.Option(help="Файл вердиктов")
-    ] = Path("evaluation/goldsets/verdicts.json"),
+    verdicts: Annotated[Path, typer.Option(help="Файл вердиктов")] = Path(
+        "evaluation/goldsets/verdicts.json"
+    ),
     limit: Annotated[int, typer.Option(help="Ограничить число вопросов")] = 0,
     only_linked: Annotated[
         bool,
@@ -1333,11 +1364,7 @@ def _describe_selection(values: dict[str, float]) -> str:
 
 
 def _describe(overrides: dict[str, dict]) -> str:
-    parts = [
-        f"{key}={value}"
-        for section in overrides.values()
-        for key, value in section.items()
-    ]
+    parts = [f"{key}={value}" for section in overrides.values() for key, value in section.items()]
     return ", ".join(parts) or "как есть"
 
 
@@ -1355,9 +1382,7 @@ def eval_replay(
     rerank_pairs: Annotated[
         bool, typer.Option("--rerank-pairs", help="Досчитывать баллы пар реранкером (К6)")
     ] = False,
-    pair_cache: Annotated[
-        Path | None, typer.Option(help="Кэш баллов пар реранкера, JSONL")
-    ] = None,
+    pair_cache: Annotated[Path | None, typer.Option(help="Кэш баллов пар реранкера, JSONL")] = None,
     use_llm: Annotated[
         bool, typer.Option("--llm", help="Поднять клиент модели для отбора множеством (серия S)")
     ] = False,
@@ -1436,7 +1461,9 @@ def eval_replay(
         from rag_textbook.stores.graph_file import MemoryGraphStore, file_hash
 
         link_store = MemoryGraphStore.from_file(links_graph)
-        console.print(f"[dim]Рёбра отбора: {links_graph}, sha256 {file_hash(links_graph)[:12]}[/dim]")
+        console.print(
+            f"[dim]Рёбра отбора: {links_graph}, sha256 {file_hash(links_graph)[:12]}[/dim]"
+        )
     scorer = None
     if rerank_pairs:
         from rag_textbook.clients.reranker import build_reranker_client
@@ -1540,8 +1567,7 @@ def eval_answers(
         questions = [item for item in questions if item.verified]
         if not questions:
             console.print(
-                "[red]Проверенных вопросов нет. Примените вердикты: "
-                "goldset verdicts --apply[/red]"
+                "[red]Проверенных вопросов нет. Примените вердикты: goldset verdicts --apply[/red]"
             )
             raise typer.Exit(code=1)
     if limit > 0:
@@ -1629,9 +1655,7 @@ def eval_answers(
                 "сравнения конфигураций, но не как оценка качества. "
                 "Задайте LLM_JUDGE_MODEL другого семейства.[/yellow]"
             )
-        path = save_answer_evaluation(
-            summary, outcomes, settings.paths.metrics_dir, label=label
-        )
+        path = save_answer_evaluation(summary, outcomes, settings.paths.metrics_dir, label=label)
     finally:
         context.close()
 
@@ -1955,9 +1979,7 @@ def graph_offline(
         table.add_column(column, justify="right" if column != "IDF" else "center")
 
     for degree in degree_values:
-        graph = graph_offline_eval.reconstruct(
-            settings, max_entity_degree=degree, **overrides
-        )
+        graph = graph_offline_eval.reconstruct(settings, max_entity_degree=degree, **overrides)
         for hop_decay in hop_values:
             for use_idf in (False, True):
                 ranks = graph_offline_eval.second_hop_ranks(
@@ -1968,12 +1990,24 @@ def graph_offline(
                 # затухание 0.5, без IDF. Всё остальное сравнивается с ней.
                 if degree == 64 and hop_decay == 0.5 and not use_idf:
                     baseline_ranks = ranks
-                rows.append({"degree": degree, "hop_decay": hop_decay, "idf": use_idf,
-                             "entities": graph.entities, "edges": graph.edges, **summary})
+                rows.append(
+                    {
+                        "degree": degree,
+                        "hop_decay": hop_decay,
+                        "idf": use_idf,
+                        "entities": graph.entities,
+                        "edges": graph.edges,
+                        **summary,
+                    }
+                )
                 table.add_row(
-                    str(degree), f"{hop_decay:.2f}", "да" if use_idf else "нет",
-                    str(graph.entities), str(graph.edges),
-                    f"{summary['mrr']:.3f}", f"{summary['hit@8']:.3f}",
+                    str(degree),
+                    f"{hop_decay:.2f}",
+                    "да" if use_idf else "нет",
+                    str(graph.entities),
+                    str(graph.edges),
+                    f"{summary['mrr']:.3f}",
+                    f"{summary['hit@8']:.3f}",
                     f"{summary['hit@30']:.3f}",
                 )
     console.print(table)
@@ -1985,9 +2019,7 @@ def graph_offline(
     )
     if baseline_ranks is not None:
         best_ranks = graph_offline_eval.second_hop_ranks(
-            graph_offline_eval.reconstruct(
-                settings, max_entity_degree=best["degree"], **overrides
-            ),
+            graph_offline_eval.reconstruct(settings, max_entity_degree=best["degree"], **overrides),
             pairs,
             hop_decay=best["hop_decay"],
             use_idf=best["idf"],

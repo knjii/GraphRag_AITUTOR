@@ -15,7 +15,9 @@ _SPEC.loader.exec_module(smoke)
 
 
 def _chunk(i: int) -> Chunk:
-    return Chunk(id=f"d:{i:05d}", doc_id="d", doc_name="Книга", source_path="x.pdf", ordinal=i, text="т")
+    return Chunk(
+        id=f"d:{i:05d}", doc_id="d", doc_name="Книга", source_path="x.pdf", ordinal=i, text="т"
+    )
 
 
 def _entity(name: str, role: str) -> Entity:

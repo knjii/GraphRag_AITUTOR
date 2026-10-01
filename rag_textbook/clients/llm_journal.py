@@ -68,19 +68,31 @@ class JournaledLLM:
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> str:
-        key = self.key(messages, purpose=purpose, json_schema=json_schema,
-                       max_tokens=max_tokens, temperature=temperature)
+        key = self.key(
+            messages,
+            purpose=purpose,
+            json_schema=json_schema,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
         with self._lock:
             if key in self._answers:
                 self.hits += 1
                 return self._answers[key]
-        answer = self.inner.chat(messages, purpose=purpose, json_schema=json_schema,
-                                 max_tokens=max_tokens, temperature=temperature)
+        answer = self.inner.chat(
+            messages,
+            purpose=purpose,
+            json_schema=json_schema,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
         with self._lock:
             self.misses += 1
             if key not in self._answers:
                 self._answers[key] = answer
-                self._file.write(json.dumps({"key": key, "answer": answer}, ensure_ascii=False) + "\n")
+                self._file.write(
+                    json.dumps({"key": key, "answer": answer}, ensure_ascii=False) + "\n"
+                )
                 self._file.flush()
         return answer
 

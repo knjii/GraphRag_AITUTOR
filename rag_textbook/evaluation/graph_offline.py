@@ -168,9 +168,7 @@ def reconstruct(
             mentions[chunk["id"]][entity["id"]] = int(entity.get("count", 1) or 1)
             graph.names[entity["id"]] = entity.get("name", "")
         for relation in entry.get("relations", []):
-            edges.add(
-                (relation["source_id"], relation["target_id"], relation.get("label", ""))
-            )
+            edges.add((relation["source_id"], relation["target_id"], relation.get("label", "")))
 
     if graph.cache_hits == 0:
         raise RuntimeError(
@@ -219,9 +217,7 @@ def reconstruct(
     graph.neighbours = dict(neighbours)
     graph.chunks_of_entity = dict(chunks_of)
     graph.idf = {
-        entity_id: math.log(total / len(found))
-        for entity_id, found in chunks_of.items()
-        if found
+        entity_id: math.log(total / len(found)) for entity_id, found in chunks_of.items() if found
     }
     graph.edges = len(edges)
     logger.info("Граф восстановлен из кэша: %s", graph.as_dict())
@@ -303,7 +299,8 @@ class PPRGraph:
             adjacency.setdefault(("entity", entity), {})
             for neighbour in neighbours:
                 add(
-                    ("entity", entity), ("entity", neighbour),
+                    ("entity", entity),
+                    ("entity", neighbour),
                     entity_weight * math.sqrt(boost(entity) * boost(neighbour)),
                 )
         self.nodes = sorted(adjacency)
@@ -311,14 +308,20 @@ class PPRGraph:
         self.transitions: list[list[tuple[int, float]]] = []
         for node in self.nodes:
             total = sum(adjacency[node].values())
-            self.transitions.append([
-                (self.index[target], weight / total)
-                for target, weight in sorted(adjacency[node].items())
-            ])
+            self.transitions.append(
+                [
+                    (self.index[target], weight / total)
+                    for target, weight in sorted(adjacency[node].items())
+                ]
+            )
 
     def probabilities(
-        self, seeds: dict[PPRNode, float], *, alpha: float = 0.5,
-        tolerance: float = 1e-10, max_iterations: int = 200,
+        self,
+        seeds: dict[PPRNode, float],
+        *,
+        alpha: float = 0.5,
+        tolerance: float = 1e-10,
+        max_iterations: int = 200,
     ) -> dict[PPRNode, float]:
         """Полная масса, включая затравки; висячие узлы возвращают её в seeds.
 
@@ -360,20 +363,31 @@ class PPRGraph:
         """Вероятности фрагментов без положительных затравок, без перенормировки."""
         probabilities = self.probabilities(seeds, **kwargs)
         return sorted(
-            ((node[1], probability) for node, probability in probabilities.items()
-             if node[0] == "passage" and seeds.get(node, 0) <= 0 and probability > 0),
+            (
+                (node[1], probability)
+                for node, probability in probabilities.items()
+                if node[0] == "passage" and seeds.get(node, 0) <= 0 and probability > 0
+            ),
             key=lambda item: (-item[1], item[0]),
         )
 
 
 def rank_ppr(
-    graph: OfflineGraph, seeds: dict[PPRNode, float], *, alpha: float = 0.5,
-    entity_weight: float = 1.0, use_idf: bool = False,
-    tolerance: float = 1e-10, max_iterations: int = 200,
+    graph: OfflineGraph,
+    seeds: dict[PPRNode, float],
+    *,
+    alpha: float = 0.5,
+    entity_weight: float = 1.0,
+    use_idf: bool = False,
+    tolerance: float = 1e-10,
+    max_iterations: int = 200,
 ) -> list[tuple[str, float]]:
     """Ранжирует фрагменты степенным методом, без внешних зависимостей."""
     return PPRGraph(graph, entity_weight=entity_weight, use_idf=use_idf).rank(
-        seeds, alpha=alpha, tolerance=tolerance, max_iterations=max_iterations,
+        seeds,
+        alpha=alpha,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
     )
 
 
@@ -415,9 +429,7 @@ def summarize(ranks: Sequence[int], cutoffs: Sequence[int] = (8, 16, 30)) -> dic
         "mrr": round(sum(1.0 / rank for rank in ranks) / count, 4),
     }
     for cutoff in cutoffs:
-        result[f"hit@{cutoff}"] = round(
-            sum(1 for rank in ranks if rank <= cutoff) / count, 4
-        )
+        result[f"hit@{cutoff}"] = round(sum(1 for rank in ranks if rank <= cutoff) / count, 4)
     found = sorted(rank for rank in ranks if rank < NOT_FOUND)
     result["median_rank"] = float(found[len(found) // 2]) if found else float(NOT_FOUND)
     result["unreachable"] = sum(1 for rank in ranks if rank >= NOT_FOUND)

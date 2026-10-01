@@ -2,7 +2,8 @@ import importlib.util
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location(
-    "bench_metrics", Path(__file__).resolve().parents[1] / "scripts" / "bench_metrics.py")
+    "bench_metrics", Path(__file__).resolve().parents[1] / "scripts" / "bench_metrics.py"
+)
 bench_metrics = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bench_metrics)
 
@@ -25,9 +26,13 @@ def test_pool_field_overrides_ranking(tmp_path):
     bundle = tmp_path / "b"
     bundle.mkdir()
     (bundle / "questions.jsonl").write_text(
-        '{"qid": "q1", "question": "?", "type": "2hop", "gold_chunk_ids": ["a", "b"]}\n', encoding="utf-8")
+        '{"qid": "q1", "question": "?", "type": "2hop", "gold_chunk_ids": ["a", "b"]}\n',
+        encoding="utf-8",
+    )
     rankings = tmp_path / "r.jsonl"
-    rankings.write_text('{"qid": "q1", "ranked": ["a"], "pool": ["a", "b", "c"]}\n', encoding="utf-8")
+    rankings.write_text(
+        '{"qid": "q1", "ranked": ["a"], "pool": ["a", "b", "c"]}\n', encoding="utf-8"
+    )
     summary, _ = bench_metrics.evaluate(bundle, rankings, [5])
     assert summary["overall"]["all@5"] == 0.0
     assert summary["overall"]["all@pool"] == 1.0

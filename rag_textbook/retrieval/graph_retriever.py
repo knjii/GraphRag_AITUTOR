@@ -217,9 +217,7 @@ def _normalized(rows: Sequence[dict], key: str) -> dict[str, float]:
     живут в разных шкалах, и в режиме ``both`` без неё один источник
     полностью подавил бы другой.
     """
-    values = {
-        str(row.get("id") or ""): float(row.get(key) or 0.0) for row in rows if row.get("id")
-    }
+    values = {str(row.get("id") or ""): float(row.get(key) or 0.0) for row in rows if row.get("id")}
     top = max(values.values(), default=0.0)
     if top <= 0:
         return dict.fromkeys(values, 1.0)

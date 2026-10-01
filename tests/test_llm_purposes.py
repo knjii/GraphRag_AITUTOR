@@ -83,6 +83,7 @@ def test_empty_effort_is_not_sent() -> None:
 
 # --------------------------------------------------------------- имена
 
+
 def test_all_purposes_fall_back_to_the_single_model():
     """Пустая настройка означает «там же, где всё остальное».
 
@@ -96,9 +97,7 @@ def test_all_purposes_fall_back_to_the_single_model():
 
 
 def test_chat_and_utility_are_separable():
-    settings = _settings(
-        LLM_MODEL="базовая", LLM_CHAT_MODEL="крупная", LLM_UTILITY_MODEL="мелкая"
-    )
+    settings = _settings(LLM_MODEL="базовая", LLM_CHAT_MODEL="крупная", LLM_UTILITY_MODEL="мелкая")
 
     assert settings.model_for("chat") == "крупная"
     assert settings.model_for("utility") == "мелкая"
@@ -115,6 +114,7 @@ def test_judge_can_differ_from_the_generator():
 
 
 # --------------------------------------------------------------- адреса
+
 
 def test_base_url_defaults_everywhere():
     settings = _settings(LLM_BASE_URL="http://сервер:8001/v1")
@@ -140,6 +140,7 @@ def test_trailing_slash_does_not_produce_a_double_slash():
 
 
 # ------------------------------------------------- запрос уходит по адресу
+
 
 def test_request_goes_to_the_endpoint_of_its_purpose(monkeypatch: pytest.MonkeyPatch):
     """Проверка сквозная: мало объявить адрес, запрос обязан на него уйти.

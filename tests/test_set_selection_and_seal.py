@@ -22,8 +22,13 @@ from rag_textbook.retrieval import seal, selection, set_selection
 
 def _item(chunk_id: str, score: float | None = None, text: str | None = None) -> ScoredChunk:
     chunk = Chunk(
-        id=chunk_id, doc_id="d", doc_name="Книга", source_path="", ordinal=0,
-        text=text or f"текст {chunk_id}", pages=[1],
+        id=chunk_id,
+        doc_id="d",
+        doc_name="Книга",
+        source_path="",
+        ordinal=0,
+        text=text or f"текст {chunk_id}",
+        pages=[1],
     )
     return ScoredChunk(chunk=chunk, rerank_score=score, channels=["dense"])
 
@@ -133,13 +138,20 @@ def _score_by_prefix(query: str, texts: Sequence[str]) -> list[float]:
 def test_seal_replaces_worst_non_supporting_keeps_size() -> None:
     initial = [_item("a", 0.9), _item("b", 0.5), _item("c", 0.1), _item("d", 0.3)]
     outside = [_item("x", text="про теорему Штольца"), _item("y", text="шум")]
-    llm = FakeLLMClient([
-        _ledger({1: "факт из a"}, missing=["Штольца"]),
-        _ledger({1: "факт", 2: "второй"}, sufficient=True),
-    ])
+    llm = FakeLLMClient(
+        [
+            _ledger({1: "факт из a"}, missing=["Штольца"]),
+            _ledger({1: "факт", 2: "второй"}, sufficient=True),
+        ]
+    )
     result = seal.run(
-        "вопрос", initial, search=lambda query: outside, score=_score_by_prefix,
-        llm=llm, settings=_settings(seal_candidates_per_gap=1), top_k=4,
+        "вопрос",
+        initial,
+        search=lambda query: outside,
+        score=_score_by_prefix,
+        llm=llm,
+        settings=_settings(seal_candidates_per_gap=1),
+        top_k=4,
     )
     # Вытеснен c — худший неопорный; x стал вторым, за опорным a.
     assert _ids(result.final) == ["a", "x", "b", "d"]
@@ -152,8 +164,13 @@ def test_seal_never_evicts_supporting() -> None:
     initial = [_item("a", 0.1), _item("b", 0.2)]
     llm = FakeLLMClient([_ledger({1: "a", 2: "b"}, missing=["нечто"])])
     result = seal.run(
-        "вопрос", initial, search=lambda query: [_item("x", text="нечто")],
-        score=_score_by_prefix, llm=llm, settings=_settings(), top_k=2,
+        "вопрос",
+        initial,
+        search=lambda query: [_item("x", text="нечто")],
+        score=_score_by_prefix,
+        llm=llm,
+        settings=_settings(),
+        top_k=2,
     )
     assert _ids(result.final) == ["a", "b"]
     assert result.added == []
@@ -162,8 +179,13 @@ def test_seal_never_evicts_supporting() -> None:
 def test_seal_fallback_on_unparsable_ledger() -> None:
     initial = [_item("a", 0.9), _item("b", 0.5)]
     result = seal.run(
-        "вопрос", initial, search=lambda query: [], score=_score_by_prefix,
-        llm=FakeLLMClient(["не JSON"]), settings=_settings(), top_k=2,
+        "вопрос",
+        initial,
+        search=lambda query: [],
+        score=_score_by_prefix,
+        llm=FakeLLMClient(["не JSON"]),
+        settings=_settings(),
+        top_k=2,
     )
     assert result.status == "fallback"
     assert _ids(result.final) == ["a", "b"]
@@ -173,8 +195,13 @@ def test_seal_skips_items_already_present() -> None:
     initial = [_item("a", 0.9), _item("b", 0.1)]
     llm = FakeLLMClient([_ledger({1: "a"}, missing=["b"]), _ledger({1: "a"})])
     result = seal.run(
-        "вопрос", initial, search=lambda query: [_item("b")], score=_score_by_prefix,
-        llm=llm, settings=_settings(), top_k=2,
+        "вопрос",
+        initial,
+        search=lambda query: [_item("b")],
+        score=_score_by_prefix,
+        llm=llm,
+        settings=_settings(),
+        top_k=2,
     )
     assert result.added == []
     assert _ids(result.final) == ["a", "b"]
@@ -186,12 +213,23 @@ def test_seal_skips_items_already_present() -> None:
 def test_selection_metrics_counts_gold_outside_pool() -> None:
     outcomes = [
         QueryOutcome(
-            question_id="q1", question_type="t", retrieved=["a", "x"], relevant=["a", "x"],
-            selected=["a"], seal_added=["x"], pool=["a", "b"], selection_status="seal_ok",
+            question_id="q1",
+            question_type="t",
+            retrieved=["a", "x"],
+            relevant=["a", "x"],
+            selected=["a"],
+            seal_added=["x"],
+            pool=["a", "b"],
+            selection_status="seal_ok",
         ),
         QueryOutcome(
-            question_id="q2", question_type="t", retrieved=["c"], relevant=["c"],
-            selected=[], pool=["c"], selection_status="seal_fallback",
+            question_id="q2",
+            question_type="t",
+            retrieved=["c"],
+            relevant=["c"],
+            selected=[],
+            pool=["c"],
+            selection_status="seal_fallback",
         ),
     ]
     values = selection_metrics(outcomes)

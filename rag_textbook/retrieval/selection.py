@@ -165,7 +165,9 @@ def conditional(
             for index, score in zip(remaining, scores, strict=True)
         ]
         # При равенстве побеждает стоявший выше у реранкера.
-        best = max(range(len(remaining)), key=lambda position: (values[position], -remaining[position]))
+        best = max(
+            range(len(remaining)), key=lambda position: (values[position], -remaining[position])
+        )
         chosen.append(remaining.pop(best))
     return [items[index] for index in chosen] + [items[index] for index in remaining]
 
@@ -192,9 +194,7 @@ def pairs(
     if len(items) <= 1:
         return list(items)
     position = {item.chunk.id: index for index, item in enumerate(items)}
-    links = _unordered_links(
-        store.passage_links(list(position), mode=settings.selection_links)
-    )
+    links = _unordered_links(store.passage_links(list(position), mode=settings.selection_links))
     edges = sorted(links.items(), key=lambda pair: (-pair[1], pair[0]))[:MAX_PAIRS]
     if not edges:
         return list(items)

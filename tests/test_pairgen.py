@@ -18,35 +18,52 @@ from rag_textbook.evaluation.goldset import GoldsetBuilder, load_goldset
 from rag_textbook.models import Chunk, GoldQuestion
 
 
-def chunk(doc: str, ordinal: int, text: str = "", headers: tuple[str, ...] = ("Матрицы",),
-          formula: bool = False) -> Chunk:
-    return Chunk(id=f"{doc}:{ordinal}", doc_id=doc, doc_name=doc, source_path=f"{doc}.pdf",
-                 ordinal=ordinal, headers=list(headers), has_formula=formula,
-                 text=text + " Линейная алгебра изучает пространство векторов и матрицы." * 9)
+def chunk(
+    doc: str,
+    ordinal: int,
+    text: str = "",
+    headers: tuple[str, ...] = ("Матрицы",),
+    formula: bool = False,
+) -> Chunk:
+    return Chunk(
+        id=f"{doc}:{ordinal}",
+        doc_id=doc,
+        doc_name=doc,
+        source_path=f"{doc}.pdf",
+        ordinal=ordinal,
+        headers=list(headers),
+        has_formula=formula,
+        text=text + " Линейная алгебра изучает пространство векторов и матрицы." * 9,
+    )
 
 
 @pytest.fixture
 def corpus() -> list[Chunk]:
-    return [chunk("a", 0, r"Определение 3.8 (спектр). $$x=1\tag{9.19}$$", formula=True),
-            chunk("a", 1, "В определении 3.8 и (9.19)."),
-            chunk("a", 4, "Применим определение 3.8 и (9.19)."),
-            chunk("b", 0, headers=("Теория матриц",)),
-            chunk("c", 0, headers=("Интегралы функций",))]
+    return [
+        chunk("a", 0, r"Определение 3.8 (спектр). $$x=1\tag{9.19}$$", formula=True),
+        chunk("a", 1, "В определении 3.8 и (9.19)."),
+        chunk("a", 4, "Применим определение 3.8 и (9.19)."),
+        chunk("b", 0, headers=("Теория матриц",)),
+        chunk("c", 0, headers=("Интегралы функций",)),
+    ]
 
 
 @pytest.mark.parametrize("source", pg.SOURCES)
 def test_sources_and_common_filters(corpus, source):
-    dirty = [chunk("a", 8, headers=("УПРАЖНЕНИЯ",)),
-             chunk("b", 8, ". . " + "..... 12 " * 10),
-             chunk("c", 8).model_copy(update={"text": "Короткий текст"})]
+    dirty = [
+        chunk("a", 8, headers=("УПРАЖНЕНИЯ",)),
+        chunk("b", 8, ". . " + "..... 12 " * 10),
+        chunk("c", 8).model_copy(update={"text": "Короткий текст"}),
+    ]
     fn = getattr(pg, source)
     kwargs = {"vectors": {c.id: [1, 0] for c in corpus + dirty}} if source == "dense" else {}
     pairs = fn(corpus + dirty, random.Random(7), **kwargs)
     assert pairs
     assert all(p.source == source for p in pairs)
     assert all(p.ordinal_distance is None or p.ordinal_distance >= 3 for p in pairs)
-    assert all(p.left not in {c.id for c in dirty} and p.right not in {c.id for c in dirty}
-               for p in pairs)
+    assert all(
+        p.left not in {c.id for c in dirty} and p.right not in {c.id for c in dirty} for p in pairs
+    )
     assert len({(p.left, p.right) for p in pairs}) == len(pairs)
     if source in ("chapter_random", "explicit_ref"):
         assert any({p.left, p.right} == {"a:0", "a:4"} for p in pairs)
@@ -64,17 +81,21 @@ def test_chapter_fallback_window():
 
 def test_bm25_rare_terms_and_frequency():
     rare = "квазигруппа гомоморфизм эндоморфизм "
-    chunks = [chunk("a", 0, rare * 2), chunk("a", 1, rare * 60),
-              chunk("b", 0, rare * 30), chunk("c", 0, rare),
-              chunk("d", 0), chunk("e", 0)]
+    chunks = [
+        chunk("a", 0, rare * 2),
+        chunk("a", 1, rare * 60),
+        chunk("b", 0, rare * 30),
+        chunk("c", 0, rare),
+        chunk("d", 0),
+        chunk("e", 0),
+    ]
     pairs = pg.bm25(chunks, random.Random(1))
     assert any(p.left == "a:0" and p.right == "b:0" for p in pairs)
     assert any("квазигруппа" in p.evidence for p in pairs)
 
 
 def test_dense_cosine_and_missing_vectors(corpus):
-    vectors = {"a:0": [10, 0], "a:1": [10, 0], "a:4": [1, 0.1],
-               "b:0": [1, 1], "c:0": [0, 0]}
+    vectors = {"a:0": [10, 0], "a:1": [10, 0], "a:4": [1, 0.1], "b:0": [1, 1], "c:0": [0, 0]}
     pairs = pg.dense(corpus, random.Random(0), vectors)
     assert any(p.left == "a:0" and p.right == "a:4" for p in pairs)
     assert all("c:0" not in (p.left, p.right) for p in pairs)
@@ -85,8 +106,7 @@ def test_dense_cosine_and_missing_vectors(corpus):
 
 
 def test_references_are_document_local():
-    chunks = [chunk("a", 0, r"$$x=1\tag{9.19}$$"),
-              chunk("b", 4, "По (9.19) получаем результат.")]
+    chunks = [chunk("a", 0, r"$$x=1\tag{9.19}$$"), chunk("b", 4, "По (9.19) получаем результат.")]
     assert pg.explicit_ref(chunks, random.Random(0)) == []
 
 
@@ -112,8 +132,12 @@ class Model:
 
     def chat(self, messages, **kwargs):
         self.prompts.append(messages[0].content)
-        return json.dumps({"question": f"Как вычислить результат метода {len(self.prompts)}?",
-                           "answer": "С помощью спектра."})
+        return json.dumps(
+            {
+                "question": f"Как вычислить результат метода {len(self.prompts)}?",
+                "answer": "С помощью спектра.",
+            }
+        )
 
     def close(self):
         self.closed = True
@@ -142,19 +166,25 @@ def test_build_v2(corpus, monkeypatch):
 
 
 def test_keep_two_hop():
-    questions = [GoldQuestion(id=str(i), question="?", gold_chunk_ids=[], expected_hops=1 if i == 0 else 2)
-                 for i in range(5)]
-    results = [AblationResult(str(i), "multi_hop", verdict, [], False)
-               for i, verdict in ((1, "ok"), (2, "single_hop_enough"), (3, "unanswerable"))]
+    questions = [
+        GoldQuestion(id=str(i), question="?", gold_chunk_ids=[], expected_hops=1 if i == 0 else 2)
+        for i in range(5)
+    ]
+    results = [
+        AblationResult(str(i), "multi_hop", verdict, [], False)
+        for i, verdict in ((1, "ok"), (2, "single_hop_enough"), (3, "unanswerable"))
+    ]
     kept = pg.keep_two_hop(questions, results)
     assert kept == questions[:2]
     assert kept[0] is questions[0]
 
 
 def test_split_stable_with_additions_and_within_strata():
-    questions = [GoldQuestion(id=str(i), question="?", gold_chunk_ids=[], slice=s, pair_source=p)
-                 for s, p in (("single", ""), ("linking", "bm25"), ("cross_book", "cross_book"))
-                 for i in range(1000)]
+    questions = [
+        GoldQuestion(id=str(i), question="?", gold_chunk_ids=[], slice=s, pair_source=p)
+        for s, p in (("single", ""), ("linking", "bm25"), ("cross_book", "cross_book"))
+        for i in range(1000)
+    ]
     result = pg.assign_split(questions, 7)
     assert result == pg.assign_split(questions, 7)
     assert result != pg.assign_split(questions, 8)
@@ -185,13 +215,18 @@ def test_cli_pairs_and_build_with_ablation(corpus, monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli, "_settings", lambda: SimpleNamespace(vector_store=None, llm=None))
     monkeypatch.setattr(cli, "build_context", lambda *_: pytest.fail("Контекст не нужен"))
-    monkeypatch.setattr(vector_store, "build_vector_store",
-                        lambda _: SimpleNamespace(iter_chunks=lambda: iter(corpus)))
+    monkeypatch.setattr(
+        vector_store,
+        "build_vector_store",
+        lambda _: SimpleNamespace(iter_chunks=lambda: iter(corpus)),
+    )
     model = Model()
     monkeypatch.setattr(llm, "build_llm_client", lambda _: model)
     pairs_path = tmp_path / "pairs.jsonl"
     runner = CliRunner()
-    result = runner.invoke(cli.app, ["goldset", "pairs", "--out", str(pairs_path), "--per-source", "50"])
+    result = runner.invoke(
+        cli.app, ["goldset", "pairs", "--out", str(pairs_path), "--per-source", "50"]
+    )
     assert result.exit_code == 0, result.output
     assert "векторы не переданы" in result.output
     assert not model.prompts
@@ -199,13 +234,29 @@ def test_cli_pairs_and_build_with_ablation(corpus, monkeypatch, tmp_path):
     pairs_path.write_text("\n".join(json.dumps(asdict(p)) for p in candidates), encoding="utf-8")
 
     def ablate(model, questions, chunks, **kwargs):
-        return [AblationResult(q.id, q.question_type, "single_hop_enough", [True], True)
-                for q in questions]
+        return [
+            AblationResult(q.id, q.question_type, "single_hop_enough", [True], True)
+            for q in questions
+        ]
 
     monkeypatch.setattr(cli, "run_ablation", ablate)
     output = tmp_path / "gold.json"
-    result = runner.invoke(cli.app, ["goldset", "build-v2", "--pairs", str(pairs_path),
-                                    "--out", str(output), "--single", "1", "--formula", "1", "--ablate"])
+    result = runner.invoke(
+        cli.app,
+        [
+            "goldset",
+            "build-v2",
+            "--pairs",
+            str(pairs_path),
+            "--out",
+            str(output),
+            "--single",
+            "1",
+            "--formula",
+            "1",
+            "--ablate",
+        ],
+    )
     assert result.exit_code == 0, result.output
     questions = load_goldset(output)
     assert len(questions) == 2

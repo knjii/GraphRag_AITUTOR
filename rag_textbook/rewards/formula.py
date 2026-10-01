@@ -49,56 +49,121 @@ _EXTRA_DOLLARS_RE = re.compile(r"\${3,}")
 _CYRILLIC_WORD_RE = re.compile(r"[а-яёА-ЯЁ]{3,}")
 
 _TOKEN_RE = re.compile(
-    r"\\[A-Za-z]+\*?"      # команда
-    r"|\\."                # экранированный символ: \{ \, \;
-    r"|[A-Za-z]"           # буква — отдельный токен: ab и a b одно и то же
-    r"|\d+(?:\.\d+)?"      # число
-    r"|\S"                 # всё остальное по символу
+    r"\\[A-Za-z]+\*?"  # команда
+    r"|\\."  # экранированный символ: \{ \, \;
+    r"|[A-Za-z]"  # буква — отдельный токен: ab и a b одно и то же
+    r"|\d+(?:\.\d+)?"  # число
+    r"|\S"  # всё остальное по символу
 )
 
 # Оформление, которое не меняет формулу.
 _DROP = {
-    r"\left", r"\right", r"\big", r"\Big", r"\bigg", r"\Bigg",
-    r"\bigl", r"\bigr", r"\Bigl", r"\Bigr", r"\biggl", r"\biggr",
-    r"\displaystyle", r"\textstyle", r"\scriptstyle",
-    r"\,", r"\;", r"\:", r"\!", r"\ ", r"\quad", r"\qquad",
-    r"\nonumber", r"\notag", r"\limits", r"\nolimits",
+    r"\left",
+    r"\right",
+    r"\big",
+    r"\Big",
+    r"\bigg",
+    r"\Bigg",
+    r"\bigl",
+    r"\bigr",
+    r"\Bigl",
+    r"\Bigr",
+    r"\biggl",
+    r"\biggr",
+    r"\displaystyle",
+    r"\textstyle",
+    r"\scriptstyle",
+    r"\,",
+    r"\;",
+    r"\:",
+    r"\!",
+    r"\ ",
+    r"\quad",
+    r"\qquad",
+    r"\nonumber",
+    r"\notag",
+    r"\limits",
+    r"\nolimits",
 }
 
 # Обёртки, у которых важен только аргумент.
 _UNWRAP = {
-    r"\mathrm", r"\operatorname", r"\operatorname*", r"\text", r"\textrm", r"\mathit",
+    r"\mathrm",
+    r"\operatorname",
+    r"\operatorname*",
+    r"\text",
+    r"\textrm",
+    r"\mathit",
     # Жирный шрифт: разбор и модели ставят его непоследовательно
     # (``\pmb{A}`` в учебнике, ``A`` в ответе — та же матрица).
-    r"\mathbf", r"\bf",
+    r"\mathbf",
+    r"\bf",
 }
 
 # Матричные окружения сводятся к скобкам вокруг содержимого.
 _MATRIX_BRACKETS = {
-    "bmatrix": ("[", "]"), "pmatrix": ("(", ")"),
-    "vmatrix": ("|", "|"), "Vmatrix": (r"\|", r"\|"),
+    "bmatrix": ("[", "]"),
+    "pmatrix": ("(", ")"),
+    "vmatrix": ("|", "|"),
+    "Vmatrix": (r"\|", r"\|"),
 }
 
 # Именованные функции раскладываются на буквы: разбор учебника даёт
 # ``\operatorname* { m i n }``, модель пишет ``\min`` — это одна формула.
 _NAMED_FUNCTIONS = {
-    r"\min", r"\max", r"\log", r"\ln", r"\exp", r"\sin", r"\cos", r"\tan",
-    r"\det", r"\dim", r"\ker", r"\arg", r"\lim", r"\sup", r"\inf", r"\tr",
-    r"\rank", r"\sgn", r"\argmin", r"\argmax", r"\Pr", r"\deg", r"\gcd",
+    r"\min",
+    r"\max",
+    r"\log",
+    r"\ln",
+    r"\exp",
+    r"\sin",
+    r"\cos",
+    r"\tan",
+    r"\det",
+    r"\dim",
+    r"\ker",
+    r"\arg",
+    r"\lim",
+    r"\sup",
+    r"\inf",
+    r"\tr",
+    r"\rank",
+    r"\sgn",
+    r"\argmin",
+    r"\argmax",
+    r"\Pr",
+    r"\deg",
+    r"\gcd",
 }
 
 _SYNONYMS = {
-    r"\dfrac": r"\frac", r"\tfrac": r"\frac", r"\cfrac": r"\frac",
-    r"\le": r"\leq", r"\ge": r"\geq", r"\ne": r"\neq",
-    r"\leqslant": r"\leq", r"\geqslant": r"\geq",
-    r"\to": r"\rightarrow", r"\gets": r"\leftarrow",
-    r"\lbrace": r"\{", r"\rbrace": r"\}",
-    r"\lvert": "|", r"\rvert": "|", r"\vert": "|",
-    r"\lVert": r"\|", r"\rVert": r"\|", r"\Vert": r"\|",
-    r"\bm": r"\mathbf", r"\boldsymbol": r"\mathbf", r"\pmb": r"\mathbf",
-    r"\intercal": r"\top", r"\transpose": r"\top",
-    r"\varepsilon": r"\epsilon", r"\varphi": r"\phi",
-    r"\dots": r"\ldots", r"\cdots": r"\ldots",
+    r"\dfrac": r"\frac",
+    r"\tfrac": r"\frac",
+    r"\cfrac": r"\frac",
+    r"\le": r"\leq",
+    r"\ge": r"\geq",
+    r"\ne": r"\neq",
+    r"\leqslant": r"\leq",
+    r"\geqslant": r"\geq",
+    r"\to": r"\rightarrow",
+    r"\gets": r"\leftarrow",
+    r"\lbrace": r"\{",
+    r"\rbrace": r"\}",
+    r"\lvert": "|",
+    r"\rvert": "|",
+    r"\vert": "|",
+    r"\lVert": r"\|",
+    r"\rVert": r"\|",
+    r"\Vert": r"\|",
+    r"\bm": r"\mathbf",
+    r"\boldsymbol": r"\mathbf",
+    r"\pmb": r"\mathbf",
+    r"\intercal": r"\top",
+    r"\transpose": r"\top",
+    r"\varepsilon": r"\epsilon",
+    r"\varphi": r"\phi",
+    r"\dots": r"\ldots",
+    r"\cdots": r"\ldots",
     r"\bigcdot": r"\cdot",
     r"\colon": ":",
     r"\mid": "|",
@@ -262,7 +327,9 @@ def canonical_tokens(formula: str) -> tuple[str, ...]:
     text = re.sub(
         r"\\(begin|end)\s*\{([A-Za-z]+)\}",
         lambda m: " {} ".format(
-            _MATRIX_BRACKETS[m.group(2)][m.group(1) == "end"] if m.group(2) in _MATRIX_BRACKETS else ""
+            _MATRIX_BRACKETS[m.group(2)][m.group(1) == "end"]
+            if m.group(2) in _MATRIX_BRACKETS
+            else ""
         ),
         text,
     )
@@ -316,9 +383,13 @@ def _mark_matrix_cells(match: re.Match[str]) -> str:
 def _drop_trailing_rows(tokens: list[str]) -> list[str]:
     """Перевод строки перед закрытием матрицы — вёрстка: «a \\\\ b \\\\ ]»."""
     return [
-        token for index, token in enumerate(tokens)
-        if not (token == _ROW and index + 1 < len(tokens)
-                and tokens[index + 1] in {"]", ")", "|", r"\|"})
+        token
+        for index, token in enumerate(tokens)
+        if not (
+            token == _ROW
+            and index + 1 < len(tokens)
+            and tokens[index + 1] in {"]", ")", "|", r"\|"}
+        )
     ]
 
 
@@ -401,10 +472,7 @@ def _drop_grouping_braces(tokens: list[str]) -> list[str]:
             start, significant_group = stack.pop()
             if significant_group:
                 keep.update((start, index))
-    return [
-        token for index, token in enumerate(tokens)
-        if token not in {"{", "}"} or index in keep
-    ]
+    return [token for index, token in enumerate(tokens) if token not in {"{", "}"} or index in keep]
 
 
 def _normalize_transpose(tokens: list[str]) -> list[str]:
@@ -418,7 +486,12 @@ def _normalize_transpose(tokens: list[str]) -> list[str]:
                 result.extend(["^", r"\top"])
                 index += 2
                 continue
-            if len(ahead) == 3 and ahead[0] == "{" and ahead[1] in ("T", r"\top") and ahead[2] == "}":
+            if (
+                len(ahead) == 3
+                and ahead[0] == "{"
+                and ahead[1] in ("T", r"\top")
+                and ahead[2] == "}"
+            ):
                 result.extend(["^", r"\top"])
                 index += 4
                 continue
@@ -536,14 +609,37 @@ FOREIGN_SYMBOLS = 0.3
 
 # Структура, которая есть в любой формуле и ничего не говорит о её источнике.
 _STRUCTURAL = {
-    "{", "}", "^", "_", "(", ")", "[", "]", "=", "+", "-", "|", ":", "/", "<", ">",
-    r"\ldots", r"\cdot", r"\vdots", r"\ddots", _COL, _ROW, _ARG_OPEN, _ARG_CLOSE,
+    "{",
+    "}",
+    "^",
+    "_",
+    "(",
+    ")",
+    "[",
+    "]",
+    "=",
+    "+",
+    "-",
+    "|",
+    ":",
+    "/",
+    "<",
+    ">",
+    r"\ldots",
+    r"\cdot",
+    r"\vdots",
+    r"\ddots",
+    _COL,
+    _ROW,
+    _ARG_OPEN,
+    _ARG_CLOSE,
 }
 
 
 def _unknown_share(tokens: Sequence[str], vocabulary: set[str]) -> float:
     meaningful = [
-        token for token in tokens
+        token
+        for token in tokens
         if token not in _STRUCTURAL and not token.replace(".", "").isdigit()
     ]
     if not meaningful:
@@ -553,7 +649,9 @@ def _unknown_share(tokens: Sequence[str], vocabulary: set[str]) -> float:
 
 def _matches(tokens: tuple[str, ...], pool: Sequence[tuple[str, ...]]) -> bool:
     return any(
-        tokens == other or _contains(other, tokens) or _contains(tokens, other)
+        tokens == other
+        or _contains(other, tokens)
+        or _contains(tokens, other)
         or similarity(tokens, other) >= NEAR_MATCH
         for other in pool
     )
@@ -577,7 +675,7 @@ def _flip_equation(tokens: tuple[str, ...]) -> tuple[str, ...] | None:
     if len(positions) != 1:
         return None
     split = positions[0]
-    left, right = tokens[:split], tokens[split + 1:]
+    left, right = tokens[:split], tokens[split + 1 :]
     if not left or not right:
         return None
     return (*right, "=", *left)
@@ -601,7 +699,8 @@ def _split_dumps(
         inside = [other for other in pool if len(other) < len(item) and _contains(item, other)]
         # Формула источника, вложенная в другую вошедшую, отдельно не считается.
         inside = [
-            other for other in inside
+            other
+            for other in inside
             if not any(len(bigger) > len(other) and _contains(bigger, other) for bigger in inside)
         ]
         rest = _uncovered(item, inside) if inside else item
@@ -643,8 +742,8 @@ def _uncovered(item: tuple[str, ...], parts: Sequence[tuple[str, ...]]) -> tuple
     for part in parts:
         size = len(part)
         for start in range(len(item) - size + 1):
-            if item[start:start + size] == part:
-                covered[start:start + size] = [True] * size
+            if item[start : start + size] == part:
+                covered[start : start + size] = [True] * size
     return tuple(token for token, hit in zip(item, covered, strict=True) if not hit)
 
 
@@ -661,10 +760,12 @@ def score_formulas(reference_text: str, answer: str, context: str) -> FormulaSco
     # перестановку сторон равенства. Иначе ``x_1y_1+x_2y_2=s`` в контексте
     # не делал видимой эталонную ``s=x_1y_1+x_2y_2`` (задача 020).
     expected = [
-        gold for gold in significant(extract_math(reference_text, limit=None))
+        gold
+        for gold in significant(extract_math(reference_text, limit=None))
         if any(
             _contains(seen, form)
-            for form in (gold, _flip_equation(gold)) if form is not None
+            for form in (gold, _flip_equation(gold))
+            if form is not None
             for seen in context_forms
         )
     ]
@@ -675,7 +776,9 @@ def score_formulas(reference_text: str, answer: str, context: str) -> FormulaSco
     for gold in expected:
         flipped = _flip_equation(gold)
         if any(
-            gold == item or _contains(item, gold) or (flipped is not None and _contains(item, flipped))
+            gold == item
+            or _contains(item, gold)
+            or (flipped is not None and _contains(item, flipped))
             for item in raw_answer_forms
         ):
             carried += 1
@@ -695,7 +798,8 @@ def score_formulas(reference_text: str, answer: str, context: str) -> FormulaSco
 
     relevant = sum(1 for item in answer_forms if _matches(item, expected))
     foreign = sum(
-        1 for item in answer_forms
+        1
+        for item in answer_forms
         if not _matches(item, context_forms)
         and not _matches(item, expected)
         and _unknown_share(item, vocabulary) > FOREIGN_SYMBOLS

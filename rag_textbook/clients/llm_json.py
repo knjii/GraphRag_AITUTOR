@@ -64,9 +64,18 @@ _DECODED = {"\b": "b", "\f": "f", "\t": "t", "\r": "r", "\n": "n"}
 # После json.loads от команды остаётся управляющий символ и хвост имени:
 # \nabla — перевод строки и «abla». Ищем хвосты команд на свою букву.
 _DECODED_COMMAND = {
-    char: re.compile(re.escape(char) + "(" + "|".join(sorted(
-        (name[1:] for name in LATEX_COMMANDS if name[0] == letter), key=len, reverse=True,
-    )) + ")(?![a-zA-Z])")
+    char: re.compile(
+        re.escape(char)
+        + "("
+        + "|".join(
+            sorted(
+                (name[1:] for name in LATEX_COMMANDS if name[0] == letter),
+                key=len,
+                reverse=True,
+            )
+        )
+        + ")(?![a-zA-Z])"
+    )
     for char, letter in _DECODED.items()
 }
 

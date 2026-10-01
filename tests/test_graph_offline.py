@@ -172,10 +172,20 @@ def test_hop_decay_zero_disables_expansion(settings):
         settings,
         chunks,
         {
-            "doc:00000": {"entities": [left], "relations": [
-                {"source_id": left["id"], "target_id": right["id"], "label": "обобщает",
-                 "chunk_id": "doc:00000", "doc_id": "doc", "weight": 1.0}
-            ], "status": "ok"},
+            "doc:00000": {
+                "entities": [left],
+                "relations": [
+                    {
+                        "source_id": left["id"],
+                        "target_id": right["id"],
+                        "label": "обобщает",
+                        "chunk_id": "doc:00000",
+                        "doc_id": "doc",
+                        "weight": 1.0,
+                    }
+                ],
+                "status": "ok",
+            },
             "doc:00001": {"entities": [right], "relations": [], "status": "ok"},
         },
     )
@@ -193,9 +203,7 @@ def test_settings_mismatch_is_reported_not_silently_wrong(corpus):
 
 def test_second_hop_measures_both_directions(corpus):
     graph = reconstruct(corpus, model=MODEL, reasoning_effort=EFFORT)
-    ranks = second_hop_ranks(
-        graph, [("doc:00000", "doc:00002")], hop_decay=0.0, use_idf=True
-    )
+    ranks = second_hop_ranks(graph, [("doc:00000", "doc:00002")], hop_decay=0.0, use_idf=True)
 
     assert len(ranks) == 2
     summary = summarize(ranks)

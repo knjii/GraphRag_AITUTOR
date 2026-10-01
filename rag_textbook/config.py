@@ -496,9 +496,7 @@ class GraphSettings(_Base):
     # Здесь модель получает выдержки об одном понятии из разных мест книги
     # и ищет связи, следующие из их сопоставления. Стоимость — один вызов
     # на понятие, поэтому число понятий ограничено.
-    cross_chunk_relations_enabled: bool = Field(
-        default=False, alias="GRAPH_CROSS_CHUNK_ENABLED"
-    )
+    cross_chunk_relations_enabled: bool = Field(default=False, alias="GRAPH_CROSS_CHUNK_ENABLED")
     cross_chunk_max_entities: int = Field(
         default=200, ge=1, le=5000, alias="GRAPH_CROSS_CHUNK_MAX_ENTITIES"
     )
@@ -619,9 +617,7 @@ class RetrievalSettings(_Base):
     )
     # Баланс релевантности и новизны: единица — обычный порядок, ноль — только
     # новизна.
-    diversity_lambda: float = Field(
-        default=0.7, ge=0.0, le=1.0, alias="RETRIEVAL_DIVERSITY_LAMBDA"
-    )
+    diversity_lambda: float = Field(default=0.7, ge=0.0, le=1.0, alias="RETRIEVAL_DIVERSITY_LAMBDA")
     # Сколько последних мест выдачи отдать непохожим фрагментам в режиме reserve.
     diversity_reserve_slots: int = Field(
         default=2, ge=0, le=16, alias="RETRIEVAL_DIVERSITY_RESERVE_SLOTS"
@@ -658,9 +654,7 @@ class RetrievalSettings(_Base):
     seal_max_gaps: int = Field(default=3, ge=1, le=8, alias="SEAL_MAX_GAPS")
     seal_candidates_per_gap: int = Field(default=3, ge=1, le=10, alias="SEAL_CANDIDATES_PER_GAP")
     # Вес собственного балла против условного (К6а) или парного (К6б).
-    selection_lambda: float = Field(
-        default=0.5, ge=0.0, le=1.0, alias="RETRIEVAL_SELECTION_LAMBDA"
-    )
+    selection_lambda: float = Field(default=0.5, ge=0.0, le=1.0, alias="RETRIEVAL_SELECTION_LAMBDA")
     # Сколько знаков выбранного фрагмента идёт в условие или в пару: реранкер
     # режет длинный вход, и без обрезки условие вытеснило бы сам кандидат.
     selection_excerpt_chars: int = Field(
@@ -671,9 +665,7 @@ class RetrievalSettings(_Base):
         default=1, ge=1, le=4, alias="RETRIEVAL_SELECTION_CONDITION_ITEMS"
     )
     # Сила распространения К7: балл = свой + α · max(сосед × вес ребра).
-    selection_alpha: float = Field(
-        default=0.3, ge=0.0, le=2.0, alias="RETRIEVAL_SELECTION_ALPHA"
-    )
+    selection_alpha: float = Field(default=0.3, ge=0.0, le=2.0, alias="RETRIEVAL_SELECTION_ALPHA")
     # Рёбра между фрагментами: общие узлы или зависимость «использует →
     # определяет» (нужны роли из К2).
     selection_links: Literal["shared", "dependency"] = Field(
@@ -870,9 +862,7 @@ class PromptSettings(_Base):
     )
     # Какая доля окна отдана под контекст. Остальное — промпт, история
     # и сам ответ.
-    context_window_share: float = Field(
-        default=0.5, gt=0.1, le=0.9, alias="CONTEXT_WINDOW_SHARE"
-    )
+    context_window_share: float = Field(default=0.5, gt=0.1, le=0.9, alias="CONTEXT_WINDOW_SHARE")
 
     # Сводить «$$$$ … $$$$» к «$$ … $$» в контексте. До исправления
     # ``Block.to_indexable_text`` (2026-09-17) формула разбора оборачивалась

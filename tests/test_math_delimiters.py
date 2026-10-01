@@ -16,7 +16,9 @@ from rag_textbook.utils.text import normalize_math_delimiters
 
 def _chunk(text: str) -> ScoredChunk:
     return ScoredChunk(
-        chunk=Chunk(id="d:1", doc_id="d", doc_name="Учебник", source_path="u.pdf", ordinal=0, text=text),
+        chunk=Chunk(
+            id="d:1", doc_id="d", doc_name="Учебник", source_path="u.pdf", ordinal=0, text=text
+        ),
         score=1.0,
     )
 

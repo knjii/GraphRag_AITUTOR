@@ -28,9 +28,7 @@ def graph_only_of(row: dict[str, Any]) -> set[str]:
     channels = row.get("channels", {})
     graph = {item["chunk_id"] for item in channels.get("graph", [])}
     others = {
-        item["chunk_id"]
-        for name, items in channels.items() if name != "graph"
-        for item in items
+        item["chunk_id"] for name, items in channels.items() if name != "graph" for item in items
     }
     return graph - others
 
@@ -59,7 +57,9 @@ class OracleOutcome:
     pool_capacity: int = 16
 
 
-def evaluate(rows: Iterable[dict[str, Any]], gold: dict[str, set[str]], k: int = 16) -> list[OracleOutcome]:
+def evaluate(
+    rows: Iterable[dict[str, Any]], gold: dict[str, set[str]], k: int = 16
+) -> list[OracleOutcome]:
     outcomes = []
     for row in rows:
         expected = gold.get(row["question_id"])
@@ -68,17 +68,19 @@ def evaluate(rows: Iterable[dict[str, Any]], gold: dict[str, set[str]], k: int =
         pool = pool_of(row)
         final = set(row.get("final", [])[:k])
         graph_only = graph_only_of(row) & expected
-        outcomes.append(OracleOutcome(
-            question_id=row["question_id"],
-            question_type=row.get("question_type", ""),
-            gold=len(expected),
-            in_pool=len(expected & pool),
-            in_final=len(expected & final),
-            graph_only_gold=len(graph_only),
-            graph_only_in_final=len(graph_only & final),
-            pool_size=len(pool),
-            pool_capacity=k,
-        ))
+        outcomes.append(
+            OracleOutcome(
+                question_id=row["question_id"],
+                question_type=row.get("question_type", ""),
+                gold=len(expected),
+                in_pool=len(expected & pool),
+                in_final=len(expected & final),
+                graph_only_gold=len(graph_only),
+                graph_only_in_final=len(graph_only & final),
+                pool_size=len(pool),
+                pool_capacity=k,
+            )
+        )
     return outcomes
 
 

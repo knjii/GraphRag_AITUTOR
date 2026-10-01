@@ -28,8 +28,14 @@ def _settings(version):
 
 
 def _chunk():
-    return Chunk(id="c1", doc_id="d1", doc_name="WFBG", source_path="", ordinal=0,
-                 text="WFBG is a radio station in Altoona, Pennsylvania.")
+    return Chunk(
+        id="c1",
+        doc_id="d1",
+        doc_name="WFBG",
+        source_path="",
+        ordinal=0,
+        text="WFBG is a radio station in Altoona, Pennsylvania.",
+    )
 
 
 def test_prompt_en_is_english_with_en_labels():
@@ -50,8 +56,12 @@ def test_normalize_label_en():
 
 
 def test_extract_en_keeps_relations():
-    llm = _FakeLLM({"entities": [{"name": "WFBG"}, {"name": "Altoona"}],
-                    "relations": [{"source": "WFBG", "relation": "located_in", "target": "Altoona"}]})
+    llm = _FakeLLM(
+        {
+            "entities": [{"name": "WFBG"}, {"name": "Altoona"}],
+            "relations": [{"source": "WFBG", "relation": "located_in", "target": "Altoona"}],
+        }
+    )
     result = EntityExtractor(_settings("en"), llm=llm).extract_llm(_chunk())
     assert result.status == "ok"
     assert [r.label for r in result.relations] == ["located_in"]

@@ -14,14 +14,18 @@ class _Counting:
         self.calls = 0
         self.lock = threading.Lock()
 
-    def chat(self, messages, *, purpose="chat", json_schema=None, max_tokens=None, temperature=None):  # noqa: ANN001, ANN201
+    def chat(
+        self, messages, *, purpose="chat", json_schema=None, max_tokens=None, temperature=None
+    ):  # noqa: ANN001, ANN201
         with self.lock:
             self.calls += 1
         return f"ответ на {messages[-1].content} при t={temperature}"
 
 
 def _ask(llm, text: str, temperature: float = 0.3) -> str:  # noqa: ANN001
-    return llm.chat([ChatMessage(role="user", content=text)], purpose="utility", temperature=temperature)
+    return llm.chat(
+        [ChatMessage(role="user", content=text)], purpose="utility", temperature=temperature
+    )
 
 
 def test_second_run_reads_answers_from_journal(tmp_path) -> None:

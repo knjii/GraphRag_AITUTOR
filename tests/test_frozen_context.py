@@ -137,9 +137,7 @@ def test_ordinary_run_still_uses_retrieval():
     # Заглушка поиска намеренно падает: исключение и доказывает, что поиск
     # был вызван. Прежний try/except/pass проходил и без вызова.
     with pytest.raises(AssertionError):
-        run_answer_evaluation(
-            context, [_question()], chunks=chunks, judge=False, max_workers=1
-        )
+        run_answer_evaluation(context, [_question()], chunks=chunks, judge=False, max_workers=1)
     assert retrieval.calls == 1
 
 
@@ -151,8 +149,12 @@ def test_provenance_tracks_content(change: str):
 
     def measure(workers: int = 1):
         summary, _ = run_answer_evaluation(
-            context, [question], chunks=chunks, judge=False,
-            max_workers=workers, frozen_contexts=frozen,
+            context,
+            [question],
+            chunks=chunks,
+            judge=False,
+            max_workers=workers,
+            frozen_contexts=frozen,
         )
         return summary["чем сделано"]
 
@@ -182,18 +184,31 @@ def test_cli_preserves_provenance_hashes():
 
     source = Path(__file__).resolve().parents[1] / "rag_textbook/cli/main.py"
     tree = ast.parse(source.read_text(encoding="utf-8"))
-    assignment = next(node for node in ast.walk(tree) if isinstance(node, ast.Assign)
-                      and any(isinstance(target, ast.Subscript)
-                              and isinstance(target.value, ast.Name)
-                              and target.value.id == "summary"
-                              and isinstance(target.slice, ast.Constant)
-                              and target.slice.value == "чем сделано" for target in node.targets))
+    assignment = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Subscript)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "summary"
+            and isinstance(target.slice, ast.Constant)
+            and target.slice.value == "чем сделано"
+            for target in node.targets
+        )
+    )
     hashes = {"sha256 эталона": "a" * 64, "sha256 слепка/контекста": "b" * 64}
-    scope = {"summary": {"чем сделано": hashes.copy()}, "served": "model", "judge": False,
-             "frozen": {}, "settings": SimpleNamespace(
-                 llm=SimpleNamespace(model_for=lambda _: "model", context_window=1024),
-                 prompts=SimpleNamespace(fingerprint=lambda: "prompt"),
-                 retrieval=SimpleNamespace(top_k=2))}
+    scope = {
+        "summary": {"чем сделано": hashes.copy()},
+        "served": "model",
+        "judge": False,
+        "frozen": {},
+        "settings": SimpleNamespace(
+            llm=SimpleNamespace(model_for=lambda _: "model", context_window=1024),
+            prompts=SimpleNamespace(fingerprint=lambda: "prompt"),
+            retrieval=SimpleNamespace(top_k=2),
+        ),
+    }
     exec(compile(ast.Module(body=[assignment], type_ignores=[]), str(source), "exec"), scope)
     assert hashes.items() <= scope["summary"]["чем сделано"].items()
     assert scope["summary"]["чем сделано"]["модель ответа"] == "model"

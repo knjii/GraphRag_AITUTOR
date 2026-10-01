@@ -18,14 +18,19 @@ def _book(root: Path, name: str, text: str) -> None:
     folder = root / f"{name}__abc"
     folder.mkdir(parents=True)
     (folder / "blocks.json").write_text(
-        json.dumps({"blocks": [{"type": "text", "text": text}]}, ensure_ascii=False), encoding="utf-8"
+        json.dumps({"blocks": [{"type": "text", "text": text}]}, ensure_ascii=False),
+        encoding="utf-8",
     )
 
 
 def test_shifted_cyrillic_is_flagged(tmp_path):
     # Так Гельфанд извлекается из текстового слоя PDF.
     _book(tmp_path, "ru-la-gelfand", "¥¢ª«¨¤®¢® ¯°®±²° ­±²¢® (x; y) " * 20)
-    _book(tmp_path, "ru-prob-chernova", "Случайная величина $\\xi$ имеет распределение Пуассона. " * 20)
+    _book(
+        tmp_path,
+        "ru-prob-chernova",
+        "Случайная величина $\\xi$ имеет распределение Пуассона. " * 20,
+    )
     _book(tmp_path, "en-la-axler", "A vector space $V$ over $\\mathbf F$ is a set. " * 20)
     rows = {name: problem for name, _, _, problem in check.collect(tmp_path)}
     assert rows == {"en-la-axler": "", "ru-la-gelfand": "мусор кодировки", "ru-prob-chernova": ""}

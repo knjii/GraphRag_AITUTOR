@@ -25,14 +25,22 @@ class WordOverlapReranker:
     def rerank(self, query: str, documents: Sequence[str], top_n: int) -> list[tuple[int, float]]:
         self.calls += 1
         words = set(query.split())
-        scored = [(index, float(len(words & set(doc.split())))) for index, doc in enumerate(documents)]
+        scored = [
+            (index, float(len(words & set(doc.split())))) for index, doc in enumerate(documents)
+        ]
         scored.sort(key=lambda pair: pair[1], reverse=True)
         return scored[:top_n]
 
 
 def _item(chunk_id: str, text: str, score: float | None, ordinal: int = 0) -> ScoredChunk:
     chunk = Chunk(
-        id=chunk_id, doc_id="d", doc_name="Книга", source_path="", ordinal=ordinal, text=text, pages=[1]
+        id=chunk_id,
+        doc_id="d",
+        doc_name="Книга",
+        source_path="",
+        ordinal=ordinal,
+        text=text,
+        pages=[1],
     )
     return ScoredChunk(chunk=chunk, rerank_score=score, channels=["dense"])
 
@@ -44,7 +52,9 @@ def _settings(**values) -> RetrievalSettings:
 def _store(roles: bool = False) -> MemoryGraphStore:
     graph = GraphFile(variant="test")
     for ordinal, pid in enumerate(["a", "b", "c", "d", "e"]):
-        graph.add_passage(pid, doc_id="d", doc_name="Книга", ordinal=ordinal, text=f"текст {pid}", pages=[1])
+        graph.add_passage(
+            pid, doc_id="d", doc_name="Книга", ordinal=ordinal, text=f"текст {pid}", pages=[1]
+        )
     for eid in ["x", "y", "z"]:
         graph.add_entity(eid, canonical=eid, name=eid)
     # a—c делят редкий узел x; b—c делят y; d нигде не связан.
@@ -65,7 +75,9 @@ def test_conditional_picks_complement_of_selected() -> None:
     ]
     reranker = WordOverlapReranker()
     scorer = selection.PairScorer(reranker)
-    result = selection.conditional(items, "вопрос", scorer, _settings(selection_lambda=0.5), top_k=3)
+    result = selection.conditional(
+        items, "вопрос", scorer, _settings(selection_lambda=0.5), top_k=3
+    )
     # b: 0.5·0.6 + 0.5·0 = 0.30; c: 0.5·0.5 + 0.5·1 = 0.75 — c дополняет a.
     assert [item.chunk.id for item in result] == ["a", "c", "b"]
 
@@ -73,7 +85,9 @@ def test_conditional_picks_complement_of_selected() -> None:
 def test_conditional_with_lambda_one_keeps_reranker_order() -> None:
     items = [_item("a", "альфа бета", 1.0), _item("b", "гамма", 0.6), _item("c", "бета", 0.5)]
     scorer = selection.PairScorer(WordOverlapReranker())
-    result = selection.conditional(items, "вопрос", scorer, _settings(selection_lambda=1.0), top_k=3)
+    result = selection.conditional(
+        items, "вопрос", scorer, _settings(selection_lambda=1.0), top_k=3
+    )
     assert [item.chunk.id for item in result] == ["a", "b", "c"]
 
 
@@ -100,7 +114,9 @@ def test_pairs_lift_partner_of_strong_fragment() -> None:
         _item("c", "вопрос вопрос", 0.1),
     ]
     scorer = selection.PairScorer(WordOverlapReranker())
-    result = selection.pairs(items, "вопрос", scorer, _store(), _settings(selection_lambda=0.5), top_k=2)
+    result = selection.pairs(
+        items, "вопрос", scorer, _store(), _settings(selection_lambda=0.5), top_k=2
+    )
     # Пара a+c: 0.5·1.0 + 0.5·1 = 1.0 ≥ одиночного a (1.0) и идёт после него
     # по порядку; единица a берётся первой, затем пара a+c добавляет c.
     assert [item.chunk.id for item in result[:2]] == ["a", "c"]
@@ -151,7 +167,10 @@ def test_dependency_modes_refuse_graph_without_roles() -> None:
         selection.complete(items, _settings(selection_mode="closure"), 2, store=_store())
     with pytest.raises(ValueError, match="defines"):
         selection.reorder(
-            items, "q", _settings(selection_mode="diffusion", selection_links="dependency"), 2,
+            items,
+            "q",
+            _settings(selection_mode="diffusion", selection_links="dependency"),
+            2,
             store=_store(),
         )
     # Рёбра «общий узел» ролей не требуют.
@@ -165,15 +184,32 @@ def test_replay_refuses_closure_and_runs_diffusion() -> None:
 
     store = _store()
     # Тексты разные: иначе дедупликация склеит фрагменты до отбора.
-    texts = {"a": "матрица ранг", "b": "интеграл предел", "c": "вероятность событие", "d": "граф вершина"}
+    texts = {
+        "a": "матрица ранг",
+        "b": "интеграл предел",
+        "c": "вероятность событие",
+        "d": "граф вершина",
+    }
     chunks = {
-        pid: Chunk(id=pid, doc_id="d", doc_name="Книга", source_path="", ordinal=i, text=texts[pid], pages=[1])
+        pid: Chunk(
+            id=pid,
+            doc_id="d",
+            doc_name="Книга",
+            source_path="",
+            ordinal=i,
+            text=texts[pid],
+            pages=[1],
+        )
         for i, pid in enumerate(texts)
     }
     trace = QueryTrace(
         question_id="q1",
         question="вопрос",
-        channels={"base": [TracedCandidate(pid, i, 1.0 - i / 10) for i, pid in enumerate(["a", "b", "d", "c"])]},
+        channels={
+            "base": [
+                TracedCandidate(pid, i, 1.0 - i / 10) for i, pid in enumerate(["a", "b", "d", "c"])
+            ]
+        },
         rerank_scores={"a": 1.0, "b": 0.55, "d": 0.5, "c": 0.0},
     )
     traces = TraceSet()

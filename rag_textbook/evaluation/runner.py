@@ -108,9 +108,7 @@ def run_retrieval_evaluation(
         trace.ordering_snapshot = snapshot_ordering(settings)
         # Окно — это ширина ОЦЕНИВАНИЯ, а не отбора: баллы снимаются шире,
         # чтобы гипотезу о ширине окна можно было проверить офлайн.
-        trace.rerank_window = max(
-            settings.reranker.candidates, settings.evaluation.trace_pool
-        )
+        trace.rerank_window = max(settings.reranker.candidates, settings.evaluation.trace_pool)
         logger.info("Снят слепок: %s вопросов", len(trace.traces))
     logger.info("Результат: %s", metrics.summary_line(settings.retrieval.top_k))
     return metrics, outcomes

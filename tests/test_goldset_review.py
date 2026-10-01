@@ -21,14 +21,39 @@ spec.loader.exec_module(review)
 def make_set(tmp_path: Path) -> tuple[Path, Path]:
     questions = []
     for i in range(10):
-        questions.append(GoldQuestion(id=f"l{i}", question=f"q{i}", gold_chunk_ids=[f"d:{i}", f"d:{i + 1}"],
-                                      question_type="graph_linked", expected_hops=2, slice="linking", split="test"))
+        questions.append(
+            GoldQuestion(
+                id=f"l{i}",
+                question=f"q{i}",
+                gold_chunk_ids=[f"d:{i}", f"d:{i + 1}"],
+                question_type="graph_linked",
+                expected_hops=2,
+                slice="linking",
+                split="test",
+            )
+        )
     for i in range(4):
-        questions.append(GoldQuestion(id=f"c{i}", question=f"c{i}", gold_chunk_ids=[f"d:{i}", f"e:{i}"],
-                                      question_type="multi_hop", expected_hops=2, slice="cross_book", split="test"))
+        questions.append(
+            GoldQuestion(
+                id=f"c{i}",
+                question=f"c{i}",
+                gold_chunk_ids=[f"d:{i}", f"e:{i}"],
+                question_type="multi_hop",
+                expected_hops=2,
+                slice="cross_book",
+                split="test",
+            )
+        )
     for i in range(6):
-        questions.append(GoldQuestion(id=f"s{i}", question=f"s{i}", gold_chunk_ids=[f"d:{i}"],
-                                      question_type="single_chunk", split="test" if i < 4 else "dev"))
+        questions.append(
+            GoldQuestion(
+                id=f"s{i}",
+                question=f"s{i}",
+                gold_chunk_ids=[f"d:{i}"],
+                question_type="single_chunk",
+                split="test" if i < 4 else "dev",
+            )
+        )
     path = tmp_path / "goldset-v2.json"
     save_goldset(questions, path)
     parsed = tmp_path / "parsed"
@@ -41,8 +66,23 @@ def make_set(tmp_path: Path) -> tuple[Path, Path]:
 def test_sheet_samples_only_test_split_and_writes_template(tmp_path: Path) -> None:
     goldset, parsed = make_set(tmp_path)
     out = tmp_path / "review"
-    code = review.main(["sheet", "--goldset", str(goldset), "--parsed", str(parsed), "--out", str(out),
-                        "--linking", "3", "--cross", "2", "--single", "10"])
+    code = review.main(
+        [
+            "sheet",
+            "--goldset",
+            str(goldset),
+            "--parsed",
+            str(parsed),
+            "--out",
+            str(out),
+            "--linking",
+            "3",
+            "--cross",
+            "2",
+            "--single",
+            "10",
+        ]
+    )
     assert code == 0
     template = json.loads((out / "verdicts.json").read_text(encoding="utf-8"))["verdicts"]
     ids = [row["question_id"] for row in template]
@@ -54,15 +94,19 @@ def test_sheet_samples_only_test_split_and_writes_template(tmp_path: Path) -> No
 
 def fill(path: Path, verdicts: dict[str, str]) -> Path:
     target = path.parent / "verdicts.json"
-    target.write_text(json.dumps({"verdicts": [{"question_id": k, "verdict": v} for k, v in verdicts.items()]}),
-                      encoding="utf-8")
+    target.write_text(
+        json.dumps({"verdicts": [{"question_id": k, "verdict": v} for k, v in verdicts.items()]}),
+        encoding="utf-8",
+    )
     return target
 
 
 def test_accept_rejects_too_many_single_hop(tmp_path: Path) -> None:
     goldset, _ = make_set(tmp_path)
     verdicts = {f"l{i}": ("single_hop_enough" if i < 4 else "ok") for i in range(10)}
-    code = review.main(["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, verdicts))])
+    code = review.main(
+        ["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, verdicts))]
+    )
     assert code == 1
     assert not goldset.with_suffix(".accepted").exists()
 
@@ -72,7 +116,9 @@ def test_accept_drops_unusable_demotes_single_hop_and_writes_marker(tmp_path: Pa
     verdicts = {f"l{i}": "ok" for i in range(10)}
     verdicts["l0"] = "single_hop_enough"
     verdicts["s0"] = "unanswerable"
-    code = review.main(["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, verdicts))])
+    code = review.main(
+        ["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, verdicts))]
+    )
     assert code == 0
     kept = {q.id: q for q in load_goldset(goldset)}
     assert "s0" not in kept
@@ -86,10 +132,24 @@ def test_accept_drops_unusable_demotes_single_hop_and_writes_marker(tmp_path: Pa
 def test_accept_filtered_skips_thresholds_and_drops_unreviewed_two_hop(tmp_path: Path) -> None:
     goldset, _ = make_set(tmp_path)
     # 3 из 5 проверенных двухшаговых — single_hop_enough: по порогам выборки это провал.
-    verdicts = {"l0": "single_hop_enough", "l1": "single_hop_enough", "l2": "single_hop_enough",
-                "l3": "ok", "c0": "ok", "s0": "unanswerable"}
-    code = review.main(["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, verdicts)),
-                        "--filtered"])
+    verdicts = {
+        "l0": "single_hop_enough",
+        "l1": "single_hop_enough",
+        "l2": "single_hop_enough",
+        "l3": "ok",
+        "c0": "ok",
+        "s0": "unanswerable",
+    }
+    code = review.main(
+        [
+            "accept",
+            "--goldset",
+            str(goldset),
+            "--verdicts",
+            str(fill(goldset, verdicts)),
+            "--filtered",
+        ]
+    )
     assert code == 0
     kept = {q.id: q for q in load_goldset(goldset)}
     assert {"l4", "c1", "s0"}.isdisjoint(kept)  # непроверенные двухшаговые и негодный удалены
@@ -100,9 +160,24 @@ def test_accept_filtered_skips_thresholds_and_drops_unreviewed_two_hop(tmp_path:
 
 def test_accept_refuses_empty_and_unknown_verdicts(tmp_path: Path) -> None:
     goldset, _ = make_set(tmp_path)
-    assert review.main(["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, {"l0": ""}))]) == 1
-    assert review.main(["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, {"l0": "good"}))]) == 1
-    assert review.main(["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, {"zz": "ok"}))]) == 1
+    assert (
+        review.main(
+            ["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, {"l0": ""}))]
+        )
+        == 1
+    )
+    assert (
+        review.main(
+            ["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, {"l0": "good"}))]
+        )
+        == 1
+    )
+    assert (
+        review.main(
+            ["accept", "--goldset", str(goldset), "--verdicts", str(fill(goldset, {"zz": "ok"}))]
+        )
+        == 1
+    )
 
 
 def test_fragment_puts_display_math_on_its_own_lines() -> None:

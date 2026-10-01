@@ -142,8 +142,11 @@ def score_judge_v2(verdict: Any, *, fact_count: int) -> dict[str, Any]:
             return {}
     for key in ("facts_in_answer", "facts_in_context"):
         values = verdict.get(key)
-        if (not isinstance(values, list) or len(values) != fact_count
-                or any(type(value) is not bool for value in values)):
+        if (
+            not isinstance(values, list)
+            or len(values) != fact_count
+            or any(type(value) is not bool for value in values)
+        ):
             return {}
     # Порядок ветвей фиксирован: отказ имеет приоритет над противоречием.
     if verdict["refusal"]:
@@ -154,35 +157,70 @@ def score_judge_v2(verdict: Any, *, fact_count: int) -> dict[str, Any]:
         found = sum(verdict["facts_in_answer"])
         correctness = 2 if found == fact_count else int(2 * found >= fact_count)
     groundedness = 2 if verdict["refusal"] or not verdict["unsupported"] else 1
-    checks = {key: verdict[key] for key in (
-        "facts_in_answer", "facts_in_context", "refusal", "contradicts", "unsupported",
-    )}
-    return {"correctness": correctness, "groundedness": groundedness,
-            "reason": "Атомарные проверки v2", "checks": checks}
+    checks = {
+        key: verdict[key]
+        for key in (
+            "facts_in_answer",
+            "facts_in_context",
+            "refusal",
+            "contradicts",
+            "unsupported",
+        )
+    }
+    return {
+        "correctness": correctness,
+        "groundedness": groundedness,
+        "reason": "Атомарные проверки v2",
+        "checks": checks,
+    }
 
 
 def judge_answer_v2(
-    llm: LLMClient, *, question: str, answer: str, context: str,
+    llm: LLMClient,
+    *,
+    question: str,
+    answer: str,
+    context: str,
     facts: Sequence[str],
 ) -> dict[str, Any]:
     """Полные тексты нужны, чтобы обрезка не стала ложным отсутствием факта."""
-    if (isinstance(facts, (str, bytes)) or not 1 <= len(facts) <= 4
-            or any(not isinstance(fact, str) or not fact.strip() for fact in facts)):
+    if (
+        isinstance(facts, (str, bytes))
+        or not 1 <= len(facts) <= 4
+        or any(not isinstance(fact, str) or not fact.strip() for fact in facts)
+    ):
         return {}
     prompt = JUDGE_PROMPT_V2.format(
-        question=question, answer=answer, context=context,
+        question=question,
+        answer=answer,
+        context=context,
         facts="\n".join(f"{i}. {fact}" for i, fact in enumerate(facts, 1)),
     )
-    array = {"type": "array", "items": {"type": "boolean"},
-             "minItems": len(facts), "maxItems": len(facts)}
-    properties = {"facts_in_answer": array, "facts_in_context": array,
-                  **{key: {"type": "boolean"} for key in (
-                      "refusal", "contradicts", "unsupported")}}
-    schema = {"type": "object", "properties": properties,
-              "required": list(properties), "additionalProperties": False}
+    array = {
+        "type": "array",
+        "items": {"type": "boolean"},
+        "minItems": len(facts),
+        "maxItems": len(facts),
+    }
+    properties = {
+        "facts_in_answer": array,
+        "facts_in_context": array,
+        **{key: {"type": "boolean"} for key in ("refusal", "contradicts", "unsupported")},
+    }
+    schema = {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
     try:
-        raw = llm.chat([ChatMessage(role="user", content=prompt)], purpose="judge",
-                       json_schema=schema, temperature=0.0, max_tokens=512)
+        raw = llm.chat(
+            [ChatMessage(role="user", content=prompt)],
+            purpose="judge",
+            json_schema=schema,
+            temperature=0.0,
+            max_tokens=512,
+        )
     except Exception as error:  # noqa: BLE001
         logger.warning("Судья v2 не ответил: %s", error)
         return {}
@@ -396,9 +434,7 @@ def sentence_support(
     на контекст». Пара, а не доля: при коротком ответе знаменатель
     важен не меньше значения.
     """
-    context_sets = [
-        set(content_terms(sentence)) for sentence in split_sentences(context)
-    ]
+    context_sets = [set(content_terms(sentence)) for sentence in split_sentences(context)]
     context_sets = [item for item in context_sets if item]
     judged = 0
     supported = 0
@@ -607,17 +643,15 @@ def run_answer_evaluation(
 
     def evaluate_one(question: GoldQuestion) -> AnswerOutcome:
         produced = answer_one(question)
-        used_contexts[question.id] = [item.chunk.model_dump(mode="json")
-                                      for item in produced.contexts]
+        used_contexts[question.id] = [
+            item.chunk.model_dump(mode="json") for item in produced.contexts
+        ]
         reference_text = ""
         if chunks:
             reference_text = "\n".join(
-                getattr(chunks.get(chunk_id), "text", "")
-                for chunk_id in question.gold_chunk_ids
+                getattr(chunks.get(chunk_id), "text", "") for chunk_id in question.gold_chunk_ids
             )
-        return evaluate_answer(
-            question, produced, reference_text=reference_text, llm=judge_llm
-        )
+        return evaluate_answer(question, produced, reference_text=reference_text, llm=judge_llm)
 
     logger.info(
         "Оценка ответов: вопросов=%s, судья=%s, контекст=%s",
@@ -632,15 +666,23 @@ def run_answer_evaluation(
             outcomes = list(pool.map(evaluate_one, questions))
 
     def digest(value: Any) -> str:
-        return hashlib.sha256(json.dumps(
-            value, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-        ).encode("utf-8")).hexdigest()
+        return hashlib.sha256(
+            json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
 
     # Эталон включает тексты фрагментов: те же ID не гарантируют те же формулы.
-    reference = [{"question": question.model_dump(mode="json"), "texts": [
-        getattr((chunks or {}).get(chunk_id), "text", "")
-        for chunk_id in question.gold_chunk_ids
-    ]} for question in sorted(questions, key=lambda item: item.id)]
+    reference = [
+        {
+            "question": question.model_dump(mode="json"),
+            "texts": [
+                getattr((chunks or {}).get(chunk_id), "text", "")
+                for chunk_id in question.gold_chunk_ids
+            ],
+        }
+        for question in sorted(questions, key=lambda item: item.id)
+    ]
     summary = summarize_answers(outcomes)
     summary["чем сделано"] = {
         "sha256 слепка/контекста": digest({"frozen": frozen_contexts, "used": used_contexts}),

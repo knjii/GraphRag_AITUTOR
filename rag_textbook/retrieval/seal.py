@@ -156,7 +156,10 @@ def assess(
     )
     try:
         raw = llm.chat(
-            [ChatMessage(role="system", content=SEAL_SYSTEM), ChatMessage(role="user", content=user)],
+            [
+                ChatMessage(role="system", content=SEAL_SYSTEM),
+                ChatMessage(role="user", content=user),
+            ],
             purpose="utility",
             json_schema=SEAL_SCHEMA,
             max_tokens=settings.selection_llm_max_tokens,

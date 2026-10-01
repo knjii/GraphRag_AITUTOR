@@ -122,10 +122,18 @@ def test_chunk_never_starts_inside_a_formula() -> None:
     blocks: list[Block] = []
     for index in range(40):
         blocks.append(Block(index=2 * index, type="text", text="Слово " * (15 + index % 7)))
-        blocks.append(Block(index=2 * index + 1, type="equation", latex=f"$$ a_{{{index}}} = b + c + d + e + f + g + h $$"))
+        blocks.append(
+            Block(
+                index=2 * index + 1,
+                type="equation",
+                latex=f"$$ a_{{{index}}} = b + c + d + e + f + g + h $$",
+            )
+        )
     for size, overlap in [(200, 60), (240, 90), (300, 120), (260, 150)]:
         settings = ChunkingSettings(chunk_size=size, chunk_overlap=overlap, respect_formulas=True)
-        chunks = LayoutAwareChunker(settings).chunk(blocks, doc_id="d", doc_name="D", source_path="d.pdf")
+        chunks = LayoutAwareChunker(settings).chunk(
+            blocks, doc_id="d", doc_name="D", source_path="d.pdf"
+        )
         for chunk in chunks:
             assert "$$$$" not in chunk.text
             assert chunk.text.count("$$") % 2 == 0, (size, overlap, chunk.text[:80])
@@ -146,7 +154,9 @@ def test_short_chunk_before_long_formula_does_not_creep() -> None:
     ]
     for size, overlap in [(1200, 180), (600, 150), (300, 120)]:
         settings = ChunkingSettings(chunk_size=size, chunk_overlap=overlap, respect_formulas=True)
-        chunks = LayoutAwareChunker(settings).chunk(blocks, doc_id="d", doc_name="D", source_path="d.pdf")
+        chunks = LayoutAwareChunker(settings).chunk(
+            blocks, doc_id="d", doc_name="D", source_path="d.pdf"
+        )
         starts = [chunk.char_start for chunk in chunks]
         steps = [b - a for a, b in zip(starts, starts[1:], strict=False)]
         assert min(steps) >= min(overlap, size // 4), (size, overlap, steps)

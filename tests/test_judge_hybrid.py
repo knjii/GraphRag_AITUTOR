@@ -17,8 +17,12 @@ _SPEC.loader.exec_module(jh)
 
 
 def checks(refusal=False, contradicts=False, ctx=(True,), ans=(True,)):
-    return {"refusal": refusal, "contradicts": contradicts,
-            "facts_in_context": list(ctx), "facts_in_answer": list(ans)}
+    return {
+        "refusal": refusal,
+        "contradicts": contradicts,
+        "facts_in_context": list(ctx),
+        "facts_in_answer": list(ans),
+    }
 
 
 def test_branches():
@@ -34,8 +38,15 @@ def test_branches():
 
 def test_combine_pairs_by_key_and_refuses_mismatched_grades():
     v1 = [{"question_id": "q", "model": "m", "group": "within", "human_grade": 3, "correctness": 2}]
-    v2 = [{"question_id": "q", "model": "m", "group": "within", "human_grade": 3,
-           "judge_checks": checks(ans=(False,))}]
+    v2 = [
+        {
+            "question_id": "q",
+            "model": "m",
+            "group": "within",
+            "human_grade": 3,
+            "judge_checks": checks(ans=(False,)),
+        }
+    ]
     rows, stats = jh.combine(v1, v2, "within")
     assert rows[0]["correctness"] == 1 and stats["изменено v2"] == 1
     with pytest.raises(SystemExit):

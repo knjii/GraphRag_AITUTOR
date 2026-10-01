@@ -19,12 +19,14 @@ _spec.loader.exec_module(inspect_cell)
 def _cell(tmp_path: Path, **overrides: object) -> Path:
     data = {
         "outcomes": [{"answer": "Ответ"}],
-        "summary": {"чем сделано": {
-            "модель ответа": "test-model",
-            "модель по настройке": "configured-model",
-            "промпт": "test-prompt",
-            "окно контекста": 4096,
-        }},
+        "summary": {
+            "чем сделано": {
+                "модель ответа": "test-model",
+                "модель по настройке": "configured-model",
+                "промпт": "test-prompt",
+                "окно контекста": 4096,
+            }
+        },
     }
     data.update(overrides)
     path = tmp_path / "cell.json"
@@ -72,13 +74,24 @@ def test_unreadable_cell(tmp_path: Path, capsys: pytest.CaptureFixture[str], kin
         ({"outcomes": [{}]}, [], "доля пустых ответов"),
         ({"summary": {}}, [], "в метаданных нет модели ответа"),
         ({"summary": {"чем сделано": {}}}, [], "в метаданных нет модели ответа"),
-        ({"summary": {"чем сделано": {"модель ответа": " "}}}, [], "в метаданных нет модели ответа"),
-        ({"summary": {"чем сделано": {"модель ответа": None}}}, [], "в метаданных нет модели ответа"),
+        (
+            {"summary": {"чем сделано": {"модель ответа": " "}}},
+            [],
+            "в метаданных нет модели ответа",
+        ),
+        (
+            {"summary": {"чем сделано": {"модель ответа": None}}},
+            [],
+            "в метаданных нет модели ответа",
+        ),
     ],
 )
 def test_rejected_cell(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str],
-    overrides: dict[str, object], args: list[str], message: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    overrides: dict[str, object],
+    args: list[str],
+    message: str,
 ) -> None:
     path = _cell(tmp_path, **overrides)
     expected = int(args[1]) if args else None
@@ -107,7 +120,10 @@ def test_rejected_cell(
     ],
 )
 def test_invalid_structure_does_not_stop_next_file(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], data: object, message: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    data: object,
+    message: str,
 ) -> None:
     bad = tmp_path / "broken.json"
     bad.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
@@ -133,7 +149,9 @@ def test_empty_share_boundary_and_override(tmp_path: Path) -> None:
     assert inspect_cell.main([str(path), "--max-empty-share", "0.5"]) == 0
 
 
-def test_all_problems_are_printed_together(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_all_problems_are_printed_together(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     path = _cell(tmp_path, outcomes=[{}], summary={})
     problems = inspect_cell.inspect(path, expected=2, max_empty_share=0.05)
     assert len(problems) == 3

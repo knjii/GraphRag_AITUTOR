@@ -18,8 +18,12 @@ _SPEC.loader.exec_module(tg)
 
 
 def test_processor_gives_inner_tokenizer():
-    inner = SimpleNamespace(eos_token_id=1, pad_token_id=2,
-                            convert_tokens_to_ids=lambda t: {"<|im_end|>": 3}.get(t, 0), unk_token_id=0)
+    inner = SimpleNamespace(
+        eos_token_id=1,
+        pad_token_id=2,
+        convert_tokens_to_ids=lambda t: {"<|im_end|>": 3}.get(t, 0),
+        unk_token_id=0,
+    )
     processor = SimpleNamespace(tokenizer=inner)
     assert tg.text_tokenizer(processor) is inner
     assert tg.stop_token_ids(tg.text_tokenizer(processor)) == {1, 2, 3}
@@ -31,9 +35,15 @@ def test_plain_tokenizer_is_kept():
 
 
 def test_micro_batching_keeps_prompts_per_step():
-    assert tg.micro_batching(4, 4, 0) == {"per_device_train_batch_size": 4, "gradient_accumulation_steps": 4}
-    assert tg.micro_batching(4, 4, 1) == {"per_device_train_batch_size": 1, "gradient_accumulation_steps": 16,
-                                          "generation_batch_size": 4}
+    assert tg.micro_batching(4, 4, 0) == {
+        "per_device_train_batch_size": 4,
+        "gradient_accumulation_steps": 4,
+    }
+    assert tg.micro_batching(4, 4, 1) == {
+        "per_device_train_batch_size": 1,
+        "gradient_accumulation_steps": 16,
+        "generation_batch_size": 4,
+    }
     assert tg.micro_batching(2, 2, 1)["generation_batch_size"] == 2
 
 
@@ -50,7 +60,9 @@ def test_rope_deltas_from_generation_group_do_not_empty_micro_batch():
 
         def forward(self, x):
             # как transformers 5.2: дельты растягиваются на пакет через B // G
-            delta = self.rope_deltas.repeat_interleave(x.shape[0] // self.rope_deltas.shape[0], dim=0)
+            delta = self.rope_deltas.repeat_interleave(
+                x.shape[0] // self.rope_deltas.shape[0], dim=0
+            )
             return delta.shape[0]
 
     class Outer(torch.nn.Module):
@@ -81,9 +93,30 @@ def test_split_dev_is_stable_and_disjoint():
 
 def test_validation_summary_counts_formula_only_where_expected():
     scored = [
-        {"reward": 1.0, "gate": "", "latex_expected": 2, "latex_found": 1, "truncated": False, "chars": 100},
-        {"reward": 0.0, "gate": "", "latex_expected": 1, "latex_found": 0, "truncated": False, "chars": 200},
-        {"reward": -1.0, "gate": "length", "latex_expected": 0, "latex_found": 0, "truncated": True, "chars": 300},
+        {
+            "reward": 1.0,
+            "gate": "",
+            "latex_expected": 2,
+            "latex_found": 1,
+            "truncated": False,
+            "chars": 100,
+        },
+        {
+            "reward": 0.0,
+            "gate": "",
+            "latex_expected": 1,
+            "latex_found": 0,
+            "truncated": False,
+            "chars": 200,
+        },
+        {
+            "reward": -1.0,
+            "gate": "length",
+            "latex_expected": 0,
+            "latex_found": 0,
+            "truncated": True,
+            "chars": 300,
+        },
     ]
     summary = tg.summarize_validation(scored)
     assert summary["n"] == 3 and summary["with_latex"] == 2
@@ -93,8 +126,13 @@ def test_validation_summary_counts_formula_only_where_expected():
 
 
 def test_score_answer_uses_same_formula_metric_as_eval():
-    row = {"question_id": "q", "context": "Формула $a^2+b^2=c^2$ верна.", "reference": "Формула $a^2+b^2=c^2$ верна.",
-           "gold_in_context": True, "question": "Какая формула?"}
+    row = {
+        "question_id": "q",
+        "context": "Формула $a^2+b^2=c^2$ верна.",
+        "reference": "Формула $a^2+b^2=c^2$ верна.",
+        "gold_in_context": True,
+        "question": "Какая формула?",
+    }
     good = tg.score_answer(row, "По теореме Пифагора $a^2+b^2=c^2$ [1].", truncated=False)
     bad = tg.score_answer(row, "Не знаю формулы.", truncated=False)
     assert good["latex_expected"] == 1 and good["latex_found"] == 1

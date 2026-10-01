@@ -16,7 +16,9 @@ def test_where_chain_with_formulas_and_plain_symbols() -> None:
 
 
 def test_denote_takes_meaning_before_the_verb() -> None:
-    text = "Множество всех матриц размера m на n обозначим через $\\mathbb { R } ^ { m \\times n }$."
+    text = (
+        "Множество всех матриц размера m на n обозначим через $\\mathbb { R } ^ { m \\times n }$."
+    )
     assert _pairs(text) == [("\\mathbb { R } ^ { m \\times n }", "всех матриц размера m на n")]
 
 
@@ -40,12 +42,30 @@ def test_symbol_match_is_by_tokens_not_substring() -> None:
 
 def test_notation_scope_is_the_section() -> None:
     chunks = [
-        {"id": "c1", "doc_id": "b", "doc_name": "К", "ordinal": 1, "headers": ["1.1. Матрицы"],
-         "text": "Пусть $A x = b$, где $A$ — матрица системы."},
-        {"id": "c2", "doc_id": "b", "doc_name": "К", "ordinal": 2, "headers": ["1.1. Матрицы"],
-         "text": "Ранг $A$ не превосходит числа строк."},
-        {"id": "c3", "doc_id": "b", "doc_name": "К", "ordinal": 3, "headers": ["1.2. Другое"],
-         "text": "Здесь $A$ означает событие."},
+        {
+            "id": "c1",
+            "doc_id": "b",
+            "doc_name": "К",
+            "ordinal": 1,
+            "headers": ["1.1. Матрицы"],
+            "text": "Пусть $A x = b$, где $A$ — матрица системы.",
+        },
+        {
+            "id": "c2",
+            "doc_id": "b",
+            "doc_name": "К",
+            "ordinal": 2,
+            "headers": ["1.1. Матрицы"],
+            "text": "Ранг $A$ не превосходит числа строк.",
+        },
+        {
+            "id": "c3",
+            "doc_id": "b",
+            "doc_name": "К",
+            "ordinal": 3,
+            "headers": ["1.2. Другое"],
+            "text": "Здесь $A$ означает событие.",
+        },
     ]
     plain, _ = build_structural(chunks)
     assert not any(row["kind"] == "notation" for row in plain.entities.values())

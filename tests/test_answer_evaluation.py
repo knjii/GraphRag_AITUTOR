@@ -46,6 +46,7 @@ def _answer(text: str, contexts: list[str]) -> Answer:
 
 # ------------------------------------------------------------- формулы
 
+
 def test_latex_is_counted_when_preserved():
     reference = r"Определение: $$A A^{\mathrm{T}} = I = A^{\mathrm{T}} A$$ для ортогональных."
     answer = r"Ортогональная матрица удовлетворяет $$A A^{\mathrm{T}} = I = A^{\mathrm{T}} A$$."
@@ -91,6 +92,7 @@ def test_short_fragments_are_ignored():
 
 # -------------------------------------------------------------- выдумка
 
+
 def test_answer_from_context_has_low_invention():
     context = (
         "Сингулярное разложение раскладывает матрицу на три множителя "
@@ -118,6 +120,7 @@ def test_short_answer_is_not_penalized():
 
 # --------------------------------------------------------------- отказ
 
+
 def test_refusal_is_recognized():
     assert is_refusal("В предоставленном контексте нет данных для ответа.")
     assert not is_refusal("Определитель равен произведению собственных значений.")
@@ -137,6 +140,7 @@ def test_refusal_is_visible_in_summary():
 
 
 # ------------------------------------------------------------ в сборе
+
 
 def test_evaluation_without_judge_still_produces_objective_metrics():
     """Без модели-судьи объективные величины обязаны считаться.
@@ -208,6 +212,7 @@ def test_judge_failure_does_not_lose_objective_metrics():
 
 # ------------------------------------------- выбор файла с фрагментами
 
+
 def test_answers_refuse_a_foreign_corpus(tmp_path, monkeypatch):
     """Замер обязан остановиться, когда фрагментов эталонного набора нет.
 
@@ -264,9 +269,7 @@ def test_answers_refuse_a_foreign_corpus(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("PARSED_DIR", str(parsed))
 
-    result = CliRunner().invoke(
-        app, ["eval", "answers", "--goldset", str(goldset), "--no-judge"]
-    )
+    result = CliRunner().invoke(app, ["eval", "answers", "--goldset", str(goldset), "--no-judge"])
 
     assert result.exit_code == 1
     assert "Сохранность формул" in result.output or "формул" in result.output

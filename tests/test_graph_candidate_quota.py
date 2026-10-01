@@ -32,9 +32,7 @@ def _item(index: int, channels: list[str]) -> ScoredChunk:
 def _merged(vector_count: int, graph_count: int) -> list[ScoredChunk]:
     """Векторные кандидаты сверху, находки одного графа — за границей отсечения."""
     items = [_item(index, ["dense"]) for index in range(vector_count)]
-    items += [
-        _item(vector_count + index, ["graph_entity"]) for index in range(graph_count)
-    ]
+    items += [_item(vector_count + index, ["graph_entity"]) for index in range(graph_count)]
     return items
 
 

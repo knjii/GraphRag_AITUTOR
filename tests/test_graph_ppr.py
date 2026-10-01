@@ -70,7 +70,9 @@ def test_invalid_alpha(graph: OfflineGraph, alpha: float) -> None:
         rank_ppr(graph, {("passage", "a"): 1}, alpha=alpha)
 
 
-@pytest.mark.parametrize("seeds", [{}, {("passage", "a"): 0}, {("passage", "a"): -1}, {("passage", "a"): math.inf}])
+@pytest.mark.parametrize(
+    "seeds", [{}, {("passage", "a"): 0}, {("passage", "a"): -1}, {("passage", "a"): math.inf}]
+)
 def test_invalid_seeds(graph: OfflineGraph, seeds: dict[tuple[str, str], float]) -> None:
     with pytest.raises(ValueError):
         rank_ppr(graph, seeds)
@@ -84,11 +86,15 @@ def test_mention_counts() -> None:
 
 def test_question_protocol() -> None:
     row = {
-        "question_id": "q", "question_type": "multi_hop", "question": "Методы матриц",
-        "channels": {"base": [
-            {"rank": 1, "chunk_id": "b", "score": 0.1},
-            {"rank": 0, "chunk_id": "a", "score": 0.5},
-        ]},
+        "question_id": "q",
+        "question_type": "multi_hop",
+        "question": "Методы матриц",
+        "channels": {
+            "base": [
+                {"rank": 1, "chunk_id": "b", "score": 0.1},
+                {"rank": 0, "chunk_id": "a", "score": 0.5},
+            ]
+        },
     }
     seeds = question_seeds(row, {"x": normalized("матриц"), "y": normalized("мет")}, 1)
     assert seeds == {("passage", "a"): 0.5, ("entity", "x"): 1.0}
@@ -122,8 +128,15 @@ def test_complete_variant(graph: OfflineGraph) -> None:
     gold = {"q": {"b"}}
     baseline = question_metrics(rows, {"q": []}, gold)
     result = evaluate_variant(
-        graph, [("a", "b")], rows, gold, {"q": {("passage", "a"): 1.0}},
-        baseline, 1.0, 0.5, False,
+        graph,
+        [("a", "b")],
+        rows,
+        gold,
+        {"q": {("passage", "a"): 1.0}},
+        baseline,
+        1.0,
+        0.5,
+        False,
     )
     assert result["hops"]["measurements"] == 2
     assert result["questions"]["all"]["graph_only_found"] == 1

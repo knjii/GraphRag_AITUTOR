@@ -39,6 +39,7 @@ def _scored(
 
 # ------------------------------------------------------------- бюджет
 
+
 def test_formula_chunk_gets_more_room_than_plain_text():
     """У формулы нет середины, которую можно опустить без потери смысла."""
     chunks = [_scored("формула", 4000, formula=True), _scored("текст", 4000)]
@@ -83,6 +84,7 @@ def test_whole_chunk_fits_when_window_is_large_enough():
 
 # -------------------------------------------------------------- порядок
 
+
 def test_edges_order_puts_the_best_at_both_ends():
     chunks = [_scored(str(i), 500) for i in range(6)]
 
@@ -109,6 +111,7 @@ def test_short_context_is_not_reordered():
 
 # --------------------------------------------------------- сборка блока
 
+
 def test_per_chunk_budgets_are_applied():
     chunks = [_scored("а", 1000), _scored("б", 1000)]
 
@@ -126,6 +129,7 @@ def test_single_number_still_works():
 
 
 # ---------------------------------------------------------------- промпт
+
 
 def test_prompt_demands_verbatim_formulas():
     """Прежняя формулировка «формулы приводи в LaTeX» говорила про формат

@@ -34,9 +34,7 @@ NO_CONTEXT_MESSAGE = (
 )
 
 
-def allocate_budget(
-    chunks, total_chars: int, *, formula_share: float = 1.6
-) -> list[int]:
+def allocate_budget(chunks, total_chars: int, *, formula_share: float = 1.6) -> list[int]:
     """Делит бюджет символов между фрагментами.
 
     Прежде бюджет делился поровну: «половина окна / число фрагментов».
@@ -180,12 +178,9 @@ def build_answer_messages(
     # в каком его увидела модель.
     ordered = order_for_attention(chunks, settings.prompts.context_order)
     budget = context_budget(settings)
-    budgets = allocate_budget(
-        ordered, budget, formula_share=settings.prompts.formula_budget_share
-    )
+    budgets = allocate_budget(ordered, budget, formula_share=settings.prompts.formula_budget_share)
     truncated = sum(
-        1 for item, limit in zip(ordered, budgets, strict=True)
-        if len(item.chunk.text) > limit
+        1 for item, limit in zip(ordered, budgets, strict=True) if len(item.chunk.text) > limit
     )
     if truncated:
         # Молчаливое усечение однажды стоило 43% формул. Пусть будет видно.
@@ -226,9 +221,7 @@ class AnswerGenerator:
 
     def _max_chars_per_chunk(self) -> int:
         """Прежняя равная дележка. Оставлена для совместимости вызовов."""
-        return max(
-            400, self._context_budget() // max(1, self.settings.retrieval.top_k)
-        )
+        return max(400, self._context_budget() // max(1, self.settings.retrieval.top_k))
 
     def answer(
         self,
@@ -288,9 +281,7 @@ class AnswerGenerator:
         Возвращает тройку «фрагменты в том порядке, в каком их увидела
         модель; текст ответа; время генерации в миллисекундах».
         """
-        ordered, messages = build_answer_messages(
-            self.settings, question, chunks, history=history
-        )
+        ordered, messages = build_answer_messages(self.settings, question, chunks, history=history)
 
         stage = time.perf_counter()
         try:

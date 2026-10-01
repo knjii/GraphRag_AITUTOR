@@ -48,7 +48,12 @@ from rag_textbook.stores.graph_file import GraphFile
 
 STRUCT_REL = "STRUCT"
 IN_SECTION = "в_разделе"
-KIND_OF = {"equation": "formula", "statement": "statement", "section": "section", "figure": "figure"}
+KIND_OF = {
+    "equation": "formula",
+    "statement": "statement",
+    "section": "section",
+    "figure": "figure",
+}
 # Имя утверждения в скобках после номера: «Определение 2.10 (векторное
 # подпространство)». Оно даёт узлу слова, по которым его найдёт поиск
 # затравок; без имени узел находится только от фрагментов.
@@ -116,7 +121,10 @@ def _anchors(chunks: list[dict[str, Any]]) -> dict[str, dict[str, list[str]]]:
                 found["figure"][match.group(1)].append(chunk["id"])
     for number, chunk in first_of_section.items():
         found["section"][number].append(chunk["id"])
-    return {kind: {number: list(dict.fromkeys(ids)) for number, ids in by.items()} for kind, by in found.items()}
+    return {
+        kind: {number: list(dict.fromkeys(ids)) for number, ids in by.items()}
+        for kind, by in found.items()
+    }
 
 
 def build_structural(
@@ -198,7 +206,9 @@ def _build_book(graph: GraphFile, doc_id: str, chunks: list[dict[str, Any]]) -> 
             resolved[kind] += 1
             entity_id = ensure(kind, number)
             count, role = graph.mentions.get(chunk["id"], {}).get(entity_id, (0, ""))
-            graph.add_mention(chunk["id"], entity_id, count + 1, role="refers" if role != "defines" else role)
+            graph.add_mention(
+                chunk["id"], entity_id, count + 1, role="refers" if role != "defines" else role
+            )
             touched.add(chunk["id"])
 
     # Вложенность: объект → раздел, раздел → родитель. Раздел берётся
@@ -225,9 +235,7 @@ def _build_book(graph: GraphFile, doc_id: str, chunks: list[dict[str, Any]]) -> 
 
     with_mentions = sum(1 for chunk in chunks if graph.mentions.get(chunk["id"]))
     degree = Counter(
-        entity_id
-        for chunk in chunks
-        for entity_id in graph.mentions.get(chunk["id"], {})
+        entity_id for chunk in chunks for entity_id in graph.mentions.get(chunk["id"], {})
     )
     total_seen = sum(seen.values())
     return {
@@ -237,7 +245,9 @@ def _build_book(graph: GraphFile, doc_id: str, chunks: list[dict[str, Any]]) -> 
         "resolved": dict(resolved),
         # Неразрешённая ссылка — слепота правила, а не отсутствие связи:
         # эта доля ограничивает выводы о К1 сверху.
-        "unresolved_share": round(1 - sum(resolved.values()) / total_seen, 3) if total_seen else None,
+        "unresolved_share": round(1 - sum(resolved.values()) / total_seen, 3)
+        if total_seen
+        else None,
         "chunks_with_nodes_share": round(with_mentions / len(chunks), 3) if chunks else 0.0,
         "chunks_with_references": len(touched),
         "struct_relations": len(linked),

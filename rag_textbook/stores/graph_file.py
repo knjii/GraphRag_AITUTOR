@@ -114,7 +114,12 @@ def analyze(text: str) -> list[str]:
             last = cls
             continue
         following = classes[index + 1] if index + 1 < len(text) else ""
-        if current and last == "L" and following == "L" and (ch in _MID_LETTER or ch in _MID_NUM_LET):
+        if (
+            current
+            and last == "L"
+            and following == "L"
+            and (ch in _MID_LETTER or ch in _MID_NUM_LET)
+        ):
             current.append(ch)
             continue
         if current and last == "N" and following == "N" and (ch in _MID_NUM or ch in _MID_NUM_LET):
@@ -125,11 +130,7 @@ def analyze(text: str) -> list[str]:
         current, last = [], ""
     if current:
         tokens.append("".join(current))
-    return [
-        token.lower()
-        for token in tokens
-        if any(_word_class(ch) in ("L", "N") for ch in token)
-    ]
+    return [token.lower() for token in tokens if any(_word_class(ch) in ("L", "N") for ch in token)]
 
 
 # --------------------------------------------------------------------- файл
@@ -268,9 +269,7 @@ class GraphFile:
     @classmethod
     def from_json(cls, payload: dict[str, Any]) -> GraphFile:
         if payload.get("format") != FORMAT:
-            raise ValueError(
-                f"Файл графа в формате {payload.get('format')!r}, ожидался {FORMAT!r}"
-            )
+            raise ValueError(f"Файл графа в формате {payload.get('format')!r}, ожидался {FORMAT!r}")
         graph = cls(variant=str(payload.get("variant") or ""), meta=dict(payload.get("meta") or {}))
         for row in payload.get("passages") or []:
             graph.add_passage(
@@ -292,7 +291,9 @@ class GraphFile:
         for passage_id, entity_id, count, role in payload.get("mentions") or []:
             graph.add_mention(str(passage_id), str(entity_id), int(count or 0), str(role or ""))
         for source, target, rel_type, label, weight in payload.get("relations") or []:
-            graph.add_relation(str(source), str(target), str(rel_type), str(label or ""), float(weight))
+            graph.add_relation(
+                str(source), str(target), str(rel_type), str(label or ""), float(weight)
+            )
         return graph
 
     def save(self, path: Path) -> Path:
@@ -543,7 +544,9 @@ class MemoryGraphStore:
                     best = 1
                 elif depth >= 2 and (
                     multiplicity > 1
-                    or any(other in seed_set and other != seed for other, _ in neighbours(neighbour))
+                    or any(
+                        other in seed_set and other != seed for other, _ in neighbours(neighbour)
+                    )
                 ):
                     best = 2 if best is None else min(best, 2)
             if best is not None:
@@ -770,7 +773,9 @@ class MemoryGraphStore:
                 add(
                     index[("e", source_id)],
                     index[("e", target_id)],
-                    math.sqrt(max(idf(source_id), 0.0) * max(idf(target_id), 0.0)) if use_idf else 1.0,
+                    math.sqrt(max(idf(source_id), 0.0) * max(idf(target_id), 0.0))
+                    if use_idf
+                    else 1.0,
                 )
 
         size = len(index)

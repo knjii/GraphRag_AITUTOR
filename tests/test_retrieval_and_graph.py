@@ -223,9 +223,7 @@ def test_llm_extractor_normalizes_unknown_relation_label() -> None:
 
 def test_llm_extractor_falls_back_when_retries_are_exhausted() -> None:
     """Откат к правилам — последнее средство, после исчерпания повторов."""
-    settings = GraphSettings(
-        extractor="llm", extraction_cache_enabled=False, extraction_retries=2
-    )
+    settings = GraphSettings(extractor="llm", extraction_cache_enabled=False, extraction_retries=2)
     # Три поломанных ответа: первая попытка плюс два повтора.
     broken = ["не json вовсе"] * 3
     extractor = EntityExtractor(settings, llm=FakeLLMClient(responses=broken))
@@ -243,9 +241,7 @@ def test_transient_failure_is_retried_not_written_off() -> None:
     Это подпись случайного сбоя, а движок с непрерывным батчингом не побитово
     воспроизводим даже при нулевой температуре.
     """
-    settings = GraphSettings(
-        extractor="llm", extraction_cache_enabled=False, extraction_retries=2
-    )
+    settings = GraphSettings(extractor="llm", extraction_cache_enabled=False, extraction_retries=2)
     good = '{"entities": [{"name": "сингулярное разложение"}], "relations": []}'
     llm = FakeLLMClient(responses=["", good])
     extractor = EntityExtractor(settings, llm=llm)
@@ -259,9 +255,7 @@ def test_transient_failure_is_retried_not_written_off() -> None:
 
 def test_retries_can_be_disabled() -> None:
     """Ноль повторов возвращает прежнее поведение — для A/B и отладки."""
-    settings = GraphSettings(
-        extractor="llm", extraction_cache_enabled=False, extraction_retries=0
-    )
+    settings = GraphSettings(extractor="llm", extraction_cache_enabled=False, extraction_retries=0)
     llm = FakeLLMClient(responses=["не json вовсе"])
     extractor = EntityExtractor(settings, llm=llm)
 

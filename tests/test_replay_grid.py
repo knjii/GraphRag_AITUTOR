@@ -84,9 +84,7 @@ def test_window_hypothesis_requires_wide_trace():
     from rag_textbook.evaluation.trace import TraceSet
 
     narrow = TraceSet(settings_snapshot=snapshot_settings(_settings()), rerank_window=30)
-    widest = max(
-        item["reranker"]["candidates"] for item in REPLAY_GRID["П3-окно"]
-    )
+    widest = max(item["reranker"]["candidates"] for item in REPLAY_GRID["П3-окно"])
     candidate = _apply_overrides(_settings(), {"reranker": {"candidates": widest}})
 
     with pytest.raises(ValueError, match="шире снятого"):

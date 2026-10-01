@@ -69,9 +69,13 @@ def _pair(left: Chunk, right: Chunk, source: str, evidence: str) -> PairCandidat
     left, right = sorted((left, right), key=lambda c: c.id)
     same = left.doc_id == right.doc_id
     return PairCandidate(
-        left.id, right.id, source, same,
+        left.id,
+        right.id,
+        source,
+        same,
         abs(left.ordinal - right.ordinal) if same else None,
-        _overlap(_terms(left.text), _terms(right.text)), evidence,
+        _overlap(_terms(left.text), _terms(right.text)),
+        evidence,
     )
 
 
@@ -92,7 +96,9 @@ def chapter_random(chunks: Sequence[Chunk], rng: random.Random) -> list[PairCand
         for left in group:
             choices = [right for right in group if _allowed(left, right)]
             if choices:
-                pairs.append(_pair(left, rng.choice(choices), "chapter_random", f"Глава: {chapter}"))
+                pairs.append(
+                    _pair(left, rng.choice(choices), "chapter_random", f"Глава: {chapter}")
+                )
     return _unique(pairs)
 
 
@@ -104,16 +110,21 @@ def bm25(chunks: Sequence[Chunk], rng: random.Random) -> list[PairCandidate]:
     postings: dict[str, set[int]] = defaultdict(set)
     frequencies = []
     for index, chunk in enumerate(corpus):
-        frequencies.append(Counter(
-            term for raw in tokenize(chunk.text)
-            if (term := lemmatize_token(raw)) in terms[index]
-        ))
+        frequencies.append(
+            Counter(
+                term
+                for raw in tokenize(chunk.text)
+                if (term := lemmatize_token(raw)) in terms[index]
+            )
+        )
         for term in terms[index]:
             postings[term].add(index)
     lengths = [sum(freq.values()) for freq in frequencies]
     average = sum(lengths) / len(corpus) or 1.0
-    idf = {t: math.log(1 + (len(corpus) - len(ids) + 0.5) / (len(ids) + 0.5))
-           for t, ids in postings.items()}
+    idf = {
+        t: math.log(1 + (len(corpus) - len(ids) + 0.5) / (len(ids) + 0.5))
+        for t, ids in postings.items()
+    }
     pairs = []
     for index, left in enumerate(corpus):
         query = sorted(terms[index], key=lambda t: (-idf[t], t))[:3]
@@ -124,7 +135,9 @@ def bm25(chunks: Sequence[Chunk], rng: random.Random) -> list[PairCandidate]:
 
         def score(j: int, query: list[str] = query) -> float:
             return sum(
-                idf[t] * frequencies[j][t] * 2.5
+                idf[t]
+                * frequencies[j][t]
+                * 2.5
                 / (frequencies[j][t] + 1.5 * (0.25 + 0.75 * lengths[j] / average))
                 for t in query
             )
@@ -137,7 +150,8 @@ def bm25(chunks: Sequence[Chunk], rng: random.Random) -> list[PairCandidate]:
 
 
 def dense(
-    chunks: Sequence[Chunk], rng: random.Random,
+    chunks: Sequence[Chunk],
+    rng: random.Random,
     vectors: dict[str, Sequence[float]] | None = None,
 ) -> list[PairCandidate]:
     if not vectors:
@@ -196,7 +210,9 @@ def explicit_ref(chunks: Sequence[Chunk], rng: random.Random) -> list[PairCandid
 
 
 def cross_book(
-    chunks: Sequence[Chunk], rng: random.Random, min_title_overlap: float = 0.5,
+    chunks: Sequence[Chunk],
+    rng: random.Random,
+    min_title_overlap: float = 0.5,
 ) -> list[PairCandidate]:
     if not 0 <= min_title_overlap <= 1:
         raise ValueError("Порог сходства заголовков должен быть от 0 до 1")
@@ -207,20 +223,26 @@ def cross_book(
     groups = list(sections.items())
     pairs = []
     for index, ((doc, headers), lefts) in enumerate(groups):
-        for (other_doc, other_headers), rights in groups[index + 1:]:
+        for (other_doc, other_headers), rights in groups[index + 1 :]:
             if doc == other_doc:
                 continue
             overlap = _overlap(_terms(headers[-1]), _terms(other_headers[-1]))
             if overlap >= min_title_overlap:
-                pairs.append(_pair(
-                    rng.choice(lefts), rng.choice(rights), "cross_book",
-                    f"Заголовки: {headers[-1]} / {other_headers[-1]}; Жаккар: {overlap:.3f}",
-                ))
+                pairs.append(
+                    _pair(
+                        rng.choice(lefts),
+                        rng.choice(rights),
+                        "cross_book",
+                        f"Заголовки: {headers[-1]} / {other_headers[-1]}; Жаккар: {overlap:.3f}",
+                    )
+                )
     return _unique(pairs)
 
 
 def sample_pairs(
-    chunks: Sequence[Chunk], per_source: int, seed: int,
+    chunks: Sequence[Chunk],
+    per_source: int,
+    seed: int,
     vectors: dict[str, Sequence[float]] | None = None,
 ) -> list[PairCandidate]:
     if per_source < 0:
@@ -229,7 +251,9 @@ def sample_pairs(
     owned: dict[tuple[str, str], PairCandidate] = {}
     for source in SOURCES:
         generator = globals()[source]
-        candidates = generator(chunks, rng, vectors=vectors) if source == "dense" else generator(chunks, rng)
+        candidates = (
+            generator(chunks, rng, vectors=vectors) if source == "dense" else generator(chunks, rng)
+        )
         for pair in candidates:
             key = (pair.left, pair.right)
             if key in owned:
@@ -245,7 +269,10 @@ def sample_pairs(
 
 
 def summarize_pairs(
-    pairs: Sequence[PairCandidate], per_source: int, *, vectors_available: bool = True,
+    pairs: Sequence[PairCandidate],
+    per_source: int,
+    *,
+    vectors_available: bool = True,
 ) -> dict[str, dict[str, int | float | str | None]]:
     summary = {}
     for source in SOURCES:
@@ -262,8 +289,12 @@ def summarize_pairs(
 
 
 def build_v2(
-    builder: GoldsetBuilder, chunks: Sequence[Chunk], pairs: Sequence[PairCandidate],
-    single_count: int, formula_count: int, seed: int,
+    builder: GoldsetBuilder,
+    chunks: Sequence[Chunk],
+    pairs: Sequence[PairCandidate],
+    single_count: int,
+    formula_count: int,
+    seed: int,
 ) -> list[GoldQuestion]:
     if min(single_count, formula_count) < 0:
         raise ValueError("Количество вопросов не может быть отрицательным")
@@ -276,8 +307,14 @@ def build_v2(
         subset = [c for c in eligible if bool(c.has_formula or c.has_table) == formula]
         selected = builder._select_single(subset, count * 2 if formula else count)[:count]
         for chunk in selected:
-            jobs.append(([chunk], "formula" if formula else "single", "",
-                         SINGLE_PROMPT.format(text=truncate(chunk.text, 6000))))
+            jobs.append(
+                (
+                    [chunk],
+                    "formula" if formula else "single",
+                    "",
+                    SINGLE_PROMPT.format(text=truncate(chunk.text, 6000)),
+                )
+            )
     seen = set()
     for pair in pairs:
         if pair.source not in SOURCES:
@@ -289,9 +326,16 @@ def build_v2(
         if key in seen:
             continue
         seen.add(key)
-        jobs.append(([left, right], "linking" if left.doc_id == right.doc_id else "cross_book",
-                     pair.source, MULTIHOP_PROMPT.format(
-                         text_a=truncate(left.text, 3000), text_b=truncate(right.text, 3000))))
+        jobs.append(
+            (
+                [left, right],
+                "linking" if left.doc_id == right.doc_id else "cross_book",
+                pair.source,
+                MULTIHOP_PROMPT.format(
+                    text_a=truncate(left.text, 3000), text_b=truncate(right.text, 3000)
+                ),
+            )
+        )
     answers = builder._ask_many([prompt for _, _, _, prompt in jobs])
     for (group, slice_name, source, _), produced in zip(jobs, answers, strict=True):
         if produced is None:
@@ -305,10 +349,14 @@ def build_v2(
             continue
         candidate = GoldQuestion(
             id=content_hash("v2", *(c.id for c in group), question)[:16],
-            question=question, answer=answer, gold_chunk_ids=[c.id for c in group],
+            question=question,
+            answer=answer,
+            gold_chunk_ids=[c.id for c in group],
             gold_doc_ids=sorted({c.doc_id for c in group}),
             question_type="multi_hop" if source else builder._classify(group[0]),
-            expected_hops=len(group), pair_source=source, slice=slice_name,
+            expected_hops=len(group),
+            pair_source=source,
+            slice=slice_name,
         )
         accepted = builder._accept(candidate, None)
         if accepted is not None:
@@ -317,14 +365,17 @@ def build_v2(
 
 
 def keep_two_hop(
-    questions: Sequence[GoldQuestion], ablation_results: Sequence[AblationResult],
+    questions: Sequence[GoldQuestion],
+    ablation_results: Sequence[AblationResult],
 ) -> list[GoldQuestion]:
     verdicts = {r.question_id: r.verdict for r in ablation_results}
     return [q for q in questions if q.expected_hops <= 1 or verdicts.get(q.id) == "ok"]
 
 
 def assign_split(
-    questions: Sequence[GoldQuestion], seed: int, dev_share: float = 0.4,
+    questions: Sequence[GoldQuestion],
+    seed: int,
+    dev_share: float = 0.4,
 ) -> list[GoldQuestion]:
     if not 0 <= dev_share <= 1:
         raise ValueError("Доля dev должна быть от 0 до 1")
@@ -332,7 +383,9 @@ def assign_split(
     for question in questions:
         # Независимый хэш внутри каждой страты сохраняет назначение при дозаписи.
         # Доля вероятностная: точная квота несовместима с этой устойчивостью.
-        key = json.dumps([seed, question.slice, question.pair_source, question.id], ensure_ascii=False)
+        key = json.dumps(
+            [seed, question.slice, question.pair_source, question.id], ensure_ascii=False
+        )
         value = int.from_bytes(hashlib.sha256(key.encode()).digest(), "big") / 2**256
         result.append(question.model_copy(update={"split": "dev" if value < dev_share else "test"}))
     return result

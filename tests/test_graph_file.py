@@ -70,15 +70,29 @@ def test_unknown_format_is_rejected() -> None:
 
 def test_analyzer_splits_like_standard_tokenizer() -> None:
     assert analyze("Метод Главных-Компонент, x_1 и 3.14") == [
-        "метод", "главных", "компонент", "x_1", "и", "3.14",
+        "метод",
+        "главных",
+        "компонент",
+        "x_1",
+        "и",
+        "3.14",
     ]
-
 
 
 def test_analyzer_follows_uax29_word_boundaries() -> None:
     # Двоеточие склеивает буквы (WB6–7), запятая — цифры (WB11–12),
     # точка в конце слова отрезается, комбинирующая метка прилипает (WB4).
-    assert analyze("ab:cd 1,5 a.b. x:1 f(x)=x^2") == ["ab:cd", "1,5", "a.b", "x", "1", "f", "x", "x", "2"]
+    assert analyze("ab:cd 1,5 a.b. x:1 f(x)=x^2") == [
+        "ab:cd",
+        "1,5",
+        "a.b",
+        "x",
+        "1",
+        "f",
+        "x",
+        "x",
+        "2",
+    ]
     assert analyze("étude") == ["étude"]
     assert analyze("— … ,") == []
 
@@ -100,6 +114,7 @@ def test_ties_are_broken_by_id_like_cypher() -> None:
     assert [row["id"] for row in store.entities_of_passages(["p1"], 2)] == ["alpha", "mid"]
     weights = store.expand_entities(["hub"], hops=1, rel_types=["RELATES"], limit=2)
     assert set(weights) == {"hub", "alpha", "mid"}
+
 
 def test_seed_search_is_phrase_bm25_over_both_fields() -> None:
     store = MemoryGraphStore(_graph())
@@ -145,9 +160,13 @@ def test_expansion_limit_counts_reachable_seeds() -> None:
     store = MemoryGraphStore(_graph())
     # На расстоянии 1 три узла: cov, pca, svd; по id первыми идут cov и pca,
     # и затравка pca отнимает у svd место, но не у cov.
-    weights = store.expand_entities(["svd", "pca"], hops=1, rel_types=["RELATES"], limit=1, decay=0.5)
+    weights = store.expand_entities(
+        ["svd", "pca"], hops=1, rel_types=["RELATES"], limit=1, decay=0.5
+    )
     assert weights == {"svd": 1.0, "pca": 1.0, "cov": 0.5}
-    weights = store.expand_entities(["pca", "cov"], hops=1, rel_types=["RELATES"], limit=1, decay=0.5)
+    weights = store.expand_entities(
+        ["pca", "cov"], hops=1, rel_types=["RELATES"], limit=1, decay=0.5
+    )
     # cov достижима от pca и первой стоит по id: единственное место уходит ей,
     # svd в веса не попадает.
     assert weights == {"pca": 1.0, "cov": 1.0}
@@ -199,7 +218,9 @@ def test_retriever_runs_on_memory_store(monkeypatch) -> None:
     monkeypatch.setenv("GRAPH_SEED_MODE", "both")
     store = MemoryGraphStore(_graph())
     retriever = GraphRetriever(GraphSettings(), store)
-    results = retriever.retrieve("Как метод главных компонент связан с разложением?", seed_chunk_ids=["p2"])
+    results = retriever.retrieve(
+        "Как метод главных компонент связан с разложением?", seed_chunk_ids=["p2"]
+    )
     ids = [item.chunk.id for item in results]
     assert "p2" not in ids  # опорный фрагмент исключён
     assert ids, "канал по файлу должен что-то находить"
@@ -281,7 +302,9 @@ def test_fidelity_script_accepts_identical_channel(tmp_path, monkeypatch) -> Non
             used_graph=True,
             channels={
                 "base": [TracedCandidate("p2", 0, 1.0)],
-                "graph": [TracedCandidate(item.chunk.id, i, item.score) for i, item in enumerate(produced)],
+                "graph": [
+                    TracedCandidate(item.chunk.id, i, item.score) for i, item in enumerate(produced)
+                ],
             },
         )
     )
@@ -291,7 +314,14 @@ def test_fidelity_script_accepts_identical_channel(tmp_path, monkeypatch) -> Non
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     code = module.main(
-        ["--graph-file", str(path), "--trace", str(tmp_path / "t.jsonl"), "--json", str(tmp_path / "r.json")]
+        [
+            "--graph-file",
+            str(path),
+            "--trace",
+            str(tmp_path / "t.jsonl"),
+            "--json",
+            str(tmp_path / "r.json"),
+        ]
     )
     assert code == 0
     report = json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))

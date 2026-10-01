@@ -1,4 +1,4 @@
-﻿"""Передача параметров в Neo4j.
+"""Передача параметров в Neo4j.
 
 Регрессия на отказ, который стоил целого вывода: параметр Cypher с именем
 ``query`` передавался в ``Session.run`` именованным аргументом и перекрывал
@@ -92,6 +92,7 @@ def test_no_query_uses_keyword_parameters() -> None:
 
 # ------------------------------------------------------------ очистка графа
 
+
 class _CountingSession(_RecordingSession):
     """Возвращает число удалённых узлов, как настоящий драйвер."""
 
@@ -116,7 +117,7 @@ def test_clear_reports_how_much_it_deleted() -> None:
     # Индекс пересоздаётся: иначе мёртвые узлы остаются в статистике BM25.
     issued = [call[0] for call in session.calls]
     drop = next(i for i, q in enumerate(issued) if q.startswith("DROP INDEX entity_fulltext"))
-    assert any("CREATE FULLTEXT INDEX" in q for q in issued[drop + 1:])
+    assert any("CREATE FULLTEXT INDEX" in q for q in issued[drop + 1 :])
 
 
 class _as_context:

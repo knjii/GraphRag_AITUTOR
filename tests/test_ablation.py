@@ -158,7 +158,9 @@ def test_summary_reports_share_of_single_hop_among_linked():
 
 
 def test_result_converts_to_verdict_record():
-    result = AblationResult("q1", "graph_linked", "single_hop_enough", [True, False], False, "почему")
+    result = AblationResult(
+        "q1", "graph_linked", "single_hop_enough", [True, False], False, "почему"
+    )
 
     verdict = result.to_verdict()
 

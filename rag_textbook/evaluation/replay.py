@@ -39,9 +39,7 @@ from rag_textbook.retrieval.fusion import (
 logger = get_logger("evaluation.replay")
 
 
-def _as_scored(
-    trace: QueryTrace, channel: str, chunks: dict[str, Chunk]
-) -> list[ScoredChunk]:
+def _as_scored(trace: QueryTrace, channel: str, chunks: dict[str, Chunk]) -> list[ScoredChunk]:
     """Собирает кандидатов канала обратно в объекты конвейера."""
     items: list[ScoredChunk] = []
     for candidate in sorted(trace.channels.get(channel, []), key=lambda item: item.rank):
@@ -80,9 +78,7 @@ def _rerank_from_trace(
 
     missing = [item for item in items if item.chunk.id not in trace.rerank_scores]
     if missing:
-        logger.debug(
-            "Для %s фрагментов нет балла реранкера: они уйдут в конец", len(missing)
-        )
+        logger.debug("Для %s фрагментов нет балла реранкера: они уйдут в конец", len(missing))
 
     fusion_rank = {item.chunk.id: index for index, item in enumerate(items)}
     alpha = settings.reranker.blend_alpha
@@ -203,28 +199,24 @@ def replay(
         )
         retrieved = [item.chunk.id for item in final]
         return QueryOutcome(
-                question_id=trace.question_id,
-                question_type=trace.question_type,
-                retrieved=retrieved,
-                relevant=list((gold or {}).get(trace.question_id, [])),
-                used_graph=trace.used_graph,
-                graph_share=(
-                    sum(1 for item in final if item.from_graph) / len(final) if final else 0.0
-                ),
-                graph_only_share=(
-                    sum(1 for item in final if item.only_from_graph) / len(final)
-                    if final
-                    else 0.0
-                ),
-                context_chars=[len(item.chunk.text) for item in final],
-                selected=set_selection.selected_ids(final),
-                pool=[
-                    item.chunk_id
-                    for name in ("base", "graph")
-                    for item in trace.channels.get(name, [])
-                ],
-                selection_status=",".join(sorted(stats)),
-            )
+            question_id=trace.question_id,
+            question_type=trace.question_type,
+            retrieved=retrieved,
+            relevant=list((gold or {}).get(trace.question_id, [])),
+            used_graph=trace.used_graph,
+            graph_share=(
+                sum(1 for item in final if item.from_graph) / len(final) if final else 0.0
+            ),
+            graph_only_share=(
+                sum(1 for item in final if item.only_from_graph) / len(final) if final else 0.0
+            ),
+            context_chars=[len(item.chunk.text) for item in final],
+            selected=set_selection.selected_ids(final),
+            pool=[
+                item.chunk_id for name in ("base", "graph") for item in trace.channels.get(name, [])
+            ],
+            selection_status=",".join(sorted(stats)),
+        )
 
     # Отбор моделью — вызов на вопрос; параллельно, как и серверный прогон.
     if workers > 1 and llm is not None:

@@ -57,9 +57,7 @@ class AppContext:
         # Журнал отказов кладётся рядом с прочим состоянием прогона: причина,
         # по которой фрагмент ушёл в правиловый откат, иначе не сохраняется
         # нигде — результат отката намеренно не кэшируется.
-        journal = JsonlFailureJournal(
-            self.settings.paths.state_dir / "extraction_failures.jsonl"
-        )
+        journal = JsonlFailureJournal(self.settings.paths.state_dir / "extraction_failures.jsonl")
         return EntityExtractor(
             self.settings.graph,
             llm=self.llm,

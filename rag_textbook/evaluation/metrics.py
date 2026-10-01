@@ -236,12 +236,14 @@ def selection_metrics(outcomes: Sequence[QueryOutcome]) -> dict[str, float]:
         # Полнота по всем вопросам: не выбрал ничего — полнота ноль.
         result["set_recall"] = statistics.fmean(
             recall_at_k(item.selected, item.relevant, len(item.selected) or 1)
-            if item.selected else 0.0
+            if item.selected
+            else 0.0
             for item in outcomes
         )
         result["set_full"] = statistics.fmean(
             full_at_k(item.selected, item.relevant, len(item.selected) or 1)
-            if item.selected else 0.0
+            if item.selected
+            else 0.0
             for item in outcomes
         )
     sealed = [item for item in outcomes if item.seal_added]
@@ -361,8 +363,12 @@ def compare_paired(
         # прирост при заметно большем тексте надо проверять при равных знаках.
         if any(base_by_id[qid].context_chars or cand_by_id[qid].context_chars for qid in ids):
             block["chars"] = {
-                "baseline": round(statistics.fmean(sum(item.context_chars[:k]) for item in base_items), 1),
-                "candidate": round(statistics.fmean(sum(item.context_chars[:k]) for item in cand_items), 1),
+                "baseline": round(
+                    statistics.fmean(sum(item.context_chars[:k]) for item in base_items), 1
+                ),
+                "candidate": round(
+                    statistics.fmean(sum(item.context_chars[:k]) for item in cand_items), 1
+                ),
             }
         return block
 

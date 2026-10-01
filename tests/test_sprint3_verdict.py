@@ -244,8 +244,17 @@ def test_window_must_be_an_integer(tmp_path: Path, window):
 
 def test_control_equal_to_base_is_refused_without_traceback(tmp_path: Path, capsys):
     path = scenario(tmp_path, [1] * 45 + [0] * 55)
-    argv = ["--metrics", str(path), "--base", "base", "--main", "main",
-            "--controls", "base", "random"]
+    argv = [
+        "--metrics",
+        str(path),
+        "--base",
+        "base",
+        "--main",
+        "main",
+        "--controls",
+        "base",
+        "random",
+    ]
     assert verdict.main(argv) == 1
     assert "различаться" in capsys.readouterr().err
 

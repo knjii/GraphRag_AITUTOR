@@ -80,7 +80,9 @@ def build_examples(
         question = gold.get(row["question_id"])
         if question is None:
             raise ValueError(f"Вопроса {row['question_id']} нет в эталонном наборе")
-        picked = [ScoredChunk(chunk=chunks[cid], score=1.0) for cid in row["final"] if cid in chunks]
+        picked = [
+            ScoredChunk(chunk=chunks[cid], score=1.0) for cid in row["final"] if cid in chunks
+        ]
         if len(picked) < len(row["final"]):
             missing.append(row["question_id"])
         if not picked:
@@ -92,27 +94,27 @@ def build_examples(
         # переносом из контекста.
         system = messages[0].content
         prefix = f"{settings.prompts.qa_system}\n\nКонтекст:\n"
-        context = system[len(prefix):] if system.startswith(prefix) else system
+        context = system[len(prefix) :] if system.startswith(prefix) else system
         shown = {item.chunk.id for item in ordered}
         # Эталон — только те эталонные фрагменты, что попали в контекст:
         # у связывающего вопроса с одним видимым фрагментом из двух награда
         # иначе требовала бы формул, которых модель не видела.
         visible_gold = [cid for cid in question.gold_chunk_ids if cid in shown]
         reference = "\n\n".join(
-            chunks[cid].text
-            for cid in (visible_gold or question.gold_chunk_ids)
-            if cid in chunks
+            chunks[cid].text for cid in (visible_gold or question.gold_chunk_ids) if cid in chunks
         )
-        examples.append(Example(
-            question_id=row["question_id"],
-            question_type=row.get("question_type", question.question_type),
-            question=row["question"],
-            messages=[{"role": m.role, "content": m.content} for m in messages],
-            context=context,
-            reference=reference,
-            gold_in_context=bool(visible_gold),
-            doc_ids=sorted({item.chunk.doc_id for item in ordered}),
-        ))
+        examples.append(
+            Example(
+                question_id=row["question_id"],
+                question_type=row.get("question_type", question.question_type),
+                question=row["question"],
+                messages=[{"role": m.role, "content": m.content} for m in messages],
+                context=context,
+                reference=reference,
+                gold_in_context=bool(visible_gold),
+                doc_ids=sorted({item.chunk.doc_id for item in ordered}),
+            )
+        )
     if len(missing) > len(examples) // 2:
         raise ValueError(
             f"У {len(missing)} вопросов фрагменты не найдены в выгрузке разбора — "

@@ -311,7 +311,11 @@ class QdrantVectorStore:
             )
             for point in points:
                 chunk_id = str((point.payload or {}).get("chunk_id") or "")
-                vector = point.vector.get(DENSE_VECTOR) if isinstance(point.vector, dict) else point.vector
+                vector = (
+                    point.vector.get(DENSE_VECTOR)
+                    if isinstance(point.vector, dict)
+                    else point.vector
+                )
                 if chunk_id and vector:
                     yield chunk_id, [float(value) for value in vector]
             if offset is None:

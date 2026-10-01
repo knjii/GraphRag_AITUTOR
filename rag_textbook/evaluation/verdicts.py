@@ -82,9 +82,7 @@ class VerdictSet:
         payload = {
             "verdicts": [item.as_dict() for item in self.verdicts.values()],
         }
-        Path(path).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def apply_verdicts(
@@ -130,9 +128,7 @@ def _merge_note(existing: str, verdict: QuestionVerdict) -> str:
     return f"{existing}; {mark}"
 
 
-def summarize(
-    questions: Sequence[GoldQuestion], verdicts: VerdictSet
-) -> dict[str, dict[str, int]]:
+def summarize(questions: Sequence[GoldQuestion], verdicts: VerdictSet) -> dict[str, dict[str, int]]:
     """Считает вердикты в разбивке по типам вопросов.
 
     Главное число, ради которого всё затевалось, — доля ``single_hop_enough``

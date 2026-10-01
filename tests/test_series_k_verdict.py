@@ -20,9 +20,17 @@ _SPEC.loader.exec_module(sk)
 def _questions(n: int) -> list[GoldQuestion]:
     items = []
     for i in range(n):
-        items.append(GoldQuestion(id=f"l{i}", question="?", gold_chunk_ids=["a", "b"],
-                                  question_type="multi_hop", expected_hops=2,
-                                  slice="linking", split="test"))
+        items.append(
+            GoldQuestion(
+                id=f"l{i}",
+                question="?",
+                gold_chunk_ids=["a", "b"],
+                question_type="multi_hop",
+                expected_hops=2,
+                slice="linking",
+                split="test",
+            )
+        )
         items.append(GoldQuestion(id=f"s{i}", question="?", gold_chunk_ids=["a"], split="test"))
     return items
 
@@ -31,8 +39,9 @@ def _run(questions, found_second: set[str], chars: int = 100) -> dict[str, Query
     runs = {}
     for q in questions:
         retrieved = ["a", "b"] if q.id in found_second or len(q.gold_chunk_ids) == 1 else ["a", "x"]
-        runs[q.id] = QueryOutcome(q.id, q.question_type, retrieved, list(q.gold_chunk_ids),
-                                  context_chars=[chars, chars])
+        runs[q.id] = QueryOutcome(
+            q.id, q.question_type, retrieved, list(q.gold_chunk_ids), context_chars=[chars, chars]
+        )
     return runs
 
 

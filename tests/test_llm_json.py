@@ -19,11 +19,14 @@ def test_invalid_escapes_no_longer_drop_the_answer():
     assert loads_llm_json(r'{"answer": "$\alpha + \mu$"}')["answer"] == r"$\alpha + \mu$"
 
 
-@pytest.mark.parametrize("raw", [
-    '{"a": "строка\\nВторая", "b": "кавычка \\" и косая \\\\ и \\u00e9"}',
-    '{"a": "уже экранировано: \\\\boldsymbol{\\\\theta}"}',
-    '{"a": "табуляция\\tи перевод\\n1. пункт"}',
-])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"a": "строка\\nВторая", "b": "кавычка \\" и косая \\\\ и \\u00e9"}',
+        '{"a": "уже экранировано: \\\\boldsymbol{\\\\theta}"}',
+        '{"a": "табуляция\\tи перевод\\n1. пункт"}',
+    ],
+)
 def test_valid_json_is_untouched(raw):
     assert escape_latex_in_json(raw) == raw
     assert loads_llm_json(raw) == json.loads(raw)
@@ -31,5 +34,8 @@ def test_valid_json_is_untouched(raw):
 
 def test_restore_latex_repairs_already_decoded_text():
     broken = json.loads(r'"$\boldsymbol{\theta}$, $\frac12$, $\nabla f$, $\rho$ и\nВторая строка"')
-    assert restore_latex(broken) == "$\\boldsymbol{\\theta}$, $\\frac12$, $\\nabla f$, $\\rho$ и\nВторая строка"
+    assert (
+        restore_latex(broken)
+        == "$\\boldsymbol{\\theta}$, $\\frac12$, $\\nabla f$, $\\rho$ и\nВторая строка"
+    )
     assert restore_latex("чистый текст\nбез формул") == "чистый текст\nбез формул"

@@ -104,6 +104,7 @@ _TOC_LEADER = re.compile(r"\.{2,}\s*\d{1,3}")
 
 _EXERCISE_HEADERS = ("УПРАЖНЕНИЯ", "УПРАЖНЕНИЕ", "ЗАДАЧИ", "EXERCISES")
 
+
 # Порог близости вопросов. 0.8 по множеству лемм — это уже перефразировка
 # одного вопроса, а не два разных вопроса на одну тему.
 def is_toc(chunk: Chunk) -> bool:
@@ -124,7 +125,6 @@ def classify_chunk(chunk: Chunk) -> str:
     return "содержательный"
 
 
-
 # Ссылка на нумерованный объект: «формула (8.24)», «рис. 8.8», «раздел 7.3.1»,
 # «глава 4». Скобочный номер сам по себе взят в шаблон отдельно: в наборе
 # он встречается и без слова «формула».
@@ -142,7 +142,6 @@ _NUMBERED = re.compile(
     r"|глав\w*\s*\d",
     re.IGNORECASE,
 )
-
 
 
 def references_numbering(question: str) -> bool:
@@ -329,9 +328,7 @@ class GoldsetBuilder:
             # Пара со страницей упражнений или оглавлением выглядит связанной,
             # но ответить по такому фрагменту нельзя, и вопрос выходит
             # одношаговым при разметке «двухшаговый».
-            if not all(
-                classify_chunk(chunk) == "содержательный" for chunk in (left, right)
-            ):
+            if not all(classify_chunk(chunk) == "содержательный" for chunk in (left, right)):
                 continue
             left_terms, right_terms = terms(left_id), terms(right_id)
             union = left_terms | right_terms
@@ -400,9 +397,11 @@ class GoldsetBuilder:
         if verdict != "ok":
             return None
         question.verified = True
-        question.notes = "абляция: оба фрагмента нужны" if len(
-            question.gold_chunk_ids
-        ) > 1 else "абляция: ответ получен по эталонному фрагменту"
+        question.notes = (
+            "абляция: оба фрагмента нужны"
+            if len(question.gold_chunk_ids) > 1
+            else "абляция: ответ получен по эталонному фрагменту"
+        )
         return question
 
     def build(
@@ -467,13 +466,15 @@ class GoldsetBuilder:
             len(pairs),
             len(graph_linked),
         )
-        pair_answers = self._ask_many([
-            MULTIHOP_PROMPT.format(
-                text_a=truncate(left.text, max_chars // 2),
-                text_b=truncate(right.text, max_chars // 2),
-            )
-            for left, right in pairs
-        ])
+        pair_answers = self._ask_many(
+            [
+                MULTIHOP_PROMPT.format(
+                    text_a=truncate(left.text, max_chars // 2),
+                    text_b=truncate(right.text, max_chars // 2),
+                )
+                for left, right in pairs
+            ]
+        )
         for (left, right), produced in zip(pairs, pair_answers, strict=True):
             if produced is None:
                 continue

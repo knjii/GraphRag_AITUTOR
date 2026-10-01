@@ -50,9 +50,29 @@ _DENOTES = re.compile(_SYMBOL + r"\s+обозначает\s+" + _MEANING_AFTER)
 _MAX_MEANING_WORDS = 6
 _STOP_WORDS = frozenset(
     {
-        "и", "а", "также", "далее", "здесь", "теперь", "это", "обычно", "часто",
-        "мы", "как", "же", "будем", "его", "её", "их", "который", "которая",
-        "которое", "которые", "которую", "символом", "буквой",
+        "и",
+        "а",
+        "также",
+        "далее",
+        "здесь",
+        "теперь",
+        "это",
+        "обычно",
+        "часто",
+        "мы",
+        "как",
+        "же",
+        "будем",
+        "его",
+        "её",
+        "их",
+        "который",
+        "которая",
+        "которое",
+        "которые",
+        "которую",
+        "символом",
+        "буквой",
     }
 )
 
@@ -90,19 +110,34 @@ def find_notations(text: str) -> list[Notation]:
 
     for match in _WHERE.finditer(text):
         add(_symbol(match), _clean_meaning(match["meaning"], tail=False), match.start(), "где")
-        rest = text[match.end():]
+        rest = text[match.end() :]
         offset = match.end()
         while True:
             link = _CHAIN.match(rest)
             if not link:
                 break
-            add(_symbol(link), _clean_meaning(link["meaning"], tail=False), offset + link.start(), "где")
+            add(
+                _symbol(link),
+                _clean_meaning(link["meaning"], tail=False),
+                offset + link.start(),
+                "где",
+            )
             offset += link.end()
-            rest = rest[link.end():]
+            rest = rest[link.end() :]
     for match in _DENOTE_BEFORE.finditer(text):
-        add(_symbol(match), _clean_meaning(match["meaning"], tail=True), match.end("meaning"), "обозначим")
+        add(
+            _symbol(match),
+            _clean_meaning(match["meaning"], tail=True),
+            match.end("meaning"),
+            "обозначим",
+        )
     for match in _DENOTES.finditer(text):
-        add(_symbol(match), _clean_meaning(match["meaning"], tail=False), match.start(), "обозначает")
+        add(
+            _symbol(match),
+            _clean_meaning(match["meaning"], tail=False),
+            match.start(),
+            "обозначает",
+        )
 
     unique: dict[tuple[str, str], Notation] = {}
     for item in sorted(found, key=lambda note: note.start):

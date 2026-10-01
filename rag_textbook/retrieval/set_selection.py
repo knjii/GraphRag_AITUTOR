@@ -98,7 +98,9 @@ def format_passages(items: Sequence[ScoredChunk], max_chars: int) -> str:
     return "\n\n\n".join(lines)
 
 
-def build_messages(mode: str, question: str, items: Sequence[ScoredChunk], max_chars: int) -> list[ChatMessage]:
+def build_messages(
+    mode: str, question: str, items: Sequence[ScoredChunk], max_chars: int
+) -> list[ChatMessage]:
     system, template = PROMPTS[mode]
     user = template.format(
         num=len(items), question=question, context=format_passages(items, max_chars)
@@ -119,7 +121,7 @@ def parse_selection(raw: str, size: int) -> list[int] | None:
     match = matches[-1]
     # Только первая непустая строка после метки: дальше модель иногда
     # продолжает текст, а номера иногда переносит на следующую строку.
-    lines = [line for line in (raw or "")[match.end():].splitlines() if line.strip()]
+    lines = [line for line in (raw or "")[match.end() :].splitlines() if line.strip()]
     tail = lines[0] if lines else ""
     picked: list[int] = []
     for number in _INDEX.findall(tail):

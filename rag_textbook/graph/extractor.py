@@ -35,9 +35,7 @@ logger = get_logger("graph.extractor")
 # ответа по существу не получено: сеть, пустой ответ, испорченный JSON.
 # Содержательные результаты — даже с пустым списком связей — сюда не входят,
 # повторять их незачем.
-_RETRYABLE_STATUSES = frozenset(
-    {"error", "invalid_json", "invalid_structure", "empty_response"}
-)
+_RETRYABLE_STATUSES = frozenset({"error", "invalid_json", "invalid_structure", "empty_response"})
 
 EXTRACTION_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -512,9 +510,9 @@ class EntityExtractor:
                 f"Passage {index}:\n{truncate(text, 700)}" for index, text in enumerate(excerpts, 1)
             )
             prompt = (
-                f"Below are passages from different documents that mention \"{subject}\".\n\n"
+                f'Below are passages from different documents that mention "{subject}".\n\n'
                 f"{numbered}\n\n"
-                f"Name relations of \"{subject}\" to other entities that become visible "
+                f'Name relations of "{subject}" to other entities that become visible '
                 "ONLY when several passages are combined.\n"
                 "Requirements:\n"
                 "- do not name relations obvious from a single passage;\n"
@@ -525,7 +523,8 @@ class EntityExtractor:
             )
         else:
             numbered = "\n\n".join(
-                f"Фрагмент {index}:\n{truncate(text, 700)}" for index, text in enumerate(excerpts, 1)
+                f"Фрагмент {index}:\n{truncate(text, 700)}"
+                for index, text in enumerate(excerpts, 1)
             )
             prompt = (
                 f"Ниже выдержки из разных разделов учебника, в которых упоминается «{subject}».\n\n"
@@ -558,14 +557,11 @@ class EntityExtractor:
         except json.JSONDecodeError:
             return []
 
-        subject_canonical = canonicalize_entity(
-            subject, lemmatize=self.settings.lemmatize_entities
-        )
+        subject_canonical = canonicalize_entity(subject, lemmatize=self.settings.lemmatize_entities)
         # Канонизируем и здесь: вызывающий может передать сырые имена, и тогда
         # сравнение с канонизированной целью молча не находило бы ничего.
         known_canonical = {
-            canonicalize_entity(name, lemmatize=self.settings.lemmatize_entities)
-            for name in known
+            canonicalize_entity(name, lemmatize=self.settings.lemmatize_entities) for name in known
         }
         relations: list[Relation] = []
         seen: set[tuple[str, str]] = set()
@@ -624,7 +620,9 @@ class EntityExtractor:
             raw = self.llm.chat(
                 [ChatMessage(role="user", content=prompt)],
                 purpose="extraction",
-                json_schema=EXTRACTION_SCHEMA_V4 if _uses_roles(self.settings) else EXTRACTION_SCHEMA,
+                json_schema=EXTRACTION_SCHEMA_V4
+                if _uses_roles(self.settings)
+                else EXTRACTION_SCHEMA,
                 temperature=0.0,
                 max_tokens=self.settings.extraction_max_tokens,
             )
@@ -677,9 +675,7 @@ class EntityExtractor:
             for _ in range(attempts):
                 if result.status not in _RETRYABLE_STATUSES:
                     break
-                logger.debug(
-                    "Повторяю извлечение для %s после статуса %s", chunk.id, result.status
-                )
+                logger.debug("Повторяю извлечение для %s после статуса %s", chunk.id, result.status)
                 result = self.extract_llm(chunk)
 
             if result.status in _RETRYABLE_STATUSES or result.status == "no_llm":

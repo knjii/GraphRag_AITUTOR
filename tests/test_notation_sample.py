@@ -15,10 +15,16 @@ def write_chunks(path: Path, chunks: list[dict]) -> None:
 
 
 def test_candidates_independent_of_rules(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    texts = ["Пусть $x$ произволен", "Назовём $y$ меткой", "We denote $z$",
-             "где нет формулы", "$x$ без маркера", "ОБОЗНАЧИМ $t$", "через $v$"]
-    write_chunks(tmp_path, [{"id": str(i), "doc_id": "a", "text": t}
-                            for i, t in enumerate(texts)])
+    texts = [
+        "Пусть $x$ произволен",
+        "Назовём $y$ меткой",
+        "We denote $z$",
+        "где нет формулы",
+        "$x$ без маркера",
+        "ОБОЗНАЧИМ $t$",
+        "через $v$",
+    ]
+    write_chunks(tmp_path, [{"id": str(i), "doc_id": "a", "text": t} for i, t in enumerate(texts)])
 
     def forbidden(text: str) -> list:
         pytest.fail("Отбор вызвал правила")
@@ -29,11 +35,13 @@ def test_candidates_independent_of_rules(tmp_path: Path, monkeypatch: pytest.Mon
     assert len(ns.stratified_sample(pool, 3, 42)) == 3
 
 
-@pytest.mark.parametrize("sizes,sample", [([100, 100, 100], 50), ([100, 1, 1], 50),
-                                         ([1, 1, 1], 50), ([5] * 20, 3)])
+@pytest.mark.parametrize(
+    "sizes,sample", [([100, 100, 100], 50), ([100, 1, 1], 50), ([1, 1, 1], 50), ([5] * 20, 3)]
+)
 def test_stratification(sizes: list[int], sample: int) -> None:
-    chunks = [{"id": f"{b}:{i}", "doc_id": str(b)}
-              for b, size in enumerate(sizes) for i in range(size)]
+    chunks = [
+        {"id": f"{b}:{i}", "doc_id": str(b)} for b, size in enumerate(sizes) for i in range(size)
+    ]
     chosen = ns.stratified_sample(chunks, sample, 17)
     assert chosen == ns.stratified_sample(chunks, sample, 17)
     counts = Counter(c["doc_id"] for c in chosen)
@@ -48,8 +56,19 @@ def test_stratification(sizes: list[int], sample: int) -> None:
 def test_normalization() -> None:
     assert ns.normalize_symbol(" $$ x _ { i } $$ \n") == "x_{i}"
     assert ns.normalize_symbol(r"$\mathbf{x}$") == r"\mathbf{x}"
-    assert len(ns.symbols([r"\mathbf{x} := вектор", r"\boldsymbol{x} := вектор",
-                           "x := скаляр", "$ x $ := другой смысл"])) == 3
+    assert (
+        len(
+            ns.symbols(
+                [
+                    r"\mathbf{x} := вектор",
+                    r"\boldsymbol{x} := вектор",
+                    "x := скаляр",
+                    "$ x $ := другой смысл",
+                ]
+            )
+        )
+        == 3
+    )
 
 
 def key_with(rows: list[dict], graph: bool = True) -> dict:
@@ -57,12 +76,16 @@ def key_with(rows: list[dict], graph: bool = True) -> dict:
 
 
 def test_metrics_and_graph_separate() -> None:
-    key = key_with([
-        {"human": ["x := икс", "y := игрек"],
-         "rules": ["$ x $ := другое", "z := лишнее", "x := дубль"],
-         "graph": ["y := игрек"]},
-        {"human": ["x := икс"], "rules": ["x := икс"], "graph": []},
-    ])
+    key = key_with(
+        [
+            {
+                "human": ["x := икс", "y := игрек"],
+                "rules": ["$ x $ := другое", "z := лишнее", "x := дубль"],
+                "graph": ["y := игрек"],
+            },
+            {"human": ["x := икс"], "rules": ["x := икс"], "graph": []},
+        ]
+    )
     result = ns.score(key, 300, 1)
     assert result["rules"]["recall"] == pytest.approx(2 / 3)
     assert result["rules"]["precision"] == pytest.approx(2 / 3)
@@ -73,20 +96,27 @@ def test_metrics_and_graph_separate() -> None:
     assert result == ns.score(key, 300, 1)
 
 
-@pytest.mark.parametrize("interval,decision", [
-    ([0.81, 1.0], "правила достаточны"), ([0.2, 0.79], "нужен запасной путь v4"),
-    ([0.8, 0.9], "не различимо"), ([0.7, 0.8], "не различимо"),
-    (None, "не различимо"),
-])
+@pytest.mark.parametrize(
+    "interval,decision",
+    [
+        ([0.81, 1.0], "правила достаточны"),
+        ([0.2, 0.79], "нужен запасной путь v4"),
+        ([0.8, 0.9], "не различимо"),
+        ([0.7, 0.8], "не различимо"),
+        (None, "не различимо"),
+    ],
+)
 def test_threshold(interval: list[float] | None, decision: str) -> None:
     assert ns.threshold_decision(interval) == decision
 
 
-@pytest.mark.parametrize("found,decision", [(True, "правила достаточны"),
-                                           (False, "нужен запасной путь v4")])
+@pytest.mark.parametrize(
+    "found,decision", [(True, "правила достаточны"), (False, "нужен запасной путь v4")]
+)
 def test_score_decision(found: bool, decision: str) -> None:
-    result = ns.score(key_with([{"human": ["x := смысл"],
-                                 "rules": ["x := смысл"] if found else []}], False), 50)
+    result = ns.score(
+        key_with([{"human": ["x := смысл"], "rules": ["x := смысл"] if found else []}], False), 50
+    )
     assert result["decision"] == decision
     assert result["graph"] is None
 
@@ -119,8 +149,20 @@ def test_graph_file_sheet_and_cli(tmp_path: Path, capsys: pytest.CaptureFixture)
     graph.save(tmp_path / "graph.json")
     write_chunks(tmp_path, [{"id": "a:0", "doc_id": "a", "text": "где $x$ — вектор. " * 120}])
     output = tmp_path / "sheet"
-    assert ns.main(["sheet", "--parsed", str(tmp_path), "--graph", str(tmp_path / "graph.json"),
-                    "--output", str(output)]) == 0
+    assert (
+        ns.main(
+            [
+                "sheet",
+                "--parsed",
+                str(tmp_path),
+                "--graph",
+                str(tmp_path / "graph.json"),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
     key = json.loads(output.with_suffix(".json").read_text(encoding="utf-8"))
     row = key["items"][0]
     assert row["graph"] == ["x := вектор", "y := метка"]

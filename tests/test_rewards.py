@@ -83,37 +83,48 @@ def test_good_answer_beats_answer_without_formula():
         "Скалярное произведение задаётся как $$\\langle x, y \\rangle = x^{T} A y$$, "
         "где матрица A симметрична и положительно определена [1]."
     )
-    plain = "Скалярное произведение задаётся через симметричную положительно определённую матрицу [1]."
-    assert compute_reward(good, context=CONTEXT, reference=GOLD).total > compute_reward(
-        plain, context=CONTEXT, reference=GOLD
-    ).total
+    plain = (
+        "Скалярное произведение задаётся через симметричную положительно определённую матрицу [1]."
+    )
+    assert (
+        compute_reward(good, context=CONTEXT, reference=GOLD).total
+        > compute_reward(plain, context=CONTEXT, reference=GOLD).total
+    )
 
 
 def test_invented_formula_is_penalized():
-    honest = "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$, матрица симметрична [1]."
+    honest = (
+        "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$, матрица симметрична [1]."
+    )
     liar = (
         "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$ "
         "и ещё $$\\langle x, y \\rangle = \\sum_i x_i^3 y_i^3 + 7$$, матрица симметрична [1]."
     )
-    assert compute_reward(liar, context=CONTEXT, reference=GOLD).total < compute_reward(
-        honest, context=CONTEXT, reference=GOLD
-    ).total
+    assert (
+        compute_reward(liar, context=CONTEXT, reference=GOLD).total
+        < compute_reward(honest, context=CONTEXT, reference=GOLD).total
+    )
 
 
 def test_dumping_formulas_without_prose_is_penalized():
     dump = " ".join(f"$$a_{{{i}}} + b_{{{i}}} = c_{{{i}}} \\cdot d$$" for i in range(8))
     context = CONTEXT + " " + dump
-    explained = "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$, матрица симметрична [1]."
+    explained = (
+        "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$, матрица симметрична [1]."
+    )
     dumped = "$$\\langle x, y \\rangle = x^{T} A y$$ " + dump
-    assert compute_reward(dumped, context=context, reference=GOLD).total < compute_reward(
-        explained, context=context, reference=GOLD
-    ).total
+    assert (
+        compute_reward(dumped, context=context, reference=GOLD).total
+        < compute_reward(explained, context=context, reference=GOLD).total
+    )
 
 
 def test_copying_whole_context_is_penalized_by_length():
     long_context = CONTEXT + " " + "Определение нормы опирается на скалярное произведение. " * 80
     copy = long_context[:3900]
-    concise = "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$, матрица симметрична [1]."
+    concise = (
+        "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$, матрица симметрична [1]."
+    )
     reward = compute_reward(copy, context=long_context, reference=GOLD)
     assert reward.parts.get("length", 0) < 0
     assert reward.total < compute_reward(concise, context=long_context, reference=GOLD).total
@@ -128,7 +139,9 @@ def test_gates_short_circuit():
         reward = compute_reward(answer, context=CONTEXT, reference=GOLD)
         assert reward.gate == reason
         assert reward.total == -1.0
-    truncated = compute_reward("Скалярное произведение", context=CONTEXT, reference=GOLD, truncated=True)
+    truncated = compute_reward(
+        "Скалярное произведение", context=CONTEXT, reference=GOLD, truncated=True
+    )
     assert truncated.gate == "оборван пределом токенов"
 
 
@@ -178,12 +191,16 @@ def test_superscript_grouping_is_kept():
 
 def test_restatement_in_own_notation_is_not_foreign():
     context = r"Отображение $$f : \mathbb{R}^n \rightarrow \mathbb{R}^m$$ задаётся функциями $$f_i : \mathbb{R}^n \rightarrow \mathbb{R}$$."
-    answer = r"Здесь \(f_1, \dots, f_m\) — компоненты отображения \(f\colon \mathbb R^n\to\mathbb R^m\)."
+    answer = (
+        r"Здесь \(f_1, \dots, f_m\) — компоненты отображения \(f\colon \mathbb R^n\to\mathbb R^m\)."
+    )
     assert score_formulas("", answer, context).foreign == 0
 
 
 def test_math_in_parentheses_does_not_count_as_latin():
-    answer = r"Матрица \(\mathbf{A}^\top \mathbf{A} + \lambda \mathbf{I}\) обратима при \(\lambda > 0\)."
+    answer = (
+        r"Матрица \(\mathbf{A}^\top \mathbf{A} + \lambda \mathbf{I}\) обратима при \(\lambda > 0\)."
+    )
     assert compute_reward(answer, context=CONTEXT, reference=GOLD).gate == ""
 
 

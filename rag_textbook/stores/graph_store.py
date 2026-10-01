@@ -317,7 +317,7 @@ class GraphStore:
                 WHERE NOT (e)<-[:MENTIONS]-()
                 DETACH DELETE e
                 RETURN count(*) AS entities
-                """
+                """,
             ).single()
             entities = int((record or {}).get("entities") or 0)
         return {"passages": passages, "orphan_entities": entities}
@@ -382,9 +382,7 @@ class GraphStore:
             ).data()
         return rows
 
-    def linked_passage_pairs(
-        self, limit: int, min_distance: int = 10
-    ) -> list[dict[str, Any]]:
+    def linked_passage_pairs(self, limit: int, min_distance: int = 10) -> list[dict[str, Any]]:
         """Пары фрагментов, соединённые типизированной связью через сущности.
 
         Нужна для сборки эталонного набора: пара, где связь существует
@@ -642,7 +640,7 @@ class GraphStore:
                 CALL () {MATCH ()-[c:CO_OCCURS]->() RETURN count(c) AS cooccurs}
                 CALL () {MATCH ()-[m:MENTIONS]->() RETURN count(m) AS mentions}
                 RETURN passages, entities, relates, cooccurs, mentions
-                """
+                """,
             ).single()
         return {key: int(value) for key, value in dict(record or {}).items()}
 

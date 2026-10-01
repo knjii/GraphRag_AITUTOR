@@ -66,8 +66,11 @@ def test_walk_crosses_books_only_with_synonym(tmp_path):
 def test_main_writes_graph_and_refuses_twice(tmp_path, monkeypatch):
     src, out = tmp_path / "g.json.gz", tmp_path / "syn.json.gz"
     _graph().save(src)
-    monkeypatch.setattr(gs, "embed_service", lambda names: np.array(
-        [[1.0, 0.05] if "внутр" in n else [1.0, 0.0] for n in names]))
+    monkeypatch.setattr(
+        gs,
+        "embed_service",
+        lambda names: np.array([[1.0, 0.05] if "внутр" in n else [1.0, 0.0] for n in names]),
+    )
     assert gs.main(["--graph", str(src), "--out", str(out), "--threshold", "0.8"]) == 0
     rels = [r for r in GraphFile.load(out).relations if r[2] == gs.REL]
     assert len(rels) == 1 and {rels[0][0], rels[0][1]} == {"inner", "dot"}

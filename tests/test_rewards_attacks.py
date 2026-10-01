@@ -58,8 +58,12 @@ HONEST = (
 
 def reward(answer: str, *, gold_in_context: bool = True, **kwargs) -> float:
     return compute_reward(
-        answer, context=CONTEXT, reference=GOLD, question=QUESTION,
-        gold_in_context=gold_in_context, **kwargs,
+        answer,
+        context=CONTEXT,
+        reference=GOLD,
+        question=QUESTION,
+        gold_in_context=gold_in_context,
+        **kwargs,
     ).total
 
 
@@ -84,9 +88,12 @@ def test_dump_all_context_formulas_separately():
 def test_dump_all_context_formulas_as_one_block():
     """Приём 2: склеить формулы в одну — вхождение эталона засчитывается."""
     block = " ".join(
-        [r"r_{nk} = \frac{\pi_k \mathcal{N}(x_n \mid \mu_k, \Sigma_k)}"
-         r"{\sum_{j=1}^{K} \pi_j \mathcal{N}(x_n \mid \mu_j, \Sigma_j)}",
-         r"\sum_{k=1}^{K} r_{nk} = 1", *OTHER_FORMULAS]
+        [
+            r"r_{nk} = \frac{\pi_k \mathcal{N}(x_n \mid \mu_k, \Sigma_k)}"
+            r"{\sum_{j=1}^{K} \pi_j \mathcal{N}(x_n \mid \mu_j, \Sigma_j)}",
+            r"\sum_{k=1}^{K} r_{nk} = 1",
+            *OTHER_FORMULAS,
+        ]
     )
     # Проза та же, что у честного ответа: разница — только склейка.
     dump = HONEST + f" $${block}$$"
@@ -95,8 +102,8 @@ def test_dump_all_context_formulas_as_one_block():
 
 def test_spray_a_few_formulas_is_not_better_than_precise():
     """Приём 3: добавить к верной формуле пять соседних «на всякий случай»."""
-    spray = HONEST + " Также полезны формулы " + " ".join(
-        f"$${item}$$" for item in OTHER_FORMULAS[:5]
+    spray = (
+        HONEST + " Также полезны формулы " + " ".join(f"$${item}$$" for item in OTHER_FORMULAS[:5])
     )
     assert reward(spray) < reward(HONEST)
 
@@ -129,8 +136,10 @@ def test_repeat_formula_with_cosmetic_variation():
 def test_repeat_sentence_with_cosmetic_variation():
     """Приём 6: одно предложение с разной пунктуацией и регистром."""
     sentence = "сумма ответственностей по компонентам равна единице"
-    loop = HONEST + " " + " ".join(
-        f"{sentence.capitalize()}{end}" for end in [".", "!", " .", "…", ";."] * 2
+    loop = (
+        HONEST
+        + " "
+        + " ".join(f"{sentence.capitalize()}{end}" for end in [".", "!", " .", "…", ";."] * 2)
     )
     assert reward(loop) < reward(HONEST)
 

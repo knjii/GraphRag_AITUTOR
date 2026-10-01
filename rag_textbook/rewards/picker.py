@@ -53,8 +53,11 @@ class PickerScore:
 
     def as_dict(self) -> dict[str, float | int | bool]:
         return {
-            "total": round(self.total, 4), "valid": self.valid,
-            "coverage": round(self.coverage, 4), "size": self.size, "gold": self.gold,
+            "total": round(self.total, 4),
+            "valid": self.valid,
+            "coverage": round(self.coverage, 4),
+            "size": self.size,
+            "gold": self.gold,
         }
 
 

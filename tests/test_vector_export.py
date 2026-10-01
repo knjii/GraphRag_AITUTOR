@@ -12,9 +12,21 @@ class _FakeClient:
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self.pages = [
-            ([SimpleNamespace(payload={"chunk_id": "d:00000"}, vector={DENSE_VECTOR: [1, 0]}),
-              SimpleNamespace(payload={}, vector={DENSE_VECTOR: [0, 1]})], "next"),
-            ([SimpleNamespace(payload={"chunk_id": "d:00001"}, vector={DENSE_VECTOR: [0.5, 0.5]})], None),
+            (
+                [
+                    SimpleNamespace(payload={"chunk_id": "d:00000"}, vector={DENSE_VECTOR: [1, 0]}),
+                    SimpleNamespace(payload={}, vector={DENSE_VECTOR: [0, 1]}),
+                ],
+                "next",
+            ),
+            (
+                [
+                    SimpleNamespace(
+                        payload={"chunk_id": "d:00001"}, vector={DENSE_VECTOR: [0.5, 0.5]}
+                    )
+                ],
+                None,
+            ),
         ]
 
     def scroll(self, **kwargs):

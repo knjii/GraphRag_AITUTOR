@@ -32,10 +32,7 @@ CORPUS: list[tuple[int, str]] = [
 ]
 
 EXTRACTIONS: dict[str, str] = {
-    "d:00000": (
-        '{"entities": [{"name": "сингулярное разложение"}], '
-        '"relations": []}'
-    ),
+    "d:00000": ('{"entities": [{"name": "сингулярное разложение"}], "relations": []}'),
     "d:00001": '{"entities": [{"name": "ортогональная матрица"}], "relations": []}',
     "d:00002": '{"entities": [{"name": "ковариационная матрица"}], "relations": []}',
     "d:00020": (

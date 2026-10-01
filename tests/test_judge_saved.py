@@ -36,23 +36,52 @@ def dump(path: Path, value: Any) -> Path:
 
 @pytest.fixture
 def sample(tmp_path: Path) -> tuple[list[str], Path]:
-    gold = dump(tmp_path / "gold.json", [{"id": "q", "question": "Вопрос?",
-                                        "answer": "Эталон", "gold_chunk_ids": ["c"],
-                                        "gold_doc_ids": ["doc"]}])
+    gold = dump(
+        tmp_path / "gold.json",
+        [
+            {
+                "id": "q",
+                "question": "Вопрос?",
+                "answer": "Эталон",
+                "gold_chunk_ids": ["c"],
+                "gold_doc_ids": ["doc"],
+            }
+        ],
+    )
     trace = tmp_path / "trace.jsonl"
-    TraceSet(traces=[QueryTrace(question_id="q", question="Вопрос?", final=["c2", "c"])]).save(trace)
+    TraceSet(traces=[QueryTrace(question_id="q", question="Вопрос?", final=["c2", "c"])]).save(
+        trace
+    )
     chunks = tmp_path / "parsed"
     chunks.mkdir()
-    dump(chunks / "doc_chunks.json", [{"id": "c", "text": "Первый"},
-                                     {"id": "c2", "text": "Второй"}])
+    dump(
+        chunks / "doc_chunks.json", [{"id": "c", "text": "Первый"}, {"id": "c2", "text": "Второй"}]
+    )
     # Чужой корпус даже не должен читаться.
     (chunks / "unrelated_chunks.json").write_text("не JSON", encoding="utf-8")
-    source = dump(tmp_path / "answers_a.json", {
-        "label": "a", "summary": {"верность": 0, "чем сделано": {"source": "old"}},
-        "outcomes": [AnswerOutcome(question_id="q", question_type="single_chunk",
-                                   answer="Ответ", correctness=0).as_dict()]})
-    return [str(source), "--goldset", str(gold), "--trace", str(trace),
-            "--chunks", str(chunks), "--output-dir", str(tmp_path / "out")], source
+    source = dump(
+        tmp_path / "answers_a.json",
+        {
+            "label": "a",
+            "summary": {"верность": 0, "чем сделано": {"source": "old"}},
+            "outcomes": [
+                AnswerOutcome(
+                    question_id="q", question_type="single_chunk", answer="Ответ", correctness=0
+                ).as_dict()
+            ],
+        },
+    )
+    return [
+        str(source),
+        "--goldset",
+        str(gold),
+        "--trace",
+        str(trace),
+        "--chunks",
+        str(chunks),
+        "--output-dir",
+        str(tmp_path / "out"),
+    ], source
 
 
 def test_saved_copy_and_provenance(sample: tuple[list[str], Path]) -> None:
@@ -76,12 +105,20 @@ def test_saved_copy_and_provenance(sample: tuple[list[str], Path]) -> None:
     assert len(judge.calls) == 1
 
 
-@pytest.mark.parametrize("verdict", ["", "не JSON", "[]", "{}",
-    '{"correctness": 3, "groundedness": 1}',
-    '{"correctness": true, "groundedness": 1}',
-    '{"correctness": "2", "groundedness": 1}',
-    '{"correctness": 2, "groundedness": -1}',
-    '{"correctness": 2, "groundedness": 1, "reason": null}'])
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        "",
+        "не JSON",
+        "[]",
+        "{}",
+        '{"correctness": 3, "groundedness": 1}',
+        '{"correctness": true, "groundedness": 1}',
+        '{"correctness": "2", "groundedness": 1}',
+        '{"correctness": 2, "groundedness": -1}',
+        '{"correctness": 2, "groundedness": 1, "reason": null}',
+    ],
+)
 def test_invalid_clears_old_grade(sample: tuple[list[str], Path], verdict: str) -> None:
     args, source = sample
     assert js.main(args, llm=Judge(verdict)) == 1
@@ -122,8 +159,10 @@ def test_multiple_files(sample: tuple[list[str], Path]) -> None:
     assert js.main([str(second), *args], llm=judge) == 0
     assert len(judge.calls) == 2
     assert [p.read_bytes() for p in (source, second)] == originals
-    assert js.read_json(source.parent / "out/answers_b_judged.json")["outcomes"][0][
-        "groundedness"] == 1
+    assert (
+        js.read_json(source.parent / "out/answers_b_judged.json")["outcomes"][0]["groundedness"]
+        == 1
+    )
 
 
 def test_server_error_is_invalid(sample: tuple[list[str], Path]) -> None:
@@ -133,15 +172,17 @@ def test_server_error_is_invalid(sample: tuple[list[str], Path]) -> None:
 
     args, source = sample
     assert js.main(args, llm=BrokenJudge()) == 1
-    assert js.read_json(source.parent / "out/answers_a_judged.json")[
-        "invalid_judge_fraction"] == 1
+    assert js.read_json(source.parent / "out/answers_a_judged.json")["invalid_judge_fraction"] == 1
 
 
 def test_calibration_metrics() -> None:
-    rows = [dict(group="within", question_id="q", human_grade=h, correctness=j)
-            for h, j in [(0, 0), (1, 1), (2, 1)]]
-    rows.extend(dict(group="across", question_id=str(h), human_grade=h, correctness=2-h)
-                for h in range(3))
+    rows = [
+        dict(group="within", question_id="q", human_grade=h, correctness=j)
+        for h, j in [(0, 0), (1, 1), (2, 1)]
+    ]
+    rows.extend(
+        dict(group="across", question_id=str(h), human_grade=h, correctness=2 - h) for h in range(3)
+    )
     metrics = js.calibration_metrics(rows)
     assert metrics["within_concordance"] == pytest.approx(5 / 6)
     assert metrics["within_pairs"] == 3
@@ -154,28 +195,44 @@ def test_calibration_metrics() -> None:
 
 
 def test_lower_bound_must_exceed_random() -> None:
-    rows = [dict(group="within", question_id="q", human_grade=h, correctness=1)
-            for h in range(4)]
+    rows = [dict(group="within", question_id="q", human_grade=h, correctness=1) for h in range(4)]
     result = js.calibration_metrics(rows)
     assert result["within_ci95"] == [0.5, 0.5]
     assert not result["accepted"]
 
 
 # Калибровочные данные (ручные оценки и слепок сессии) в репозиторий не входят.
-@pytest.mark.skipif(not (js.ROOT / "evaluation/reward_checks/2026-09-17").exists()
-                    or not (js.ROOT / "capture/session-0903").exists(),
-                    reason="нет локальных калибровочных данных")
+@pytest.mark.skipif(
+    not (js.ROOT / "evaluation/reward_checks/2026-09-17").exists()
+    or not (js.ROOT / "capture/session-0903").exists(),
+    reason="нет локальных калибровочных данных",
+)
 def test_real_calibration_dry_run(tmp_path: Path) -> None:
     root = js.ROOT
-    rows, _ = js.restore_calibration(root / "evaluation/reward_checks/2026-09-17",
-                                     root / "capture/session-0903")
+    rows, _ = js.restore_calibration(
+        root / "evaluation/reward_checks/2026-09-17", root / "capture/session-0903"
+    )
     assert len(rows) == 110
     assert len({(r["question_id"], r["model"]) for r in rows}) == 110
     judge = Judge()
-    assert js.main(["--calibrate", "--dry-run", "--goldset", str(root / "capture/goldset.json"),
-                    "--trace", str(root / "capture/session-0819/trace-always.jsonl"),
-                    "--chunks", str(root / "capture"), "--output-dir", str(tmp_path)],
-                   llm=judge) == 0
+    assert (
+        js.main(
+            [
+                "--calibrate",
+                "--dry-run",
+                "--goldset",
+                str(root / "capture/goldset.json"),
+                "--trace",
+                str(root / "capture/session-0819/trace-always.jsonl"),
+                "--chunks",
+                str(root / "capture"),
+                "--output-dir",
+                str(tmp_path),
+            ],
+            llm=judge,
+        )
+        == 0
+    )
     result = js.read_json(tmp_path / "calibration.json")
     assert result["restored_answers"] == len(judge.calls) == 110
     assert result["restored_questions"] == 65

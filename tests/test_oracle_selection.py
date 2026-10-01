@@ -9,7 +9,9 @@ from rag_textbook.evaluation.oracle import evaluate, graph_only_of, pool_of, sum
 
 def _row(final, base, graph, rerank=(), qid="q", kind="graph_linked"):
     return {
-        "question_id": qid, "question_type": kind, "final": list(final),
+        "question_id": qid,
+        "question_type": kind,
+        "final": list(final),
         "channels": {
             "base": [{"chunk_id": c, "rank": i, "score": 1.0} for i, c in enumerate(base)],
             "graph": [{"chunk_id": c, "rank": i, "score": 1.0} for i, c in enumerate(graph)],

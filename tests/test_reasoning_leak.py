@@ -26,6 +26,7 @@ from rag_textbook.evaluation.answers import (
 
 # ------------------------------------------------- вырезание в клиенте
 
+
 def test_closed_reasoning_block_is_removed():
     text = "<think>Сначала посмотрю контекст…</think>Определитель равен нулю."
 
@@ -58,6 +59,7 @@ def test_empty_input_is_safe():
 
 # ------------------------------------------------- настройка размышления
 
+
 def test_chat_reasoning_is_off_by_default():
     """Пустое значение означало «решает модель», и модель решала размышлять.
 
@@ -74,6 +76,7 @@ def test_chat_reasoning_can_be_enabled_explicitly():
 
 
 # ------------------------------------------------------- признаки в оценке
+
 
 def test_english_reasoning_opener_is_detected():
     assert looks_like_reasoning("The user is asking about the determinant.")

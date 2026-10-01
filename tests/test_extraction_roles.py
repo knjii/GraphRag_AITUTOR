@@ -26,7 +26,9 @@ V4_ANSWER = {
         {"name": "определитель", "role": "mentions"},
         {"name": "перестановка", "role": "непонятно"},
     ],
-    "relations": [{"source": "определитель", "relation": "определяется_через", "target": "матрица"}],
+    "relations": [
+        {"source": "определитель", "relation": "определяется_через", "target": "матрица"}
+    ],
     "notation": [
         {"symbol": "$\\det A$", "meaning": "определитель"},
         {"symbol": "S_n", "meaning": "симметрическая группа"},
@@ -102,9 +104,28 @@ def test_v4_notation_is_symbol_meaning_pair() -> None:
 
 
 def test_same_symbol_with_other_meaning_is_another_node() -> None:
-    first, _ = _extract("v4", {"entities": [], "relations": [], "notation": [{"symbol": "x", "meaning": "вектор признаков"}]})
-    second, _ = _extract("v4", {"entities": [], "relations": [], "notation": [{"symbol": "x", "meaning": "случайная величина"}]})
-    ids = {entity.id for result in (first, second) for entity in result.entities if entity.kind == "notation"}
+    first, _ = _extract(
+        "v4",
+        {
+            "entities": [],
+            "relations": [],
+            "notation": [{"symbol": "x", "meaning": "вектор признаков"}],
+        },
+    )
+    second, _ = _extract(
+        "v4",
+        {
+            "entities": [],
+            "relations": [],
+            "notation": [{"symbol": "x", "meaning": "случайная величина"}],
+        },
+    )
+    ids = {
+        entity.id
+        for result in (first, second)
+        for entity in result.entities
+        if entity.kind == "notation"
+    }
     assert len(ids) == 2
 
 
@@ -115,6 +136,7 @@ def test_builder_passes_roles_to_mentions() -> None:
         extraction_prompt_version="v4",
         cross_chunk_relations_enabled=False,
     )
+
     class _Store:
         def __init__(self) -> None:
             self.mentions: list[dict] = []
@@ -146,7 +168,10 @@ def test_default_limit_fits_v4_worst_case() -> None:
     settings = GraphSettings()
     name = "довольно длинное имя сущности"
     answer = {
-        "entities": [{"name": f"{name} {i}", "role": "mentions"} for i in range(settings.max_entities_per_chunk)],
+        "entities": [
+            {"name": f"{name} {i}", "role": "mentions"}
+            for i in range(settings.max_entities_per_chunk)
+        ],
         "relations": [
             {"source": f"{name} {i}", "target": f"{name} {i + 1}", "relation": "используется_в"}
             for i in range(settings.max_relations_per_chunk)

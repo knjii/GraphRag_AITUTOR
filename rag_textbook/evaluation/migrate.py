@@ -240,7 +240,7 @@ def review_sheet(
         "",
         "Опора ответа разрезана между двумя новыми фрагментами. Выбран первый",
         "кандидат; если верен другой — впишите его номер в `fix` файла",
-        "`migration-fixes.json` вида `{\"<вопрос>\": {\"<старый>\": \"<новый>\"}}`.",
+        '`migration-fixes.json` вида `{"<вопрос>": {"<старый>": "<новый>"}}`.',
         "",
     ]
     for number, qid in enumerate(report.ambiguous, start=1):
@@ -268,4 +268,3 @@ def review_sheet(
                     "",
                 ]
     return "\n".join(lines)
-

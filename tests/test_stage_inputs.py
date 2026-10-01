@@ -30,9 +30,7 @@ def indexed(settings, sample_blocks, monkeypatch):
     pipeline = IndexingPipeline(context)
 
     monkeypatch.setattr(pipeline.parser, "parse", lambda path, force=False: sample_blocks)
-    monkeypatch.setattr(
-        pipeline.parser, "images_dir_for", lambda path: settings.paths.parsed_dir
-    )
+    monkeypatch.setattr(pipeline.parser, "images_dir_for", lambda path: settings.paths.parsed_dir)
     source = settings.paths.pdf_dir / "учебник.pdf"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(b"%PDF-1.4 stub")

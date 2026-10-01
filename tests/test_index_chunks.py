@@ -62,9 +62,7 @@ def test_foreign_chunks_go_into_their_own_subdirectory(tmp_path: Path):
     (settings.paths.parsed_dir / "учебник_chunks.json").write_text("[]", encoding="utf-8")
     pipeline = _Pipeline(settings)
 
-    pipeline.index_chunks(
-        [_chunk("a:0", "a"), _chunk("b:0", "b")], source_label="multihop-rag"
-    )
+    pipeline.index_chunks([_chunk("a:0", "a"), _chunk("b:0", "b")], source_label="multihop-rag")
 
     top_level = sorted(path.name for path in settings.paths.parsed_dir.glob("*_chunks.json"))
     assert top_level == ["учебник_chunks.json"], "чужой корпус не должен попадать наверх"

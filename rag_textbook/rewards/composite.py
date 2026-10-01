@@ -286,8 +286,10 @@ def without_question_echo(answer: str, question: str) -> str:
     kept = []
     for sentence in split_sentences(answer):
         terms = set(content_terms(strip_math(sentence)))
-        if terms and terms <= asked and (
-            sentence.rstrip().endswith("?") or not significant(extract_math(sentence))
+        if (
+            terms
+            and terms <= asked
+            and (sentence.rstrip().endswith("?") or not significant(extract_math(sentence)))
         ):
             continue
         kept.append(sentence)
@@ -367,11 +369,9 @@ def compute_reward(
         # Отказ с одними выдуманными формулами — отказ плюс выдумка: иначе
         # формула после «недостаточно информации» поднимала отказ −0.5
         # до −0.44 (задача 020), а при невидимом эталоне оплачивалась бы +0.5.
-        value = (cfg.refusal_reward if not gold_in_context else cfg.refusal_penalty)
+        value = cfg.refusal_reward if not gold_in_context else cfg.refusal_penalty
         value -= cfg.foreign_weight
-        return RewardBreakdown(
-            total=value, gate="отказ", formula=formula, parts={"refusal": value}
-        )
+        return RewardBreakdown(total=value, gate="отказ", formula=formula, parts={"refusal": value})
     judged, supported = sentence_support(without_question_echo(text, question), context)
     parts: dict[str, float] = {}
 

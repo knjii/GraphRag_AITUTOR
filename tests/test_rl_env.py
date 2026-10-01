@@ -21,34 +21,61 @@ from rag_textbook.rl.env import (
 
 
 def _chunk(cid: str, doc: str, text: str) -> Chunk:
-    return Chunk(id=cid, doc_id=doc, doc_name=f"{doc}.pdf", source_path=f"{doc}.pdf",
-                 ordinal=int(cid.split(":")[1]), text=text, pages=[1])
+    return Chunk(
+        id=cid,
+        doc_id=doc,
+        doc_name=f"{doc}.pdf",
+        source_path=f"{doc}.pdf",
+        ordinal=int(cid.split(":")[1]),
+        text=text,
+        pages=[1],
+    )
 
 
 def _goldset(tmp_path: Path) -> Path:
     path = tmp_path / "goldset.json"
-    path.write_text(json.dumps({"questions": [{
-        "id": "q1", "question": "Что такое скалярное произведение?",
-        "question_type": "formula_table", "gold_chunk_ids": ["d1:1"],
-        "gold_doc_ids": ["d1"], "answer": "…",
-    }]}, ensure_ascii=False), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "Что такое скалярное произведение?",
+                        "question_type": "formula_table",
+                        "gold_chunk_ids": ["d1:1"],
+                        "gold_doc_ids": ["d1"],
+                        "answer": "…",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
 @pytest.fixture()
 def chunks() -> dict[str, Chunk]:
     return {
-        "d1:1": _chunk("d1:1", "d1", "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$."),
+        "d1:1": _chunk(
+            "d1:1", "d1", "Скалярное произведение: $$\\langle x, y \\rangle = x^{T} A y$$."
+        ),
         "d1:2": _chunk("d1:2", "d1", "Норма задаётся через скалярное произведение."),
     }
 
 
 def test_prompt_matches_service(settings, chunks, tmp_path):
-    row = {"question_id": "q1", "question": "Что такое скалярное произведение?",
-           "question_type": "formula_table", "final": ["d1:2", "d1:1"]}
+    row = {
+        "question_id": "q1",
+        "question": "Что такое скалярное произведение?",
+        "question_type": "formula_table",
+        "final": ["d1:2", "d1:1"],
+    }
     [example] = build_examples(settings, [row], chunks, _goldset(tmp_path))
     _, messages = build_answer_messages(
-        settings, row["question"],
+        settings,
+        row["question"],
         [ScoredChunk(chunk=chunks[c], score=1.0) for c in row["final"]],
     )
     assert example.messages == [{"role": m.role, "content": m.content} for m in messages]
@@ -61,7 +88,12 @@ def test_prompt_matches_service(settings, chunks, tmp_path):
 
 
 def test_gold_outside_context_is_flagged(settings, chunks, tmp_path):
-    row = {"question_id": "q1", "question": "?", "question_type": "formula_table", "final": ["d1:2"]}
+    row = {
+        "question_id": "q1",
+        "question": "?",
+        "question_type": "formula_table",
+        "final": ["d1:2"],
+    }
     [example] = build_examples(settings, [row], chunks, _goldset(tmp_path))
     assert not example.gold_in_context
 
@@ -69,10 +101,24 @@ def test_gold_outside_context_is_flagged(settings, chunks, tmp_path):
 def test_reference_is_limited_to_visible_gold(settings, chunks, tmp_path):
     """Связывающий вопрос: второй эталонный фрагмент в контекст не попал."""
     path = tmp_path / "goldset.json"
-    path.write_text(json.dumps({"questions": [{
-        "id": "q1", "question": "?", "question_type": "graph_linked",
-        "gold_chunk_ids": ["d1:1", "d1:2"], "gold_doc_ids": ["d1"], "answer": "…",
-    }]}, ensure_ascii=False), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "?",
+                        "question_type": "graph_linked",
+                        "gold_chunk_ids": ["d1:1", "d1:2"],
+                        "gold_doc_ids": ["d1"],
+                        "answer": "…",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     row = {"question_id": "q1", "question": "?", "question_type": "graph_linked", "final": ["d1:1"]}
     [example] = build_examples(settings, [row], chunks, path)
     assert example.gold_in_context
@@ -95,7 +141,9 @@ def test_split_keeps_test_books_out_of_training():
 
 
 def test_jsonl_round_trip(tmp_path):
-    example = Example("q", "t", "вопрос", [{"role": "user", "content": "вопрос"}], "к", "э", False, ["d"])
+    example = Example(
+        "q", "t", "вопрос", [{"role": "user", "content": "вопрос"}], "к", "э", False, ["d"]
+    )
     path = tmp_path / "set.jsonl"
     assert save_jsonl([example], path) == 1
     assert load_jsonl(path) == [example]
@@ -111,7 +159,12 @@ def test_reward_function_uses_dataset_columns():
     context = "Контекст: $$\\langle x, y \\rangle = x^{T} A y$$ — скалярное произведение."
     values = reward(
         completions=[
-            [{"role": "assistant", "content": "Это $$\\langle x, y \\rangle = x^{T} A y$$, скалярное произведение [1]."}],
+            [
+                {
+                    "role": "assistant",
+                    "content": "Это $$\\langle x, y \\rangle = x^{T} A y$$, скалярное произведение [1].",
+                }
+            ],
             [{"role": "assistant", "content": ""}],
         ],
         context=[context, context],
@@ -120,7 +173,6 @@ def test_reward_function_uses_dataset_columns():
         prompts=["?", "?"],
     )
     assert values[0] > 0 > values[1]
-
 
 
 def test_unfit_questions_are_kept_out_of_training():
@@ -144,5 +196,8 @@ def test_unfit_questions_are_kept_out_of_training():
         verdicts,
     )
     assert [e.question_id for e in kept] == ["good"]
-    assert reasons == {"вердикт:unanswerable": 1, "отсылка к тексту": 1,
-                       "номер формулы или раздела": 1}
+    assert reasons == {
+        "вердикт:unanswerable": 1,
+        "отсылка к тексту": 1,
+        "номер формулы или раздела": 1,
+    }

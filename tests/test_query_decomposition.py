@@ -1,4 +1,4 @@
-﻿"""Разложение связывающего вопроса на подвопросы.
+"""Разложение связывающего вопроса на подвопросы.
 
 Основание — замер на полном корпусе. Из 118 эталонных фрагментов многошаговых
 вопросов векторный канал приносит в пул кандидатов 103, а до финальной выдачи
@@ -59,8 +59,7 @@ class _PartAwareReranker(RerankerClient):
 
     def rerank(self, query: str, documents, top_n: int):
         scored = [
-            (index, 1.0 if text.startswith(query) else 0.1)
-            for index, text in enumerate(documents)
+            (index, 1.0 if text.startswith(query) else 0.1) for index, text in enumerate(documents)
         ]
         scored.sort(key=lambda item: item[1], reverse=True)
         return scored[:top_n]
@@ -112,7 +111,9 @@ def _settings(**retrieval) -> Settings:
 
 
 def test_decomposition_splits_the_question() -> None:
-    llm = _DecomposingLLM(["Что такое сингулярное разложение?", "Что такое метод главных компонент?"])
+    llm = _DecomposingLLM(
+        ["Что такое сингулярное разложение?", "Что такое метод главных компонент?"]
+    )
     pipeline = _pipeline(_settings(), llm)
 
     result = pipeline.retrieve("Как связаны сингулярное разложение и метод главных компонент?")

@@ -103,16 +103,18 @@ class AblationResult:
         return asdict(self)
 
     def to_verdict(self) -> QuestionVerdict:
-        return QuestionVerdict(
-            question_id=self.question_id, verdict=self.verdict, note=self.note
-        )
+        return QuestionVerdict(question_id=self.question_id, verdict=self.verdict, note=self.note)
 
 
 def _answer_with(llm: LLMClient, question: str, texts: Sequence[str]) -> str:
     context = "\n\n---\n\n".join(truncate(text, _MAX_CHUNK_CHARS) for text in texts)
     try:
         raw = llm.chat(
-            [ChatMessage(role="user", content=ANSWER_PROMPT.format(context=context, question=question))],
+            [
+                ChatMessage(
+                    role="user", content=ANSWER_PROMPT.format(context=context, question=question)
+                )
+            ],
             # Служебное назначение: с назначением `chat` рассуждающая модель
             # тратит лимит токенов на размышление и возвращает пустой ответ.
             purpose="utility",
@@ -163,9 +165,7 @@ def ablate_question(
     llm: LLMClient, question: GoldQuestion, chunks: dict[str, Chunk]
 ) -> AblationResult:
     """Ставит опыт по одному вопросу и выносит вердикт."""
-    texts = [
-        chunks[chunk_id].text for chunk_id in question.gold_chunk_ids if chunk_id in chunks
-    ]
+    texts = [chunks[chunk_id].text for chunk_id in question.gold_chunk_ids if chunk_id in chunks]
     if not texts:
         return AblationResult(
             question_id=question.id,

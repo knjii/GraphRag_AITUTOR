@@ -57,7 +57,6 @@ def test_non_empty_output_is_refused(tmp_path: Path, capsys):
     assert "не пуст" in capsys.readouterr().err
 
 
-
 # ---- задача 021: проверка по именам, метка, путь в контейнере
 
 
@@ -70,7 +69,9 @@ def full_adapter(tmp_path: Path, weights: bytes = b"w1", **config) -> Path:
 
 
 def test_targets_are_read_from_the_adapter(tmp_path: Path):
-    config = merge_adapter.adapter_config(full_adapter(tmp_path, target_modules=["v_proj", "o_proj"]))
+    config = merge_adapter.adapter_config(
+        full_adapter(tmp_path, target_modules=["v_proj", "o_proj"])
+    )
     assert merge_adapter.targets_of(config) == ["o_proj", "v_proj"]
     with pytest.raises(ValueError):
         merge_adapter.targets_of({"r": 16})
@@ -80,7 +81,9 @@ def test_target_matching_follows_peft_rules():
     targets = ["q_proj", "v_proj"]
     assert merge_adapter.is_target("model.layers.0.self_attn.q_proj.weight", targets)
     # Слои LoRA, смещения и чужие проекции не проверяются.
-    assert not merge_adapter.is_target("model.layers.0.self_attn.q_proj.lora_A.default.weight", targets)
+    assert not merge_adapter.is_target(
+        "model.layers.0.self_attn.q_proj.lora_A.default.weight", targets
+    )
     assert not merge_adapter.is_target("model.layers.0.self_attn.q_proj.bias", targets)
     assert not merge_adapter.is_target("model.layers.0.self_attn.k_proj.weight", targets)
     assert not merge_adapter.is_target("model.layers.0.mlp.up_proj_q_proj.weight", ["q_proj"])
@@ -103,7 +106,9 @@ def test_digest_depends_on_weights_and_config(tmp_path: Path):
     first = full_adapter(tmp_path / "1", b"w1")
     second = full_adapter(tmp_path / "2", b"w2")
     third = full_adapter(tmp_path / "3", b"w1", r=32)
-    assert merge_adapter.adapter_digest(first) == merge_adapter.adapter_digest(full_adapter(tmp_path / "4", b"w1"))
+    assert merge_adapter.adapter_digest(first) == merge_adapter.adapter_digest(
+        full_adapter(tmp_path / "4", b"w1")
+    )
     assert merge_adapter.adapter_digest(first) != merge_adapter.adapter_digest(second)
     assert merge_adapter.adapter_digest(first) != merge_adapter.adapter_digest(third)
 
@@ -120,8 +125,10 @@ def merged_dir(out: Path, adapter: Path, **marker) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "config.json").write_text("{}", encoding="utf-8")
     (out / "model.safetensors").write_bytes(b"weights")
-    data = {"adapter_sha256": merge_adapter.adapter_digest(adapter, BASE),
-            "files": merge_adapter.manifest(out)}
+    data = {
+        "adapter_sha256": merge_adapter.adapter_digest(adapter, BASE),
+        "files": merge_adapter.manifest(out),
+    }
     data.update(marker)
     (out / merge_adapter.MARKER).write_text(json.dumps(data), encoding="utf-8")
 
@@ -150,9 +157,10 @@ def test_marker_without_model_files_is_not_current(tmp_path: Path):
     adapter = full_adapter(tmp_path / "run")
     out = tmp_path / "run" / "merged"
     out.mkdir(parents=True)
-    (out / merge_adapter.MARKER).write_text(json.dumps({
-        "adapter_sha256": merge_adapter.adapter_digest(adapter, BASE), "files": {}}),
-        encoding="utf-8")
+    (out / merge_adapter.MARKER).write_text(
+        json.dumps({"adapter_sha256": merge_adapter.adapter_digest(adapter, BASE), "files": {}}),
+        encoding="utf-8",
+    )
     assert current(adapter, out) == 1
 
 
@@ -187,12 +195,15 @@ def test_dotted_targets_match_like_peft():
     assert not merge_adapter.is_target(name, ["attn.q_proj"])
 
 
-@pytest.mark.parametrize("extra", [
-    {"target_modules": "all-linear"},
-    {"layers_to_transform": [0]},
-    {"exclude_modules": ["q_proj"]},
-    {"modules_to_save": ["lm_head"]},
-])
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"target_modules": "all-linear"},
+        {"layers_to_transform": [0]},
+        {"exclude_modules": ["q_proj"]},
+        {"modules_to_save": ["lm_head"]},
+    ],
+)
 def test_unsupported_peft_settings_are_refused(extra):
     config = {"target_modules": ["q_proj"], **extra}
     with pytest.raises(ValueError):
@@ -235,8 +246,9 @@ class FakeTensor:
         return FakeTensor(self.shape, self.dtype, self.tag)
 
 
-def fake_base(tmp_path: Path, shards: dict[str, dict[str, FakeTensor]], index: bool = True,
-              **config) -> tuple[Path, dict]:
+def fake_base(
+    tmp_path: Path, shards: dict[str, dict[str, FakeTensor]], index: bool = True, **config
+) -> tuple[Path, dict]:
     base = tmp_path / "base"
     base.mkdir()
     config.setdefault("architectures", ["Qwen3_5ForConditionalGeneration"])
@@ -244,8 +256,9 @@ def fake_base(tmp_path: Path, shards: dict[str, dict[str, FakeTensor]], index: b
     (base / "preprocessor_config.json").write_text("{}", encoding="utf-8")
     if index:
         weight_map = {key: shard for shard, keys in shards.items() for key in keys}
-        (base / merge_adapter.INDEX).write_text(json.dumps({"weight_map": weight_map}),
-                                                encoding="utf-8")
+        (base / merge_adapter.INDEX).write_text(
+            json.dumps({"weight_map": weight_map}), encoding="utf-8"
+        )
     store = {}
     for shard, tensors in shards.items():
         (base / shard).write_bytes(b"x")
@@ -261,7 +274,10 @@ def run_pack(tmp_path, base, store, state, targets=TARGETS):
     out.mkdir()
     written = {}
     replaced = merge_adapter.pack_like_base(
-        state, base, out, targets=targets,
+        state,
+        base,
+        out,
+        targets=targets,
         read_shard=lambda path: store[str(path)],
         write_shard=lambda tensors, path: written.__setitem__(path.name, tensors),
     )
@@ -305,8 +321,10 @@ def all_keys(shards=SHARDS):
 
 
 def test_text_keys_map_into_the_base_layout():
-    assert merge_adapter.text_key_for("model.language_model.layers.3.mlp.up_proj.weight") \
+    assert (
+        merge_adapter.text_key_for("model.language_model.layers.3.mlp.up_proj.weight")
         == "model.layers.3.mlp.up_proj.weight"
+    )
     assert merge_adapter.text_key_for("lm_head.weight") == "lm_head.weight"
     assert merge_adapter.text_key_for("model.visual.merger.weight") is None
     assert merge_adapter.text_key_for("mtp.fc.weight") is None
@@ -345,7 +363,9 @@ def test_identity_pack_replaces_nothing_but_checks_keys(tmp_path: Path):
 
 
 def test_pack_without_index_uses_the_single_file(tmp_path: Path):
-    single = {"model.safetensors": {k: t for tensors in SHARDS.values() for k, t in tensors.items()}}
+    single = {
+        "model.safetensors": {k: t for tensors in SHARDS.values() for k, t in tensors.items()}
+    }
     base, store = fake_base(tmp_path, single, index=False)
     replaced, written, _ = run_pack(tmp_path, base, store, merged_state())
     assert replaced == 1 and set(written) == {"model.safetensors"}
@@ -371,7 +391,9 @@ def test_pack_refuses_shape_mismatch_even_for_copied_weights(tmp_path: Path):
 
 def test_pack_refuses_dtype_mismatch_of_a_trained_weight(tmp_path: Path):
     base, store = fake_base(tmp_path, SHARDS)
-    fp32 = merged_state(**{"model.layers.3.self_attn.q_proj.weight": FakeTensor((4, 4), dtype="fp32")})
+    fp32 = merged_state(
+        **{"model.layers.3.self_attn.q_proj.weight": FakeTensor((4, 4), dtype="fp32")}
+    )
     with pytest.raises(ValueError, match="fp32"):
         run_pack(tmp_path, base, store, fp32)
 
@@ -409,20 +431,29 @@ def test_identity_marker_is_separate_from_adapters(tmp_path: Path):
     out.mkdir(parents=True)
     (out / "config.json").write_text("{}", encoding="utf-8")
     (out / "model.safetensors").write_bytes(b"w")
-    (out / merge_adapter.MARKER).write_text(json.dumps({
-        "adapter_sha256": merge_adapter.adapter_digest(None, BASE),
-        "files": merge_adapter.manifest(out)}), encoding="utf-8")
+    (out / merge_adapter.MARKER).write_text(
+        json.dumps(
+            {
+                "adapter_sha256": merge_adapter.adapter_digest(None, BASE),
+                "files": merge_adapter.manifest(out),
+            }
+        ),
+        encoding="utf-8",
+    )
     args = ["--identity", "--base", BASE, "--out", str(out), "--is-current"]
     assert merge_adapter.main(args) == 0
-    assert merge_adapter.main(["--identity", "--base", "другая", "--out", str(out),
-                               "--is-current"]) == 1
+    assert (
+        merge_adapter.main(["--identity", "--base", "другая", "--out", str(out), "--is-current"])
+        == 1
+    )
 
 
 def test_identity_and_adapter_are_exclusive(tmp_path: Path):
     adapter = full_adapter(tmp_path)
     with pytest.raises(SystemExit):
-        merge_adapter.main(["--identity", "--adapter", str(adapter), "--base", BASE,
-                            "--out", str(tmp_path / "o")])
+        merge_adapter.main(
+            ["--identity", "--adapter", str(adapter), "--base", BASE, "--out", str(tmp_path / "o")]
+        )
     with pytest.raises(SystemExit):
         merge_adapter.main(["--identity", "--out", str(tmp_path / "o")])
     with pytest.raises(SystemExit):
@@ -451,8 +482,11 @@ def cached_test_base(tmp_path: Path, monkeypatch):
     base.mkdir()
     (base / "config.json").write_text("{}", encoding="utf-8")
     original = merge_adapter.cached_base
-    monkeypatch.setattr(merge_adapter, "cached_base",
-                        lambda name: base if name in (BASE, "другая") else original(name))
+    monkeypatch.setattr(
+        merge_adapter,
+        "cached_base",
+        lambda name: base if name in (BASE, "другая") else original(name),
+    )
 
 
 def test_same_size_corruption_is_not_current(tmp_path: Path):
@@ -472,9 +506,17 @@ def test_requested_dtype_changes_current_marker(tmp_path: Path):
     assert merge_adapter.main([*args, "float32"]) == 1
 
 
-@pytest.mark.parametrize("name", ["vocab.json", "merges.txt", "tokenizer_extra.json",
-                                  "special_tokens_map.json", "chat_template.txt",
-                                  "chat_templates/nested/tool.jinja"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "vocab.json",
+        "merges.txt",
+        "tokenizer_extra.json",
+        "special_tokens_map.json",
+        "chat_template.txt",
+        "chat_templates/nested/tool.jinja",
+    ],
+)
 @pytest.mark.parametrize("identity", [False, True])
 def test_all_tokenizer_inputs_affect_digest(tmp_path: Path, name: str, identity: bool):
     base = tmp_path / "base"
@@ -546,11 +588,16 @@ def test_shared_torch_storage_can_be_saved(tmp_path: Path):
     out = tmp_path / "out"
     base.mkdir()
     out.mkdir()
-    tensors = {"model.language_model.q_proj.weight": shared.clone(),
-               "model.language_model.v_proj.weight": shared.clone()}
+    tensors = {
+        "model.language_model.q_proj.weight": shared.clone(),
+        "model.language_model.v_proj.weight": shared.clone(),
+    }
     safetensors.save_file(tensors, str(base / "model.safetensors"))
     merge_adapter.pack_like_base(
-        state, base, out, targets=TARGETS,
+        state,
+        base,
+        out,
+        targets=TARGETS,
         read_shard=lambda path: safetensors.load_file(str(path)),
         write_shard=lambda data, path: safetensors.save_file(data, str(path)),
     )

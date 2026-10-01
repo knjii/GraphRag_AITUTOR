@@ -43,6 +43,7 @@ def _write(tmp_path: Path, name: str, payload) -> Path:
 
 # ------------------------------------------------------- текст в блоки
 
+
 def test_headings_become_levelled_blocks():
     blocks = blocks_from_text("# Заголовок\n\nОбычный абзац текста.")
 
@@ -66,6 +67,7 @@ def test_table_becomes_table_block():
 
 
 # ------------------------------------------------------ сопоставление цитат
+
 
 def test_exact_quote_is_matched(tmp_path: Path):
     questions = _write(
@@ -112,8 +114,16 @@ def test_unmatched_evidence_drops_the_question(tmp_path: Path):
                 "answer": "Ответ",
                 "question_type": "comparison_query",
                 "evidence_list": [
-                    {"title": "Заголовок", "source": "Издание", "fact": "Компания объявила о росте выручки на треть."},
-                    {"title": "Нет такой статьи", "source": "Издание", "fact": "Совсем посторонние слова здесь."},
+                    {
+                        "title": "Заголовок",
+                        "source": "Издание",
+                        "fact": "Компания объявила о росте выручки на треть.",
+                    },
+                    {
+                        "title": "Нет такой статьи",
+                        "source": "Издание",
+                        "fact": "Совсем посторонние слова здесь.",
+                    },
                 ],
             }
         ],
@@ -165,7 +175,11 @@ def test_partial_question_can_be_kept_explicitly(tmp_path: Path):
                 "answer": "Ответ",
                 "question_type": "comparison_query",
                 "evidence_list": [
-                    {"title": "Заголовок", "source": "Издание", "fact": "Компания объявила о росте выручки на треть."},
+                    {
+                        "title": "Заголовок",
+                        "source": "Издание",
+                        "fact": "Компания объявила о росте выручки на треть.",
+                    },
                     {"title": "Нет такой", "source": "Издание", "fact": "Посторонние слова здесь."},
                 ],
             }
@@ -224,6 +238,7 @@ def test_empty_documents_are_skipped(tmp_path: Path):
 
 
 # --------------------------------------------- защита от смешивания корпусов
+
 
 def test_public_run_refuses_the_default_collection(tmp_path: Path, monkeypatch):
     """Чужой корпус в коллекции учебника обесценил бы все прежние замеры,

@@ -24,7 +24,9 @@ from rag_textbook.evaluation.goldset import (
 from rag_textbook.models import Chunk, GoldQuestion
 
 
-def _chunk(identifier: str, text: str, *, headers: list[str] | None = None, ordinal: int = 0) -> Chunk:
+def _chunk(
+    identifier: str, text: str, *, headers: list[str] | None = None, ordinal: int = 0
+) -> Chunk:
     return Chunk(
         id=identifier,
         doc_id="doc",
@@ -56,6 +58,7 @@ def _question(
 
 # --------------------------------------------------------- ссылки на номера
 
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -77,6 +80,7 @@ def test_ordinary_question_is_not_flagged():
 
 # ------------------------------------------------------- негодные фрагменты
 
+
 def test_table_of_contents_is_recognized():
     text = "\n".join(f"Глава {index} ....... {index * 7}" for index in range(1, 12))
     assert classify_chunk(_chunk("c1", text)) == "оглавление"
@@ -88,11 +92,14 @@ def test_exercise_page_is_recognized():
 
 
 def test_substantive_chunk_passes():
-    chunk = _chunk("c1", "Ортогональная матрица — это матрица, обратная к которой равна транспонированной.")
+    chunk = _chunk(
+        "c1", "Ортогональная матрица — это матрица, обратная к которой равна транспонированной."
+    )
     assert classify_chunk(chunk) == "содержательный"
 
 
 # -------------------------------------------------------------- аудит целиком
+
 
 def test_audit_marks_structural_gold_chunk():
     chunks = {
@@ -124,7 +131,9 @@ def test_audit_flags_thin_answer():
 
 def test_near_duplicates_keep_the_earlier_question():
     first = _question("q1", "Какое свойство отличает ортогональную матрицу от произвольной?")
-    second = _question("q2", "Какое свойство отличает ортогональную матрицу от произвольной матрицы?")
+    second = _question(
+        "q2", "Какое свойство отличает ортогональную матрицу от произвольной матрицы?"
+    )
     third = _question("q3", "Как определяется ранг матрицы через линейную независимость строк?")
 
     duplicates = find_near_duplicates([first, second, third])
@@ -144,6 +153,7 @@ def test_summary_splits_defects_by_type():
 
 
 # ------------------------------------------------------ приёмка при сборке
+
 
 class _StubLLM:
     """Модель, отвечающая заготовленным JSON. Сборка не должна ходить в сеть."""
@@ -222,11 +232,17 @@ class _EchoLLM:
 
 def test_parallel_build_matches_sequential():
     chunks = [
-        _chunk(f"ф{i}", f"Содержательный фрагмент про матрицы и векторы, номер {i} " * 6, ordinal=i * 20)
+        _chunk(
+            f"ф{i}",
+            f"Содержательный фрагмент про матрицы и векторы, номер {i} " * 6,
+            ordinal=i * 20,
+        )
         for i in range(12)
     ]
     sequential = GoldsetBuilder(_EchoLLM(), seed=3).build(chunks, single_count=10, multihop_count=3)
     parallel_builder = GoldsetBuilder(_EchoLLM(), seed=3, workers=6)
     parallel = parallel_builder.build(chunks, single_count=10, multihop_count=3)
-    assert [(q.id, q.gold_chunk_ids) for q in parallel] == [(q.id, q.gold_chunk_ids) for q in sequential]
+    assert [(q.id, q.gold_chunk_ids) for q in parallel] == [
+        (q.id, q.gold_chunk_ids) for q in sequential
+    ]
     assert parallel_builder.failures["not_json"] >= 1

@@ -68,10 +68,12 @@ def test_summary_reports_hit_rate_next_to_the_share():
     нужны обе: доля занижена знаменателем, а «хотя бы одна» говорит,
     дошла формула до ответа или нет."""
     outcomes = [
-        AnswerOutcome(question_id="q1", question_type="formula_table",
-                      latex_expected=4, latex_found=1),
-        AnswerOutcome(question_id="q2", question_type="formula_table",
-                      latex_expected=4, latex_found=0),
+        AnswerOutcome(
+            question_id="q1", question_type="formula_table", latex_expected=4, latex_found=1
+        ),
+        AnswerOutcome(
+            question_id="q2", question_type="formula_table", latex_expected=4, latex_found=0
+        ),
     ]
 
     summary = summarize_answers(outcomes)["всего"]

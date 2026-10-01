@@ -18,23 +18,59 @@ _SPEC.loader.exec_module(jr)
 
 
 def _checks(answer, context=None, refusal=False, contradicts=False):
-    return {"facts_in_answer": answer, "facts_in_context": context or [True] * len(answer),
-            "refusal": refusal, "contradicts": contradicts, "unsupported": False}
+    return {
+        "facts_in_answer": answer,
+        "facts_in_context": context or [True] * len(answer),
+        "refusal": refusal,
+        "contradicts": contradicts,
+        "unsupported": False,
+    }
 
 
 def _data(group="across", row_group="across"):
     rows = [
-        {"question_id": "q1", "model": "a", "group": row_group, "human_grade": 3, "correctness": 2,
-         "judge_checks": _checks([True, True]), "answer": "полный"},
-        {"question_id": "q2", "model": "a", "group": row_group, "human_grade": 2, "correctness": 0,
-         "judge_checks": _checks([True, False], contradicts=True), "answer": "занижен"},
-        {"question_id": "q3", "model": "b", "group": row_group, "human_grade": 0, "correctness": 2,
-         "judge_checks": _checks([True]), "answer": "завышен"},
-        {"question_id": "q4", "model": "b", "group": row_group, "human_grade": 1, "correctness": None,
-         "judge_checks": None, "answer": ""},
+        {
+            "question_id": "q1",
+            "model": "a",
+            "group": row_group,
+            "human_grade": 3,
+            "correctness": 2,
+            "judge_checks": _checks([True, True]),
+            "answer": "полный",
+        },
+        {
+            "question_id": "q2",
+            "model": "a",
+            "group": row_group,
+            "human_grade": 2,
+            "correctness": 0,
+            "judge_checks": _checks([True, False], contradicts=True),
+            "answer": "занижен",
+        },
+        {
+            "question_id": "q3",
+            "model": "b",
+            "group": row_group,
+            "human_grade": 0,
+            "correctness": 2,
+            "judge_checks": _checks([True]),
+            "answer": "завышен",
+        },
+        {
+            "question_id": "q4",
+            "model": "b",
+            "group": row_group,
+            "human_grade": 1,
+            "correctness": None,
+            "judge_checks": None,
+            "answer": "",
+        },
     ]
-    return {"judge_provenance": {"calibration_group": group},
-            "calibration": {"spearman_across": 0.5}, "outcomes": rows}
+    return {
+        "judge_provenance": {"calibration_group": group},
+        "calibration": {"spearman_across": 0.5},
+        "outcomes": rows,
+    }
 
 
 def test_review_counts_and_branches():
@@ -56,7 +92,9 @@ def test_within_is_refused(group, row_group):
 
 
 def test_branch_refusal_kinds():
-    assert jr.branch(_checks([False], context=[True], refusal=True)) == "отказ при факте во фрагментах"
+    assert (
+        jr.branch(_checks([False], context=[True], refusal=True)) == "отказ при факте во фрагментах"
+    )
     assert jr.branch(_checks([False], context=[False], refusal=True)) == "верный отказ"
     assert jr.branch(None) == "невалидно"
 

@@ -12,9 +12,11 @@ TAG = re.compile(r"\\tag\{\(?(\d+\.\d+[a-z]?)\)?\}")
 EQ_REF = re.compile(r"\((\d+\.\d+[a-z]?)\)")
 
 # Падежи перечислены явно: «[Пп]ример\w*» поймало бы «примерно 2.5 раза».
-STATEMENT = (r"(?:[Оо]пределени(?:е|я|и|ю|ем)|[Тт]еорем(?:а|ы|е|у|ой)|"
-             r"[Лл]емм(?:а|ы|е|у|ой)|[Сс]ледстви(?:е|я|и|ю|ем)|"
-             r"[Пп]ример(?:а|е|у|ы|ов|ах)?|[Зз]амечани(?:е|я|и|ю|ем))")
+STATEMENT = (
+    r"(?:[Оо]пределени(?:е|я|и|ю|ем)|[Тт]еорем(?:а|ы|е|у|ой)|"
+    r"[Лл]емм(?:а|ы|е|у|ой)|[Сс]ледстви(?:е|я|и|ю|ем)|"
+    r"[Пп]ример(?:а|е|у|ы|ов|ах)?|[Зз]амечани(?:е|я|и|ю|ем))"
+)
 # «Определение 2.10 (векторное подпространство).» — имя в скобках сразу
 # после номера встречается только в месте определения, не в ссылке.
 STATEMENT_ANCHOR = re.compile(STATEMENT + r"\s+(\d+\.\d+)\s*\(")
@@ -32,7 +34,10 @@ SECTION_HEAD = re.compile(r"^\s*(\d+(?:\.\d+)+)\.")
 def anchors_of(chunks: list[dict[str, Any]]) -> dict[str, dict[str, set[str]]]:
     """Где определён объект: вид → номер → фрагменты."""
     found: dict[str, dict[str, set[str]]] = {
-        "equation": {}, "statement": {}, "section": {}, "figure": {},
+        "equation": {},
+        "statement": {},
+        "section": {},
+        "figure": {},
     }
     sections: dict[str, dict[str, Any]] = {}
     for chunk in chunks:
@@ -67,5 +72,3 @@ def references_of(chunk: dict[str, Any]) -> list[tuple[str, str]]:
     refs += [("section", m.group(1)) for m in SECTION_REF.finditer(text)]
     refs += [("figure", m.group(1)) for m in FIGURE_REF.finditer(text)]
     return refs
-
-

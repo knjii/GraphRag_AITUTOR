@@ -286,8 +286,7 @@ def assert_replayable(snapshot: dict[str, Any], settings: Settings) -> None:
     if changed:
         raise NotReplayable(
             "Эти настройки меняют состав кандидатов, а не их порядок, поэтому "
-            "по слепку не проверяются — нужен прогон на сервере:\n  "
-            + "\n  ".join(changed)
+            "по слепку не проверяются — нужен прогон на сервере:\n  " + "\n  ".join(changed)
         )
 
 

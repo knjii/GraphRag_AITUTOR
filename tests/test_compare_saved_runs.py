@@ -81,12 +81,12 @@ def test_runs_on_different_goldsets_share_nothing(settings):
 
 def test_breakdown_by_type_is_present(settings):
     """Разбор по типам — то, чего не хватало при решении по реранкеру."""
-    before = [
-        _outcome(i, found=True, question_type="formula_table") for i in range(4)
-    ] + [_outcome(10 + i, found=True, question_type="graph_linked") for i in range(4)]
-    after = [
-        _outcome(i, found=True, question_type="formula_table") for i in range(4)
-    ] + [_outcome(10 + i, found=False, question_type="graph_linked") for i in range(4)]
+    before = [_outcome(i, found=True, question_type="formula_table") for i in range(4)] + [
+        _outcome(10 + i, found=True, question_type="graph_linked") for i in range(4)
+    ]
+    after = [_outcome(i, found=True, question_type="formula_table") for i in range(4)] + [
+        _outcome(10 + i, found=False, question_type="graph_linked") for i in range(4)
+    ]
 
     _, base = load_outcomes(_save(settings, "до", before))
     _, cand = load_outcomes(_save(settings, "после", after))

@@ -63,7 +63,10 @@ def test_default_limit_fits_the_worst_case():
     import json
 
     settings = GraphSettings()
-    entities = [{"name": f"довольно длинное имя сущности {i}"} for i in range(settings.max_entities_per_chunk)]
+    entities = [
+        {"name": f"довольно длинное имя сущности {i}"}
+        for i in range(settings.max_entities_per_chunk)
+    ]
     relations = [
         {
             "source": f"довольно длинное имя сущности {i}",
@@ -72,7 +75,9 @@ def test_default_limit_fits_the_worst_case():
         }
         for i in range(settings.max_relations_per_chunk)
     ]
-    pretty = json.dumps({"entities": entities, "relations": relations}, ensure_ascii=False, indent=2)
+    pretty = json.dumps(
+        {"entities": entities, "relations": relations}, ensure_ascii=False, indent=2
+    )
     # Грубая оценка: для русского текста около 2.5 символа на токен.
     estimated = len(pretty) / 2.5
 

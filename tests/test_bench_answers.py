@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-_spec = importlib.util.spec_from_file_location("bench_answers", ROOT / "scripts" / "bench_answers.py")
+_spec = importlib.util.spec_from_file_location(
+    "bench_answers", ROOT / "scripts" / "bench_answers.py"
+)
 bench_answers = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bench_answers)
 
@@ -82,9 +84,20 @@ def test_context_uses_selected_set_or_records_fallback():
 def test_end_to_end_with_fake_llm(tmp_path):
     bundle = tmp_path / "bundle"
     bundle.mkdir()
-    chunks = [{"chunk_id": f"c{i}", "doc_id": f"c{i}", "title": "t", "text": f"text {i}"} for i in range(6)]
-    questions = [{"qid": f"q{i}", "question": f"question {i}?", "answer": "x", "type": "2hop",
-                  "gold_chunk_ids": ["c0", "c1"]} for i in range(3)]
+    chunks = [
+        {"chunk_id": f"c{i}", "doc_id": f"c{i}", "title": "t", "text": f"text {i}"}
+        for i in range(6)
+    ]
+    questions = [
+        {
+            "qid": f"q{i}",
+            "question": f"question {i}?",
+            "answer": "x",
+            "type": "2hop",
+            "gold_chunk_ids": ["c0", "c1"],
+        }
+        for i in range(3)
+    ]
     for name, rows in (("chunks.jsonl", chunks), ("questions.jsonl", questions)):
         (bundle / name).write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
     ranked = [{"qid": q["qid"], "ranked": [c["chunk_id"] for c in chunks]} for q in questions]
@@ -92,13 +105,38 @@ def test_end_to_end_with_fake_llm(tmp_path):
     for name, rows in (("a.jsonl", ranked), ("b.jsonl", selected)):
         (tmp_path / name).write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
     out = tmp_path / "out"
-    env = {"LLM_PROVIDER": "fake", "PYTHONPATH": str(ROOT), "PYTHONIOENCODING": "utf-8",
-           "SYSTEMROOT": __import__("os").environ.get("SYSTEMROOT", "")}
+    env = {
+        "LLM_PROVIDER": "fake",
+        "PYTHONPATH": str(ROOT),
+        "PYTHONIOENCODING": "utf-8",
+        "SYSTEMROOT": __import__("os").environ.get("SYSTEMROOT", ""),
+    }
     proc = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "bench_answers.py"), "--bundle", str(bundle),
-         "--run", f"a={tmp_path / 'a.jsonl'}", "--run", f"b={tmp_path / 'b.jsonl'}:selected",
-         "--baseline", "a", "--k", "3", "--workers", "2", "--out", str(out)],
-        capture_output=True, text=True, encoding="utf-8", env=env, cwd=tmp_path, check=False)
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "bench_answers.py"),
+            "--bundle",
+            str(bundle),
+            "--run",
+            f"a={tmp_path / 'a.jsonl'}",
+            "--run",
+            f"b={tmp_path / 'b.jsonl'}:selected",
+            "--baseline",
+            "a",
+            "--k",
+            "3",
+            "--workers",
+            "2",
+            "--out",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        cwd=tmp_path,
+        check=False,
+    )
     assert proc.returncode == 0, proc.stderr[-2000:]
     report = json.loads((out / "answers-report.json").read_text(encoding="utf-8"))
     assert report["summary"]["a"]["context_size"] == 3

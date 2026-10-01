@@ -150,9 +150,7 @@ def _reserve_graph_candidates(
         return head
 
     present = {item.chunk.id for item in head}
-    graph_only = [
-        item for item in head if item.only_from_graph
-    ]
+    graph_only = [item for item in head if item.only_from_graph]
     missing = quota - len(graph_only)
     if missing <= 0:
         return head
@@ -193,9 +191,7 @@ class RetrievalPipeline:
         self.router = QueryRouter(settings.retrieval, llm)
         # Отбор К6–К8 проверяется при создании: режим без нужного ему
         # инструмента молча выродился бы в обычный порядок.
-        self.pair_scorer = (
-            selection.PairScorer(reranker) if settings.reranker.enabled else None
-        )
+        self.pair_scorer = selection.PairScorer(reranker) if settings.reranker.enabled else None
         self.link_store = graph_retriever.store if graph_retriever is not None else None
         if settings.retrieval.selection_mode != "off":
             selection.check_ready(settings.retrieval, self.pair_scorer, self.link_store, llm)
@@ -243,9 +239,7 @@ class RetrievalPipeline:
             return []
 
         parts = [
-            str(item).strip()
-            for item in (payload.get("parts") or [])
-            if str(item or "").strip()
+            str(item).strip() for item in (payload.get("parts") or []) if str(item or "").strip()
         ]
         # Разложение из одной части — это исходный вопрос, работать по общему пути.
         if len(parts) < 2:
@@ -536,9 +530,7 @@ class RetrievalPipeline:
             minimum=self.settings.retrieval.min_graph_docs,
             top_k=top_k,
         )
-        final = selection.complete(
-            final, self.settings.retrieval, top_k, store=self.link_store
-        )
+        final = selection.complete(final, self.settings.retrieval, top_k, store=self.link_store)
         sealed: seal.SealResult | None = None
         if self.settings.retrieval.selection_mode == "seal":
             sealed = seal.run(

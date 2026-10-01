@@ -91,6 +91,7 @@ def _trace(**overrides) -> QueryTrace:
 
 # --------------------------------------------------------------- граница
 
+
 def test_changing_traversal_setting_is_refused():
     """Обход графа меняет СОСТАВ кандидатов — по слепку он не проверяется."""
     snapshot = snapshot_settings(_settings())
@@ -134,6 +135,7 @@ def test_wider_window_than_captured_is_refused():
 
 # ------------------------------------------------------- воспроизведение
 
+
 def test_replay_returns_candidates_from_trace():
     result = replay_one(_trace(), _settings(retrieval={"top_k": 3}), _chunks())
 
@@ -156,7 +158,9 @@ def test_by_route_mode_skips_reranker_on_linking_questions():
     реранкер отнимает у них 13 вопросов, отдавая 5 формульным."""
     trace = _trace(used_graph=True, rerank_scores={"c3": 0.99, "c1": 0.10})
 
-    always = replay_one(trace, _settings(retrieval={"top_k": 1}, reranker={"mode": "always"}), _chunks())
+    always = replay_one(
+        trace, _settings(retrieval={"top_k": 1}, reranker={"mode": "always"}), _chunks()
+    )
     by_route = replay_one(
         trace, _settings(retrieval={"top_k": 1}, reranker={"mode": "by_route"}), _chunks()
     )
@@ -168,7 +172,9 @@ def test_by_route_mode_skips_reranker_on_linking_questions():
 def test_by_route_mode_still_reranks_simple_questions():
     trace = _trace(used_graph=False, rerank_scores={"c3": 0.99, "c1": 0.10})
 
-    result = replay_one(trace, _settings(retrieval={"top_k": 1}, reranker={"mode": "by_route"}), _chunks())
+    result = replay_one(
+        trace, _settings(retrieval={"top_k": 1}, reranker={"mode": "by_route"}), _chunks()
+    )
 
     assert result[0].chunk.id == "c3"
 
@@ -186,6 +192,7 @@ def test_blend_alpha_zero_ignores_reranker():
 
 
 # ------------------------------------------------------------- честность
+
 
 def test_fidelity_report_detects_mismatch():
     """Сверка честности обязана ловить расхождение, иначе она бесполезна."""
@@ -213,6 +220,7 @@ def test_fidelity_is_perfect_when_replay_matches():
 
 
 # ------------------------------------------------------------------ файл
+
 
 def test_trace_round_trip(tmp_path: Path):
     traces = TraceSet(settings_snapshot={"graph.hop_decay": 0.8}, rerank_window=100)
